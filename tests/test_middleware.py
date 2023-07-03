@@ -29,7 +29,6 @@ def app():
     ]
     app = Starlette(routes=routes)
     app.add_middleware(ApitallyMiddleware, client_id="xxx")
-
     return app
 
 
@@ -54,6 +53,7 @@ def test_success(app: Starlette, mocker: MockerFixture):
 def test_error(app: Starlette, mocker: MockerFixture):
     mock = mocker.patch("starlette_apitally.metrics.RequestMetrics.log_request")
     client = TestClient(app, raise_server_exceptions=False)
+
     response = client.post("/bar/")
     assert response.status_code == 500
     mock.assert_awaited_once()
@@ -66,6 +66,7 @@ def test_error(app: Starlette, mocker: MockerFixture):
 def test_unhandled(app: Starlette, mocker: MockerFixture):
     mock = mocker.patch("starlette_apitally.metrics.RequestMetrics.log_request")
     client = TestClient(app)
+
     response = client.post("/baz/")
     assert response.status_code == 404
     mock.assert_not_awaited()

@@ -26,6 +26,7 @@ pytest-httpx = "^0.22.0"
 ruff = "^0.0.275"
 pytest-mock = "^3.11.1"
 pytest-cov = "^4.1.0"
+pre-commit = "^3.3.3"
 
 [tool.black]
 line-length = 120
