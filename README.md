@@ -1,2 +1,3 @@
-# apitally
-Apitally client library (ASGI middleware)
+# Starlette Apitally
+
+Apitally integration for Starlette.

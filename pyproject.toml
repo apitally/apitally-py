@@ -1,0 +1,48 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "starlette-apitally"
+version = "0.1.0"
+description = "Apitally integration for Starlette"
+authors = ["Simon Gurcke <simon@gurcke.de>"]
+license = "MIT License"
+repository = "https://github.com/apitally/starlette-apitally"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+anyio = ">=3.0.0"
+httpx = ">=0.18.0"
+python = ">=3.9"
+starlette = ">=0.15.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.3.0"
+mypy = "^1.4.1"
+pytest = "^7.4.0"
+ruff = "^0.0.275"
+
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+
+[tool.ruff]
+ignore = ["E501"]
+select = ["E", "F", "W", "I"]
+target-version = "py311"
+
+[tool.ruff.isort]
+lines-after-imports = 2
+
+[tool.mypy]
+python_version = "3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["starlette_apitally"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING"]
