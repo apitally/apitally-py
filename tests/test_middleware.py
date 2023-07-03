@@ -39,6 +39,7 @@ def test_success(app: Starlette, mocker: MockerFixture):
     response = client.get("/foo/")
     assert response.status_code == 200
     mock.assert_awaited_once()
+    assert mock.await_args is not None
     assert mock.await_args.kwargs["method"] == "GET"
     assert mock.await_args.kwargs["path"] == "/foo/"
     assert mock.await_args.kwargs["status_code"] == 200
@@ -47,6 +48,7 @@ def test_success(app: Starlette, mocker: MockerFixture):
     response = client.get("/foo/123/")
     assert response.status_code == 200
     assert mock.await_count == 2
+    assert mock.await_args is not None
     assert mock.await_args.kwargs["path"] == "/foo/{bar}/"
 
 
@@ -57,6 +59,7 @@ def test_error(app: Starlette, mocker: MockerFixture):
     response = client.post("/bar/")
     assert response.status_code == 500
     mock.assert_awaited_once()
+    assert mock.await_args is not None
     assert mock.await_args.kwargs["method"] == "POST"
     assert mock.await_args.kwargs["path"] == "/bar/"
     assert mock.await_args.kwargs["status_code"] == 500

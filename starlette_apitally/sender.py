@@ -25,7 +25,7 @@ class Sender:
     async def send(self) -> None:
         if data := await self.metrics.prepare_to_send():
             logger.debug(f"Sending {data=}")
-            with httpx.AsyncClient(base_url=f"{BASE_URL}/{self.client_id}") as client:
+            async with httpx.AsyncClient(base_url=f"{BASE_URL}/{self.client_id}") as client:
                 response = await client.post(url="/", json=data)
                 response.raise_for_status()
 

@@ -1,8 +1,3 @@
-import logging
-
-
-logging.basicConfig(level="debug")
-
 from fastapi import FastAPI
 
 from starlette_apitally.middleware import ApitallyMiddleware
