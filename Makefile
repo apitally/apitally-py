@@ -1,4 +1,4 @@
-.PHONY: format check test
+.PHONY: format check test coverage
 
 format:
 	ruff check starlette_apitally tests --fix --select I
@@ -12,3 +12,6 @@ check:
 
 test:
 	pytest -v --tb=short
+
+coverage:
+	pytest -v --tb=short --cov --cov-report=xml

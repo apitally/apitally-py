@@ -24,7 +24,7 @@ share/python-wheels/
 MANIFEST
 
 # Unit test / coverage reports
-.coverage.*
+.coverage
 .cache
 coverage.xml
 .pytest_cache/
@@ -48,3 +48,9 @@ poetry.toml
 
 # LSP config files
 pyrightconfig.json
+
+# Visual Studio Code
+.vscode/
+
+# Local History for Visual Studio Code
+.history/
