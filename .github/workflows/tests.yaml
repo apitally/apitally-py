@@ -1,0 +1,40 @@
+name: Tests
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**/README.md"
+  pull_request:
+    branches:
+      - main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install and configure Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.5.1"
+          virtualenvs-in-project: true
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: poetry
+      - name: Run Poetry check
+        run: poetry check
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Run checks
+        run: poetry run make check
+      - name: Run tests and create coverage report
+        run: poetry run make coverage
+      - name: Upload coverage report to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
