@@ -33,7 +33,7 @@ def app():
 
 
 def test_success(app: Starlette, mocker: MockerFixture):
-    mock = mocker.patch("starlette_apitally.metrics.RequestMetrics.log_request")
+    mock = mocker.patch("starlette_apitally.metrics.Metrics.log_request")
     client = TestClient(app)
 
     response = client.get("/foo/")
@@ -53,7 +53,7 @@ def test_success(app: Starlette, mocker: MockerFixture):
 
 
 def test_error(app: Starlette, mocker: MockerFixture):
-    mock = mocker.patch("starlette_apitally.metrics.RequestMetrics.log_request")
+    mock = mocker.patch("starlette_apitally.metrics.Metrics.log_request")
     client = TestClient(app, raise_server_exceptions=False)
 
     response = client.post("/bar/")
@@ -67,7 +67,7 @@ def test_error(app: Starlette, mocker: MockerFixture):
 
 
 def test_unhandled(app: Starlette, mocker: MockerFixture):
-    mock = mocker.patch("starlette_apitally.metrics.RequestMetrics.log_request")
+    mock = mocker.patch("starlette_apitally.metrics.Metrics.log_request")
     client = TestClient(app)
 
     response = client.post("/baz/")

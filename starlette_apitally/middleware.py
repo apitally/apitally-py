@@ -8,15 +8,13 @@ from starlette.routing import Match
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 from starlette.types import ASGIApp
 
-from starlette_apitally.metrics import RequestMetrics
-from starlette_apitally.sender import Sender
+from starlette_apitally.metrics import Metrics
 
 
 class ApitallyMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, client_id: str, send_every: int = 10, filter_unhandled_paths: bool = True) -> None:
         self.filter_unhandled_paths = filter_unhandled_paths
-        self.metrics = RequestMetrics()
-        self.sender = Sender(metrics=self.metrics, client_id=client_id, send_every=send_every)
+        self.metrics = Metrics(client_id=client_id, send_every=send_every)
         super().__init__(app)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
