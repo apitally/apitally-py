@@ -1,0 +1,18 @@
+name: Publish
+on:
+  release:
+    types: [published]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install and configure Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.5.1"
+          virtualenvs-in-project: true
+      - name: Install dynamic versioning plugin for Poetry
+        run: poetry self add "poetry-dynamic-versioning[plugin]"
+      - name: Build and publish to PyPI
+        run: poetry publish --build --username __token__ --password ${{ secrets.PYPI_TOKEN }}
