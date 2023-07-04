@@ -1,0 +1,59 @@
+[build-system]
+requires = ["poetry-core", "poetry-dynamic-versioning"]
+build-backend = "poetry_dynamic_versioning.backend"
+
+[tool.poetry]
+name = "starlette-apitally"
+version = "0.0.0"
+description = "Apitally integration for Starlette"
+authors = ["Simon Gurcke <simon@gurcke.de>"]
+license = "MIT License"
+repository = "https://github.com/apitally/starlette-apitally"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+backoff = ">=1.11.0"
+httpx = ">=0.18.0"
+python = ">=3.9,<4.0"
+starlette = ">=0.15.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.3.0"
+mypy = "^1.4.1"
+pre-commit = "^3.3.3"
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.0"
+pytest-cov = "^4.1.0"
+pytest-httpx = "^0.22.0"
+pytest-mock = "^3.11.1"
+ruff = "^0.0.275"
+
+[tool.poetry-dynamic-versioning]
+enable = true
+style = "semver"
+vcs = "git"
+
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+
+[tool.ruff]
+ignore = ["E501"]
+select = ["E", "F", "W", "I"]
+target-version = "py311"
+
+[tool.ruff.isort]
+lines-after-imports = 2
+
+[tool.mypy]
+python_version = "3.11"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["starlette_apitally"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING"]
