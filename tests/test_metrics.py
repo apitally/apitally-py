@@ -50,14 +50,27 @@ async def test_prepare_to_send(metrics: Metrics):
 
 
 async def test_send(metrics: Metrics, httpx_mock: HTTPXMock):
-    from starlette_apitally.metrics import BASE_URL
+    from starlette_apitally.metrics import INGEST_BASE_URL
 
-    httpx_mock.add_response(url=f"{BASE_URL}/xxx/")
-    assert metrics.base_url == f"{BASE_URL}/xxx"
+    httpx_mock.add_response()
     await asyncio.sleep(0.03)
 
-    requests = httpx_mock.get_requests()
+    requests = httpx_mock.get_requests(url=f"{INGEST_BASE_URL}/xxx/")
     assert len(requests) == 1
     request_data = json.loads(requests[0].content)
     assert len(request_data) == 1
     assert request_data[0]["request_count"] == 2
+
+
+async def test_send_version(metrics: Metrics, httpx_mock: HTTPXMock):
+    from starlette_apitally import __version__ as version
+    from starlette_apitally.metrics import INGEST_BASE_URL
+
+    httpx_mock.add_response()
+    metrics.send_versions()
+    await asyncio.sleep(0.01)
+
+    requests = httpx_mock.get_requests(url=f"{INGEST_BASE_URL}/xxx/versions")
+    assert len(requests) == 1
+    request_data = json.loads(requests[0].content)
+    assert request_data["client_version"] == version

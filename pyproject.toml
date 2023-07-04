@@ -1,10 +1,10 @@
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["poetry-core", "poetry-dynamic-versioning"]
+build-backend = "poetry_dynamic_versioning.backend"
 
 [tool.poetry]
 name = "starlette-apitally"
-version = "0.1.0"
+version = "0.0.0"
 description = "Apitally integration for Starlette"
 authors = ["Simon Gurcke <simon@gurcke.de>"]
 license = "MIT License"
@@ -27,6 +27,11 @@ pytest-cov = "^4.1.0"
 pytest-httpx = "^0.22.0"
 pytest-mock = "^3.11.1"
 ruff = "^0.0.275"
+
+[tool.poetry-dynamic-versioning]
+enable = true
+style = "semver"
+vcs = "git"
 
 [tool.black]
 line-length = 120
