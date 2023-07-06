@@ -55,11 +55,11 @@ async def test_send(metrics: Metrics, httpx_mock: HTTPXMock):
     httpx_mock.add_response()
     await asyncio.sleep(0.03)
 
-    requests = httpx_mock.get_requests(url=f"{INGEST_BASE_URL}/xxx/")
+    requests = httpx_mock.get_requests(url=f"{INGEST_BASE_URL}/v1/xxx/default/data")
     assert len(requests) == 1
     request_data = json.loads(requests[0].content)
-    assert len(request_data) == 1
-    assert request_data[0]["request_count"] == 2
+    assert len(request_data["data"]) == 1
+    assert request_data["data"][0]["request_count"] == 2
 
 
 async def test_send_version(metrics: Metrics, httpx_mock: HTTPXMock):
@@ -70,7 +70,7 @@ async def test_send_version(metrics: Metrics, httpx_mock: HTTPXMock):
     metrics.send_versions()
     await asyncio.sleep(0.01)
 
-    requests = httpx_mock.get_requests(url=f"{INGEST_BASE_URL}/xxx/versions")
+    requests = httpx_mock.get_requests(url=f"{INGEST_BASE_URL}/v1/xxx/default/versions")
     assert len(requests) == 1
     request_data = json.loads(requests[0].content)
-    assert request_data["client_version"] == version
+    assert request_data["versions"]["client_version"] == version

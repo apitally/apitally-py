@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from collections import Counter
 from dataclasses import dataclass
 from typing import Dict, List, Optional, TypedDict
+from uuid import uuid4
 
 import backoff
 import httpx
@@ -16,7 +18,7 @@ import starlette_apitally
 
 logger = logging.getLogger(__name__)
 
-INGEST_BASE_URL = "https://ingest.apitally.io/v1/"
+INGEST_BASE_URL = os.getenv("APITALLY_INGEST_BASE_URL") or "https://ingest.apitally.io"
 
 
 @dataclass(frozen=True)
@@ -42,8 +44,11 @@ class VersionsData(TypedDict):
 
 
 class Metrics:
-    def __init__(self, client_id: str, app_version: Optional[str] = None, send_every: float = 10) -> None:
+    def __init__(
+        self, client_id: str, env: str = "default", app_version: Optional[str] = None, send_every: float = 10
+    ) -> None:
         self.client_id = client_id
+        self.env = env
         self.app_version = app_version
         self.send_every = send_every
 
@@ -57,7 +62,7 @@ class Metrics:
 
     @property
     def ingest_base_url(self) -> str:
-        return f"{INGEST_BASE_URL}/{self.client_id}"
+        return f"{INGEST_BASE_URL}/v1/{self.client_id}/{self.env}"
 
     async def log_request(self, method: str, path: str, status_code: int, response_time: float) -> None:
         key = RequestKey(method=method, path=path, status_code=status_code)
@@ -90,7 +95,8 @@ class Metrics:
     @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
     async def _send(self, data: List[IngestDataItem]) -> None:
         async with httpx.AsyncClient(base_url=self.ingest_base_url) as client:
-            response = await client.post(url="/", json=data)
+            payload = {"uuid": str(uuid4()), "data": data}
+            response = await client.post(url="/data", json=payload)
             response.raise_for_status()
 
     def send_versions(self) -> None:
@@ -105,7 +111,8 @@ class Metrics:
     @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3, raise_on_giveup=False)
     async def _send_versions(self, versions: VersionsData) -> None:
         async with httpx.AsyncClient(base_url=self.ingest_base_url) as client:
-            response = await client.post(url="/versions", json=versions)
+            payload = {"uuid": str(uuid4()), "versions": versions}
+            response = await client.post(url="/versions", json=payload)
             response.raise_for_status()
 
     async def run_send_loop(self) -> None:
