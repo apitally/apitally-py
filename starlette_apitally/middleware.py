@@ -1,5 +1,7 @@
+import re
 import time
 from typing import Optional, Tuple
+from uuid import UUID
 
 from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -17,12 +19,24 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         self,
         app: ASGIApp,
         client_id: str,
+        env: str = "default",
         app_version: Optional[str] = None,
-        send_every: int = 10,
+        send_every: float = 10,
         filter_unhandled_paths: bool = True,
     ) -> None:
+        try:
+            UUID(client_id)
+        except ValueError:
+            raise ValueError(f"invalid client_id '{client_id}' (expected hexadecimal UUID format)")
+        if re.match(r"^[a-z\-]{1,32}$", env) is None:
+            raise ValueError(f"invalid env '{env}' (expected 1-32 alphanumeric lowercase characters and hyphens only)")
+        if app_version is not None and len(app_version) > 32:
+            raise ValueError(f"invalid app_version '{app_version}' (expected 1-32 characters)")
+        if send_every < 5:
+            raise ValueError("send_every has to be greater or equal to 5 seconds")
+
         self.filter_unhandled_paths = filter_unhandled_paths
-        self.metrics = Metrics(client_id=client_id, app_version=app_version, send_every=send_every)
+        self.metrics = Metrics(client_id=client_id, env=env, app_version=app_version, send_every=send_every)
         self.metrics.send_versions()
         super().__init__(app)
 

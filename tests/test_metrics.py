@@ -12,11 +12,14 @@ if TYPE_CHECKING:
     from starlette_apitally.metrics import Metrics
 
 
+CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
+
+
 @pytest.fixture()
 async def metrics() -> AsyncIterator[Metrics]:
     from starlette_apitally.metrics import Metrics
 
-    metrics = Metrics(client_id="xxx", send_every=0.01)
+    metrics = Metrics(client_id=CLIENT_ID, send_every=0.01)
     try:
         await metrics.log_request(
             method="GET",
@@ -55,7 +58,7 @@ async def test_send(metrics: Metrics, httpx_mock: HTTPXMock):
     httpx_mock.add_response()
     await asyncio.sleep(0.03)
 
-    requests = httpx_mock.get_requests(url=f"{INGEST_BASE_URL}/v1/xxx/default/data")
+    requests = httpx_mock.get_requests(url=f"{INGEST_BASE_URL}/v1/{CLIENT_ID}/default/data")
     assert len(requests) == 1
     request_data = json.loads(requests[0].content)
     assert len(request_data["data"]) == 1
@@ -70,7 +73,7 @@ async def test_send_version(metrics: Metrics, httpx_mock: HTTPXMock):
     metrics.send_versions()
     await asyncio.sleep(0.01)
 
-    requests = httpx_mock.get_requests(url=f"{INGEST_BASE_URL}/v1/xxx/default/versions")
+    requests = httpx_mock.get_requests(url=f"{INGEST_BASE_URL}/v1/{CLIENT_ID}/default/versions")
     assert len(requests) == 1
     request_data = json.loads(requests[0].content)
     assert request_data["versions"]["client_version"] == version

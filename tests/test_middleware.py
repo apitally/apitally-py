@@ -12,6 +12,9 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 
+CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
+
+
 @pytest.fixture(scope="module")
 def app():
     from starlette_apitally.middleware import ApitallyMiddleware
@@ -37,9 +40,22 @@ def app():
         Route("/baz/", baz, methods=["POST"]),
     ]
     app = Starlette(routes=routes)
-    app.add_middleware(ApitallyMiddleware, client_id="xxx")
+    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID)
     app.state.background_task_mock = background_task_mock
     return app
+
+
+def test_param_validation(app: Starlette):
+    from starlette_apitally.middleware import ApitallyMiddleware
+
+    with pytest.raises(ValueError):
+        ApitallyMiddleware(app, client_id="76b5zb91-a0a4-4ea0-a894-57d2b9fcb2c9")
+    with pytest.raises(ValueError):
+        ApitallyMiddleware(app, client_id=CLIENT_ID, env="invalid_string")
+    with pytest.raises(ValueError):
+        ApitallyMiddleware(app, client_id=CLIENT_ID, app_version="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    with pytest.raises(ValueError):
+        ApitallyMiddleware(app, client_id=CLIENT_ID, send_every=1)
 
 
 def test_success(app: Starlette, mocker: MockerFixture):
