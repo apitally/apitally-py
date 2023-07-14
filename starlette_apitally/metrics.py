@@ -89,17 +89,21 @@ class Metrics:
             self.response_times.clear()
         return data
 
-    async def send(self) -> None:
+    async def send_data(self) -> None:
         if data := await self.prepare_to_send():
             logger.debug(f"Sending {data=}")
-            await self._send(data)
+            await self._send_data(data)
 
     @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
-    async def _send(self, data: List[IngestDataItem]) -> None:
+    async def _send_data(self, data: List[IngestDataItem]) -> None:
         async with httpx.AsyncClient(base_url=self.ingest_base_url) as client:
             payload = {"uuid": str(uuid4()), "data": data}
             response = await client.post(url="/data", json=payload)
-            response.raise_for_status()
+            if response.status_code == 404:
+                self.stop_send_loop()
+                logger.error(f"Invalid Apitally client ID: {self.client_id}")
+            else:
+                response.raise_for_status()
 
     def send_versions(self) -> None:
         versions: VersionsData = {
@@ -115,14 +119,17 @@ class Metrics:
         async with httpx.AsyncClient(base_url=self.ingest_base_url) as client:
             payload = {"uuid": str(uuid4()), "versions": versions}
             response = await client.post(url="/versions", json=payload)
-            response.raise_for_status()
+            if response.status_code == 404:
+                self.stop_send_loop()
+                logger.error(f"Invalid Apitally client ID: {self.client_id}")
+            else:
+                response.raise_for_status()
 
     async def run_send_loop(self) -> None:
-        self._stop_send_loop = False
         while not self._stop_send_loop:
             try:
                 await asyncio.sleep(self.send_every)
-                await self.send()
+                await self.send_data()
             except Exception as e:
                 logger.exception(e)
 
