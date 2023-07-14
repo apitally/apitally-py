@@ -3,18 +3,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import sys
 from collections import Counter
 from dataclasses import dataclass
 from math import floor
-from typing import Dict, List, Optional, TypedDict
+from typing import Any, Dict, List, Optional, TypedDict
 from uuid import uuid4
 
 import backoff
 import httpx
-import starlette
-
-import starlette_apitally
 
 
 logger = logging.getLogger(__name__)
@@ -29,7 +25,7 @@ class RequestKey:
     status_code: int
 
 
-class IngestDataItem(TypedDict):
+class RequestsDataItem(TypedDict):
     method: str
     path: str
     status_code: int
@@ -37,22 +33,13 @@ class IngestDataItem(TypedDict):
     response_times: Counter[int]
 
 
-class VersionsData(TypedDict):
-    app_version: Optional[str]
-    client_version: str
-    starlette_version: str
-    python_version: str
-
-
 class Metrics:
-    def __init__(
-        self, client_id: str, env: str = "default", app_version: Optional[str] = None, send_every: float = 10
-    ) -> None:
+    def __init__(self, client_id: str, env: str, send_every: float = 60) -> None:
         self.client_id = client_id
         self.env = env
-        self.app_version = app_version
         self.send_every = send_every
 
+        self.instance_uuid = str(uuid4())
         self.request_count: Counter[RequestKey] = Counter()
         self.response_times: Dict[RequestKey, Counter[int]] = {}
 
@@ -72,8 +59,8 @@ class Metrics:
             self.request_count[key] += 1
             self.response_times.setdefault(key, Counter())[response_time_ms_bin] += 1
 
-    async def prepare_to_send(self) -> List[IngestDataItem]:
-        data: List[IngestDataItem] = []
+    async def get_and_reset_requests(self) -> List[RequestsDataItem]:
+        data: List[RequestsDataItem] = []
         async with self._lock:
             for key, count in self.request_count.items():
                 data.append(
@@ -89,15 +76,27 @@ class Metrics:
             self.response_times.clear()
         return data
 
+    def get_load_average(self) -> Optional[Dict[str, float]]:
+        try:
+            avg_load = os.getloadavg()
+            return {"1m": avg_load[0], "5m": avg_load[1], "15m": avg_load[2]}
+        except (OSError, AttributeError):
+            return None
+
     async def send_data(self) -> None:
-        if data := await self.prepare_to_send():
-            logger.debug(f"Sending {data=}")
-            await self._send_data(data)
+        if requests := await self.get_and_reset_requests():
+            load_average = self.get_load_average()
+            await self._send_data(requests, load_average)
 
     @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
-    async def _send_data(self, data: List[IngestDataItem]) -> None:
+    async def _send_data(self, requests: List[RequestsDataItem], load_average: Optional[Dict[str, float]]) -> None:
         async with httpx.AsyncClient(base_url=self.ingest_base_url) as client:
-            payload = {"uuid": str(uuid4()), "data": data}
+            payload = {
+                "message_uuid": str(uuid4()),
+                "instance_uuid": self.instance_uuid,
+                "requests": requests,
+                "load_average": load_average,
+            }
             response = await client.post(url="/data", json=payload)
             if response.status_code == 404:
                 self.stop_send_loop()
@@ -105,20 +104,19 @@ class Metrics:
             else:
                 response.raise_for_status()
 
-    def send_versions(self) -> None:
-        versions: VersionsData = {
-            "app_version": self.app_version,
-            "client_version": starlette_apitally.__version__,
-            "starlette_version": starlette.__version__,
-            "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        }
-        asyncio.create_task(self._send_versions(versions))
+    def send_app_info(self, versions: Dict[str, str | None], openapi: Optional[Dict[str, Any]]) -> None:
+        asyncio.create_task(self._send_app_info(versions, openapi))
 
     @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3, raise_on_giveup=False)
-    async def _send_versions(self, versions: VersionsData) -> None:
+    async def _send_app_info(self, versions: Dict[str, str | None], openapi: Optional[Dict[str, Any]]) -> None:
         async with httpx.AsyncClient(base_url=self.ingest_base_url) as client:
-            payload = {"uuid": str(uuid4()), "versions": versions}
-            response = await client.post(url="/versions", json=payload)
+            payload = {
+                "message_uuid": str(uuid4()),
+                "instance_uuid": self.instance_uuid,
+                "versions": versions,
+                "openapi": openapi,
+            }
+            response = await client.post(url="/info", json=payload)
             if response.status_code == 404:
                 self.stop_send_loop()
                 logger.error(f"Invalid Apitally client ID: {self.client_id}")
