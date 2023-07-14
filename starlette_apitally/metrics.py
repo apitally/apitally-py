@@ -6,6 +6,7 @@ import os
 import sys
 from collections import Counter
 from dataclasses import dataclass
+from math import floor
 from typing import Dict, List, Optional, TypedDict
 from uuid import uuid4
 
@@ -33,7 +34,7 @@ class IngestDataItem(TypedDict):
     path: str
     status_code: int
     request_count: int
-    response_times: List[float]
+    response_times: Counter[int]
 
 
 class VersionsData(TypedDict):
@@ -53,7 +54,7 @@ class Metrics:
         self.send_every = send_every
 
         self.request_count: Counter[RequestKey] = Counter()
-        self.response_times: Dict[RequestKey, List[float]] = {}
+        self.response_times: Dict[RequestKey, Counter[int]] = {}
 
         self._lock = asyncio.Lock()
         self._stop_send_loop = False
@@ -66,9 +67,10 @@ class Metrics:
 
     async def log_request(self, method: str, path: str, status_code: int, response_time: float) -> None:
         key = RequestKey(method=method, path=path, status_code=status_code)
+        response_time_ms_bin = int(floor(response_time / 0.01) * 10)  # In ms, rounded down to nearest 10ms
         async with self._lock:
             self.request_count[key] += 1
-            self.response_times.setdefault(key, []).append(response_time)
+            self.response_times.setdefault(key, Counter())[response_time_ms_bin] += 1
 
     async def prepare_to_send(self) -> List[IngestDataItem]:
         data: List[IngestDataItem] = []
@@ -80,7 +82,7 @@ class Metrics:
                         "path": key.path,
                         "status_code": key.status_code,
                         "request_count": count,
-                        "response_times": self.response_times.get(key) or [],
+                        "response_times": self.response_times.get(key) or Counter(),
                     }
                 )
             self.request_count.clear()
