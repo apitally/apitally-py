@@ -13,11 +13,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  test-coverage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Load cached Poetry installation
+        id: cached-poetry
+        uses: actions/cache@v3
+        with:
+          path: ~/.local
+          key: poetry-0 # increment to reset cache
       - name: Install and configure Poetry
+        if: steps.cached-poetry.outputs.cache-hit != 'true'
         uses: snok/install-poetry@v1
         with:
           version: "1.5.1"
@@ -29,7 +36,7 @@ jobs:
       - name: Run Poetry check
         run: poetry check
       - name: Install dependencies
-        run: poetry install --with dev
+        run: poetry install --no-interaction --with dev
       - name: Run checks
         run: poetry run make check
       - name: Run tests and create coverage report
@@ -38,3 +45,42 @@ jobs:
         uses: codecov/codecov-action@v3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  test-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.8", "3.9", "3.10", "3.11"]
+        deps:
+          - starlette
+          - fastapi starlette
+          - fastapi==0.100.0 starlette
+          - fastapi==0.99.1 starlette
+          - fastapi==0.90.1 starlette
+          - fastapi==0.87.0 starlette
+    steps:
+      - uses: actions/checkout@v3
+      - name: Load cached Poetry installation
+        id: cached-poetry
+        uses: actions/cache@v3
+        with:
+          path: ~/.local # the path depends on the OS
+          key: poetry-0 # increment to reset cache
+      - name: Install and configure Poetry
+        if: steps.cached-poetry.outputs.cache-hit != 'true'
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.5.1"
+          virtualenvs-in-project: true
+      - name: Build Python package wheel
+        run: poetry build -f wheel
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "${{ matrix.python }}"
+      - name: Install test dependencies
+        run: poetry install --no-interaction --no-root --only test
+      - name: Install app dependencies
+        run: poetry run pip install ${{ matrix.deps }} ./dist/starlette_apitally-*.whl
+      - name: Run tests
+        run: poetry run make test

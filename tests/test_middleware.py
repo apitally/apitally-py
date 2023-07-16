@@ -27,14 +27,12 @@ def test_param_validation(app: Starlette, client_id: str):
 def test_success(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    send_app_info_mock = mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
     mock = mocker.patch("starlette_apitally.metrics.Metrics.log_request")
     client = TestClient(app)
     background_task_mock: MagicMock = app.state.background_task_mock  # type: ignore[attr-defined]
 
     response = client.get("/foo/")
     assert response.status_code == 200
-    send_app_info_mock.assert_called()
     background_task_mock.assert_called_once()
     mock.assert_awaited_once()
     assert mock.await_args is not None

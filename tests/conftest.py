@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import os
-from typing import TYPE_CHECKING
+from asyncio import AbstractEventLoop
+from importlib.util import find_spec
+from typing import TYPE_CHECKING, Iterator
 from unittest.mock import MagicMock
 
 import pytest
 from pytest import FixtureRequest
+from pytest_mock import MockerFixture
 from starlette.background import BackgroundTasks  # import here to avoid pydantic error
 
 
@@ -29,8 +33,21 @@ def client_id() -> str:
     return "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
 
 
-@pytest.fixture(scope="module", params=["starlette", "fastapi"])
-def app(request: FixtureRequest, client_id: str) -> Starlette:
+@pytest.fixture(scope="module")
+def event_loop() -> Iterator[AbstractEventLoop]:
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
+    yield loop
+    loop.close()
+
+
+@pytest.fixture(
+    scope="module",
+    params=["starlette", "fastapi"] if find_spec("fastapi") is not None else ["starlette"],
+)
+async def app(request: FixtureRequest, client_id: str, module_mocker: MockerFixture) -> Starlette:
+    module_mocker.patch("starlette_apitally.client.ApitallyClient.start_send_loop")
+    module_mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
     if request.param == "starlette":
         return get_starlette_app(client_id)
     elif request.param == "fastapi":
