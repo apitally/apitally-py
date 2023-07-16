@@ -13,10 +13,11 @@ def test_get_app_info(app: Starlette, mocker: MockerFixture):
     from starlette_apitally.app_info import get_app_info
 
     mocker.patch("starlette_apitally.middleware.ApitallyClient")
-    app_stack = app.build_middleware_stack()
+    if app.middleware_stack is None:
+        app.middleware_stack = app.build_middleware_stack()
 
-    app_info = get_app_info(app=app_stack, openapi_url="/openapi.json")
+    app_info = get_app_info(app=app.middleware_stack, openapi_url="/openapi.json")
     assert len(app_info["paths"]) > 0
 
-    app_info = get_app_info(app=app_stack, openapi_url=None)
+    app_info = get_app_info(app=app.middleware_stack, openapi_url=None)
     assert len(app_info["paths"]) > 0

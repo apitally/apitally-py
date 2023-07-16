@@ -28,13 +28,16 @@ class ApitallyClient:
         self.instance_uuid = str(uuid4())
         self.metrics = Metrics()
         self._stop_send_loop = False
-        asyncio.create_task(self.run_send_loop())
+        self.start_send_loop()
 
     @property
     def base_url(self) -> str:
         return f"{INGESTER_BASE_URL}/{INGESTER_VERSION}/{self.client_id}/{self.env}"
 
-    async def run_send_loop(self) -> None:
+    def start_send_loop(self) -> None:
+        asyncio.create_task(self._run_send_loop())
+
+    async def _run_send_loop(self) -> None:
         while not self._stop_send_loop:
             try:
                 await asyncio.sleep(self.send_every)
