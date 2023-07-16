@@ -19,6 +19,7 @@ starlette = ">=0.15.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.3.0"
+fastapi = "^0.100.0"
 mypy = "^1.4.1"
 pre-commit = "^3.3.3"
 pytest = "^7.4.0"

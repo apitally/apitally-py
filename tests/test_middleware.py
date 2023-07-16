@@ -1,70 +1,40 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
 from pytest_mock import MockerFixture
-from starlette.applications import Starlette
-from starlette.background import BackgroundTask, BackgroundTasks
-from starlette.requests import Request
-from starlette.responses import PlainTextResponse
-from starlette.routing import Route
-from starlette.testclient import TestClient
 
 
-CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
+if TYPE_CHECKING:
+    from starlette.applications import Starlette
 
 
-@pytest.fixture(scope="module")
-def app():
-    from starlette_apitally.middleware import ApitallyMiddleware
-
-    background_task_mock = MagicMock()
-
-    def foo(request: Request):
-        return PlainTextResponse("foo", background=BackgroundTasks([BackgroundTask(background_task_mock)]))
-
-    def foo_bar(request: Request):
-        return PlainTextResponse(f"foo: {request.path_params['bar']}", background=BackgroundTask(background_task_mock))
-
-    def bar(request: Request):
-        return PlainTextResponse("bar")
-
-    def baz(request: Request):
-        raise ValueError("baz")
-
-    routes = [
-        Route("/foo/", foo),
-        Route("/foo/{bar}/", foo_bar),
-        Route("/bar/", bar, methods=["POST"]),
-        Route("/baz/", baz, methods=["POST"]),
-    ]
-    app = Starlette(routes=routes)
-    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID)
-    app.state.background_task_mock = background_task_mock
-    return app
-
-
-def test_param_validation(app: Starlette):
+def test_param_validation(app: Starlette, client_id: str):
     from starlette_apitally.middleware import ApitallyMiddleware
 
     with pytest.raises(ValueError):
         ApitallyMiddleware(app, client_id="76b5zb91-a0a4-4ea0-a894-57d2b9fcb2c9")
     with pytest.raises(ValueError):
-        ApitallyMiddleware(app, client_id=CLIENT_ID, env="invalid_string")
+        ApitallyMiddleware(app, client_id=client_id, env="invalid_string")
     with pytest.raises(ValueError):
-        ApitallyMiddleware(app, client_id=CLIENT_ID, app_version="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+        ApitallyMiddleware(app, client_id=client_id, app_version="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
     with pytest.raises(ValueError):
-        ApitallyMiddleware(app, client_id=CLIENT_ID, send_every=1)
+        ApitallyMiddleware(app, client_id=client_id, send_every=1)
 
 
 def test_success(app: Starlette, mocker: MockerFixture):
+    from starlette.testclient import TestClient
+
+    send_app_info_mock = mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
     mock = mocker.patch("starlette_apitally.metrics.Metrics.log_request")
     client = TestClient(app)
-    background_task_mock: MagicMock = app.state.background_task_mock
+    background_task_mock: MagicMock = app.state.background_task_mock  # type: ignore[attr-defined]
 
     response = client.get("/foo/")
     assert response.status_code == 200
+    send_app_info_mock.assert_called()
     background_task_mock.assert_called_once()
     mock.assert_awaited_once()
     assert mock.await_args is not None
@@ -88,6 +58,9 @@ def test_success(app: Starlette, mocker: MockerFixture):
 
 
 def test_error(app: Starlette, mocker: MockerFixture):
+    from starlette.testclient import TestClient
+
+    mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
     mock = mocker.patch("starlette_apitally.metrics.Metrics.log_request")
     client = TestClient(app, raise_server_exceptions=False)
 
@@ -102,6 +75,9 @@ def test_error(app: Starlette, mocker: MockerFixture):
 
 
 def test_unhandled(app: Starlette, mocker: MockerFixture):
+    from starlette.testclient import TestClient
+
+    mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
     mock = mocker.patch("starlette_apitally.metrics.Metrics.log_request")
     client = TestClient(app)
 
