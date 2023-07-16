@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from importlib.util import find_spec
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -29,7 +30,10 @@ def client_id() -> str:
     return "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
 
 
-@pytest.fixture(scope="module", params=["starlette", "fastapi"])
+@pytest.fixture(
+    scope="module",
+    params=["starlette", "fastapi"] if find_spec("fastapi") is not None else ["starlette"],
+)
 def app(request: FixtureRequest, client_id: str) -> Starlette:
     if request.param == "starlette":
         return get_starlette_app(client_id)

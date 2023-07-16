@@ -19,15 +19,19 @@ starlette = ">=0.15.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.3.0"
-fastapi = "^0.100.0"
 mypy = "^1.4.1"
 pre-commit = "^3.3.3"
+ruff = "^0.0.275"
+
+[tool.poetry.group.test.dependencies]
 pytest = "^7.4.0"
 pytest-asyncio = "^0.21.0"
 pytest-cov = "^4.1.0"
 pytest-httpx = "^0.22.0"
 pytest-mock = "^3.11.1"
-ruff = "^0.0.275"
+
+[tool.poetry.group.fastapi.dependencies]
+fastapi = "^0.100.0"
 
 [tool.poetry-dynamic-versioning]
 enable = true
