@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  test-coverage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -51,14 +51,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.9", "3.10", "3.11"]
+        python: ["3.8", "3.9", "3.10", "3.11"]
         deps:
           - starlette
           - fastapi starlette
           - fastapi==0.100.0 starlette
           - fastapi==0.99.1 starlette
           - fastapi==0.90.1 starlette
-          - fastapi==0.80.0 starlette
+          - fastapi==0.87.0 starlette
     steps:
       - uses: actions/checkout@v3
       - name: Load cached Poetry installation
