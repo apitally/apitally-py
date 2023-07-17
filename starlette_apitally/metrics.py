@@ -46,7 +46,7 @@ class Metrics:
         return data
 
     @staticmethod
-    def get_load_average() -> Optional[Dict[str, float]]:
+    def get_load_averages() -> Optional[Dict[str, float]]:
         try:
             avg_load = os.getloadavg()
             return {"1m": avg_load[0], "5m": avg_load[1], "15m": avg_load[2]}

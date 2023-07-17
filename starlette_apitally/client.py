@@ -35,6 +35,7 @@ class ApitallyClient:
         return f"{INGESTER_BASE_URL}/{INGESTER_VERSION}/{self.client_id}/{self.env}"
 
     def start_send_loop(self) -> None:
+        self._stop_send_loop = False
         asyncio.create_task(self._run_send_loop())
 
     async def _run_send_loop(self) -> None:
@@ -49,17 +50,15 @@ class ApitallyClient:
         self._stop_send_loop = True
 
     def send_app_info(self, app: ASGIApp, app_version: Optional[str], openapi_url: Optional[str]) -> None:
-        app_info = get_app_info(app, openapi_url)
-        if app_version:
-            app_info["version"] = app_version
+        app_info = get_app_info(app, app_version, openapi_url)
         asyncio.create_task(self._send_app_info(app_info))
 
     @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3, raise_on_giveup=False)
     async def _send_app_info(self, app_info: Dict[str, Any]) -> None:
         async with httpx.AsyncClient(base_url=self.base_url) as client:
             payload = {
-                "message_uuid": str(uuid4()),
                 "instance_uuid": self.instance_uuid,
+                "message_uuid": str(uuid4()),
             }
             payload.update(app_info)
             response = await client.post(url="/info", json=payload)
@@ -71,18 +70,19 @@ class ApitallyClient:
 
     async def send_data(self) -> None:
         if requests := await self.metrics.get_and_reset_requests():
-            load_average = self.metrics.get_load_average()
-            await self._send_data(requests, load_average)
+            load_averages = self.metrics.get_load_averages()
+            await self._send_data(requests, load_averages)
 
     @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
-    async def _send_data(self, requests: List[Dict[str, Any]], load_average: Optional[Dict[str, float]]) -> None:
+    async def _send_data(self, requests: List[Dict[str, Any]], load_averages: Optional[Dict[str, float]]) -> None:
         async with httpx.AsyncClient(base_url=self.base_url) as client:
-            payload = {
-                "message_uuid": str(uuid4()),
+            payload: Dict[str, Any] = {
                 "instance_uuid": self.instance_uuid,
+                "message_uuid": str(uuid4()),
                 "requests": requests,
-                "load_average": load_average,
             }
+            if load_averages:
+                payload["load_averages"] = load_averages
             response = await client.post(url="/data", json=payload)
             if response.status_code == 404:
                 self.stop_send_loop()
