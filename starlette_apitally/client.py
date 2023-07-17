@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 import backoff
@@ -51,31 +51,16 @@ class ApitallyClient:
 
     def send_app_info(self, app: ASGIApp, app_version: Optional[str], openapi_url: Optional[str]) -> None:
         app_info = get_app_info(app, app_version, openapi_url)
-        asyncio.create_task(self._send_app_info(app_info))
-
-    @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3, raise_on_giveup=False)
-    async def _send_app_info(self, app_info: Dict[str, Any]) -> None:
-        async with httpx.AsyncClient(base_url=self.base_url) as client:
-            payload = {
-                "instance_uuid": self.instance_uuid,
-                "message_uuid": str(uuid4()),
-            }
-            payload.update(app_info)
-            response = await client.post(url="/info", json=payload)
-            if response.status_code == 404:
-                self.stop_send_loop()
-                logger.error(f"Invalid Apitally client ID: {self.client_id}")
-            else:
-                response.raise_for_status()
+        payload = {
+            "instance_uuid": self.instance_uuid,
+            "message_uuid": str(uuid4()),
+        }
+        payload.update(app_info)
+        asyncio.create_task(self._send_request(url="/info", payload=payload))
 
     async def send_data(self) -> None:
         if requests := await self.metrics.get_and_reset_requests():
             load_averages = self.metrics.get_load_averages()
-            await self._send_data(requests, load_averages)
-
-    @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
-    async def _send_data(self, requests: List[Dict[str, Any]], load_averages: Optional[Dict[str, float]]) -> None:
-        async with httpx.AsyncClient(base_url=self.base_url) as client:
             payload: Dict[str, Any] = {
                 "instance_uuid": self.instance_uuid,
                 "message_uuid": str(uuid4()),
@@ -83,9 +68,18 @@ class ApitallyClient:
             }
             if load_averages:
                 payload["load_averages"] = load_averages
-            response = await client.post(url="/data", json=payload)
+            await self._send_request(url="/data", payload=payload)
+
+    @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
+    async def _send_request(self, url: str, payload: Any) -> None:
+        async with httpx.AsyncClient(base_url=self.base_url) as client:
+            response = await client.post(url=url, json=payload)
             if response.status_code == 404:
                 self.stop_send_loop()
                 logger.error(f"Invalid Apitally client ID: {self.client_id}")
-            else:
+            elif response.status_code >= 500:
                 response.raise_for_status()
+            else:
+                logger.error(
+                    f"Got unexpected response from Apitally ingester {url} endpoint: [{response.status_code}] {response.text}"
+                )
