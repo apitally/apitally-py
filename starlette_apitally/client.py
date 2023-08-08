@@ -42,7 +42,7 @@ class ApitallyClient:
         while not self._stop_send_loop:
             try:
                 await asyncio.sleep(self.send_every)
-                await self.send_data()
+                await self.send_requests_data()
             except Exception as e:
                 logger.exception(e)
 
@@ -58,17 +58,14 @@ class ApitallyClient:
         payload.update(app_info)
         asyncio.create_task(self._send_request(url="/info", payload=payload))
 
-    async def send_data(self) -> None:
-        if requests := await self.metrics.get_and_reset_requests():
-            load_averages = self.metrics.get_load_averages()
-            payload: Dict[str, Any] = {
-                "instance_uuid": self.instance_uuid,
-                "message_uuid": str(uuid4()),
-                "requests": requests,
-            }
-            if load_averages:
-                payload["load_averages"] = load_averages
-            await self._send_request(url="/data", payload=payload)
+    async def send_requests_data(self) -> None:
+        requests = await self.metrics.get_and_reset_requests()
+        payload: Dict[str, Any] = {
+            "instance_uuid": self.instance_uuid,
+            "message_uuid": str(uuid4()),
+            "requests": requests,
+        }
+        await self._send_request(url="/requests", payload=payload)
 
     @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
     async def _send_request(self, url: str, payload: Any) -> None:

@@ -41,11 +41,3 @@ async def test_metrics_get_and_reset_requests(metrics: Metrics):
     assert data[0]["request_count"] == 2
     assert data[0]["response_times"][100] == 1
     assert data[0]["response_times"][220] == 1
-
-
-def test_get_load_averages(metrics: Metrics):
-    load = metrics.get_load_averages()
-    assert load is not None
-    assert load["1m"] > 0
-    assert load["5m"] > 0
-    assert load["15m"] > 0

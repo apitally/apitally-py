@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from collections import Counter
 from dataclasses import dataclass
 from math import floor
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 @dataclass(frozen=True)
@@ -44,11 +43,3 @@ class Metrics:
             self.request_count.clear()
             self.response_times.clear()
         return data
-
-    @staticmethod
-    def get_load_averages() -> Optional[Dict[str, float]]:
-        try:
-            avg_load = os.getloadavg()
-            return {"1m": avg_load[0], "5m": avg_load[1], "15m": avg_load[2]}
-        except (OSError, AttributeError):
-            return None

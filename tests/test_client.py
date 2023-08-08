@@ -41,13 +41,13 @@ async def client() -> AsyncIterator[ApitallyClient]:
         await asyncio.sleep(0.02)
 
 
-async def test_send_data(client: ApitallyClient, httpx_mock: HTTPXMock):
+async def test_send_requests_data(client: ApitallyClient, httpx_mock: HTTPXMock):
     from starlette_apitally.client import INGESTER_BASE_URL, INGESTER_VERSION
 
     httpx_mock.add_response()
     await asyncio.sleep(0.03)
 
-    requests = httpx_mock.get_requests(url=f"{INGESTER_BASE_URL}/{INGESTER_VERSION}/{CLIENT_ID}/default/data")
+    requests = httpx_mock.get_requests(url=f"{INGESTER_BASE_URL}/{INGESTER_VERSION}/{CLIENT_ID}/default/requests")
     assert len(requests) == 1
     request_data = json.loads(requests[0].content)
     assert len(request_data["requests"]) == 1
