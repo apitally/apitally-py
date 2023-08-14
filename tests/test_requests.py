@@ -10,17 +10,17 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture()
-async def requests() -> Requests:
+def requests() -> Requests:
     from starlette_apitally.requests import Requests
 
     requests = Requests()
-    await requests.log_request(
+    requests.log_request(
         method="GET",
         path="/test",
         status_code=200,
         response_time=0.105,
     )
-    await requests.log_request(
+    requests.log_request(
         method="GET",
         path="/test",
         status_code=200,
@@ -32,7 +32,7 @@ async def requests() -> Requests:
 async def test_get_and_reset_requests(requests: Requests):
     assert len(requests.request_count) > 0
 
-    data = await requests.get_and_reset_requests()
+    data = requests.get_and_reset_requests()
     assert len(requests.request_count) == 0
     assert len(data) == 1
     assert data[0]["method"] == "GET"

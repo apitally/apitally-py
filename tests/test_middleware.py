@@ -37,25 +37,25 @@ def test_success(app: Starlette, mocker: MockerFixture):
     response = client.get("/foo/")
     assert response.status_code == 200
     background_task_mock.assert_called_once()
-    mock.assert_awaited_once()
-    assert mock.await_args is not None
-    assert mock.await_args.kwargs["method"] == "GET"
-    assert mock.await_args.kwargs["path"] == "/foo/"
-    assert mock.await_args.kwargs["status_code"] == 200
-    assert mock.await_args.kwargs["response_time"] > 0
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["method"] == "GET"
+    assert mock.call_args.kwargs["path"] == "/foo/"
+    assert mock.call_args.kwargs["status_code"] == 200
+    assert mock.call_args.kwargs["response_time"] > 0
 
     response = client.get("/foo/123/")
     assert response.status_code == 200
     assert background_task_mock.call_count == 2
-    assert mock.await_count == 2
-    assert mock.await_args is not None
-    assert mock.await_args.kwargs["path"] == "/foo/{bar}/"
+    assert mock.call_count == 2
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["path"] == "/foo/{bar}/"
 
     response = client.post("/bar/")
     assert response.status_code == 200
-    assert mock.await_count == 3
-    assert mock.await_args is not None
-    assert mock.await_args.kwargs["method"] == "POST"
+    assert mock.call_count == 3
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["method"] == "POST"
 
 
 def test_error(app: Starlette, mocker: MockerFixture):
@@ -67,12 +67,12 @@ def test_error(app: Starlette, mocker: MockerFixture):
 
     response = client.post("/baz/")
     assert response.status_code == 500
-    mock.assert_awaited_once()
-    assert mock.await_args is not None
-    assert mock.await_args.kwargs["method"] == "POST"
-    assert mock.await_args.kwargs["path"] == "/baz/"
-    assert mock.await_args.kwargs["status_code"] == 500
-    assert mock.await_args.kwargs["response_time"] > 0
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["method"] == "POST"
+    assert mock.call_args.kwargs["path"] == "/baz/"
+    assert mock.call_args.kwargs["status_code"] == 500
+    assert mock.call_args.kwargs["response_time"] > 0
 
 
 def test_unhandled(app: Starlette, mocker: MockerFixture):
@@ -84,4 +84,4 @@ def test_unhandled(app: Starlette, mocker: MockerFixture):
 
     response = client.post("/xxx/")
     assert response.status_code == 404
-    mock.assert_not_awaited()
+    mock.assert_not_called()

@@ -23,13 +23,13 @@ async def client() -> AsyncIterator[ApitallyClient]:
 
     client = ApitallyClient(client_id=CLIENT_ID, env="default", send_every=0.01)
     try:
-        await client.requests.log_request(
+        client.requests.log_request(
             method="GET",
             path="/test",
             status_code=200,
             response_time=0.105,
         )
-        await client.requests.log_request(
+        client.requests.log_request(
             method="GET",
             path="/test",
             status_code=200,
