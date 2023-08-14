@@ -23,13 +23,13 @@ async def client() -> AsyncIterator[ApitallyClient]:
 
     client = ApitallyClient(client_id=CLIENT_ID, env="default", send_every=0.01)
     try:
-        await client.metrics.log_request(
+        await client.requests.log_request(
             method="GET",
             path="/test",
             status_code=200,
             response_time=0.105,
         )
-        await client.metrics.log_request(
+        await client.requests.log_request(
             method="GET",
             path="/test",
             status_code=200,
@@ -37,17 +37,17 @@ async def client() -> AsyncIterator[ApitallyClient]:
         )
         yield client
     finally:
-        client.stop_send_loop()
+        client.stop_sync_loop()
         await asyncio.sleep(0.02)
 
 
 async def test_send_requests_data(client: ApitallyClient, httpx_mock: HTTPXMock):
-    from starlette_apitally.client import INGESTER_BASE_URL, INGESTER_VERSION
+    from starlette_apitally.client import HUB_BASE_URL, HUB_VERSION
 
     httpx_mock.add_response()
     await asyncio.sleep(0.03)
 
-    requests = httpx_mock.get_requests(url=f"{INGESTER_BASE_URL}/{INGESTER_VERSION}/{CLIENT_ID}/default/requests")
+    requests = httpx_mock.get_requests(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/default/requests")
     assert len(requests) == 1
     request_data = json.loads(requests[0].content)
     assert len(request_data["requests"]) == 1
@@ -55,7 +55,7 @@ async def test_send_requests_data(client: ApitallyClient, httpx_mock: HTTPXMock)
 
 
 async def test_send_app_info(client: ApitallyClient, httpx_mock: HTTPXMock, mocker: MockerFixture):
-    from starlette_apitally.client import INGESTER_BASE_URL, INGESTER_VERSION
+    from starlette_apitally.client import HUB_BASE_URL, HUB_VERSION
 
     app_mock = MagicMock()
     httpx_mock.add_response()
@@ -64,7 +64,7 @@ async def test_send_app_info(client: ApitallyClient, httpx_mock: HTTPXMock, mock
     client.send_app_info(app=app_mock, app_version="1.2.3", openapi_url="/openapi.json")
     await asyncio.sleep(0.01)
 
-    requests = httpx_mock.get_requests(url=f"{INGESTER_BASE_URL}/{INGESTER_VERSION}/{CLIENT_ID}/default/info")
+    requests = httpx_mock.get_requests(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/default/info")
     assert len(requests) == 1
     request_data = json.loads(requests[0].content)
     assert request_data["paths"] == []

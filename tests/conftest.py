@@ -46,7 +46,7 @@ def event_loop() -> Iterator[AbstractEventLoop]:
     params=["starlette", "fastapi"] if find_spec("fastapi") is not None else ["starlette"],
 )
 async def app(request: FixtureRequest, client_id: str, module_mocker: MockerFixture) -> Starlette:
-    module_mocker.patch("starlette_apitally.client.ApitallyClient.start_send_loop")
+    module_mocker.patch("starlette_apitally.client.ApitallyClient.start_sync_loop")
     module_mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
     if request.param == "starlette":
         return get_starlette_app(client_id)

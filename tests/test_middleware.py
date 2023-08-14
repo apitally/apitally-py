@@ -12,12 +12,15 @@ if TYPE_CHECKING:
 
 
 def test_param_validation(app: Starlette, client_id: str):
+    from starlette_apitally.client import ApitallyClient
     from starlette_apitally.middleware import ApitallyMiddleware
+
+    ApitallyClient._instance = None
 
     with pytest.raises(ValueError):
         ApitallyMiddleware(app, client_id="76b5zb91-a0a4-4ea0-a894-57d2b9fcb2c9")
     with pytest.raises(ValueError):
-        ApitallyMiddleware(app, client_id=client_id, env="invalid_string")
+        ApitallyMiddleware(app, client_id=client_id, env="invalid.string")
     with pytest.raises(ValueError):
         ApitallyMiddleware(app, client_id=client_id, app_version="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
     with pytest.raises(ValueError):
@@ -27,7 +30,7 @@ def test_param_validation(app: Starlette, client_id: str):
 def test_success(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mock = mocker.patch("starlette_apitally.metrics.Metrics.log_request")
+    mock = mocker.patch("starlette_apitally.requests.Requests.log_request")
     client = TestClient(app)
     background_task_mock: MagicMock = app.state.background_task_mock  # type: ignore[attr-defined]
 
@@ -59,7 +62,7 @@ def test_error(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
     mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
-    mock = mocker.patch("starlette_apitally.metrics.Metrics.log_request")
+    mock = mocker.patch("starlette_apitally.requests.Requests.log_request")
     client = TestClient(app, raise_server_exceptions=False)
 
     response = client.post("/baz/")
@@ -76,7 +79,7 @@ def test_unhandled(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
     mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
-    mock = mocker.patch("starlette_apitally.metrics.Metrics.log_request")
+    mock = mocker.patch("starlette_apitally.requests.Requests.log_request")
     client = TestClient(app)
 
     response = client.post("/xxx/")
