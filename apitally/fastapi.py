@@ -8,9 +8,9 @@ from fastapi.security.base import SecurityBase
 from fastapi.security.utils import get_authorization_scheme_param
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
 
-from starlette_apitally.client import ApitallyClient
-from starlette_apitally.keys import KeyInfo
-from starlette_apitally.starlette import ApitallyMiddleware
+from apitally.client import ApitallyClient
+from apitally.keys import KeyInfo
+from apitally.starlette import ApitallyMiddleware
 
 
 __all__ = ["ApitallyMiddleware", "KeyInfo", "api_key_auth"]

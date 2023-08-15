@@ -1,24 +1,22 @@
-# Starlette Apitally
+# Apitally client for Python
 
-[![Tests](https://github.com/apitally/starlette-apitally/actions/workflows/tests.yaml/badge.svg?event=push)](https://github.com/apitally/starlette-apitally/actions)
-[![Codecov](https://codecov.io/gh/apitally/starlette-apitally/branch/main/graph/badge.svg?token=UNLYBY4Y3V)](https://codecov.io/gh/apitally/starlette-apitally)
-[![PyPI](https://img.shields.io/pypi/v/starlette-apitally?logo=pypi&logoColor=white&color=%23006dad)](https://pypi.org/project/starlette-apitally/)
+[![Tests](https://github.com/apitally/apitally-python/actions/workflows/tests.yaml/badge.svg?event=push)](https://github.com/apitally/apitally-python/actions)
+[![Codecov](https://codecov.io/gh/apitally/apitally-python/branch/main/graph/badge.svg?token=UNLYBY4Y3V)](https://codecov.io/gh/apitally/apitally-python)
+[![PyPI](https://img.shields.io/pypi/v/apitally?logo=pypi&logoColor=white&color=%23006dad)](https://pypi.org/project/apitally/)
 
-Apitally integration for Starlette / FastAPI.
-
-The integration is implemented as a middleware which sends metrics about requests and responses to [Apitally](https://apitally.io) every 10 seconds. This is done asynchronously and does not impact the performance of your application.
+Apitally client library for Python.
 
 ## Installation
 
 ```bash
-pip install starlette-apitally
+pip install apitally
 ```
 
 ## Usage with FastAPI
 
 ```python
 from fastapi import FastAPI
-from starlette_apitally import ApitallyMiddleware
+from apitally.fastapi import ApitallyMiddleware
 
 app = FastAPI()
 app.add_middleware(ApitallyMiddleware, client_id="<your-client-id>")
@@ -28,7 +26,7 @@ app.add_middleware(ApitallyMiddleware, client_id="<your-client-id>")
 
 ```python
 from starlette.applications import Starlette
-from starlette_apitally import ApitallyMiddleware
+from apitally.starlette import ApitallyMiddleware
 
 app = Starlette()
 app.add_middleware(ApitallyMiddleware, client_id="<your-client-id>")

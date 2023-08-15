@@ -1,13 +1,13 @@
 .PHONY: format check test test-coverage
 
 format:
-	ruff check starlette_apitally tests --fix --select I
-	black starlette_apitally tests
+	ruff check apitally tests --fix --select I
+	black apitally tests
 
 check:
-	ruff check starlette_apitally tests
-	mypy --install-types --non-interactive starlette_apitally tests
-	black --check --diff starlette_apitally tests
+	ruff check apitally tests
+	mypy --install-types --non-interactive apitally tests
+	black --check --diff apitally tests
 	poetry check
 
 test:

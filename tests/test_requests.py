@@ -6,12 +6,12 @@ import pytest
 
 
 if TYPE_CHECKING:
-    from starlette_apitally.requests import RequestLogger
+    from apitally.requests import RequestLogger
 
 
 @pytest.fixture()
 def requests() -> RequestLogger:
-    from starlette_apitally.requests import RequestLogger
+    from apitally.requests import RequestLogger
 
     requests = RequestLogger()
     requests.log_request(

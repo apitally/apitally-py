@@ -10,7 +10,7 @@ from pytest_mock import MockerFixture
 
 
 if TYPE_CHECKING:
-    from starlette_apitally.client import ApitallyClient
+    from apitally.client import ApitallyClient
 
 
 CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
@@ -19,10 +19,10 @@ ENV = "default"
 
 @pytest.fixture()
 async def client(mocker: MockerFixture) -> AsyncIterator[ApitallyClient]:
-    from starlette_apitally.client import ApitallyClient
+    from apitally.client import ApitallyClient
 
-    mocker.patch("starlette_apitally.client.ApitallyClient.start_sync_loop")
-    mocker.patch("starlette_apitally.client.ApitallyClient._run_sync_loop")
+    mocker.patch("apitally.client.ApitallyClient.start_sync_loop")
+    mocker.patch("apitally.client.ApitallyClient._run_sync_loop")
 
     client = ApitallyClient(client_id=CLIENT_ID, env=ENV, enable_keys=True)
     client.request_logger.log_request(
@@ -41,7 +41,7 @@ async def client(mocker: MockerFixture) -> AsyncIterator[ApitallyClient]:
 
 
 async def test_send_requests_data(client: ApitallyClient, httpx_mock: HTTPXMock):
-    from starlette_apitally.client import HUB_BASE_URL, HUB_VERSION
+    from apitally.client import HUB_BASE_URL, HUB_VERSION
 
     httpx_mock.add_response()
     async with client.get_http_client() as http_client:
@@ -55,7 +55,7 @@ async def test_send_requests_data(client: ApitallyClient, httpx_mock: HTTPXMock)
 
 
 async def test_send_app_info(client: ApitallyClient, httpx_mock: HTTPXMock):
-    from starlette_apitally.client import HUB_BASE_URL, HUB_VERSION
+    from apitally.client import HUB_BASE_URL, HUB_VERSION
 
     httpx_mock.add_response()
     app_info = {"paths": [], "client_version": "1.0.0", "starlette_version": "0.28.0", "python_version": "3.11.4"}
@@ -70,7 +70,7 @@ async def test_send_app_info(client: ApitallyClient, httpx_mock: HTTPXMock):
 
 
 async def test_get_keys(client: ApitallyClient, httpx_mock: HTTPXMock):
-    from starlette_apitally.client import HUB_BASE_URL, HUB_VERSION
+    from apitally.client import HUB_BASE_URL, HUB_VERSION
 
     httpx_mock.add_response(json={"salt": "x", "keys": {"x": {"key_id": 1, "expires_in_seconds": None}}})
     await client.get_keys()

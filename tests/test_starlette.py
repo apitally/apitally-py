@@ -37,8 +37,8 @@ def event_loop() -> Iterator[AbstractEventLoop]:
     params=["starlette", "fastapi"] if find_spec("fastapi") is not None else ["starlette"],
 )
 async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlette:
-    module_mocker.patch("starlette_apitally.client.ApitallyClient.start_sync_loop")
-    module_mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
+    module_mocker.patch("apitally.client.ApitallyClient.start_sync_loop")
+    module_mocker.patch("apitally.client.ApitallyClient.send_app_info")
     if request.param == "starlette":
         return get_starlette_app()
     elif request.param == "fastapi":
@@ -55,7 +55,7 @@ def app_with_auth() -> Starlette:
     from starlette.responses import JSONResponse, PlainTextResponse
     from starlette.routing import Route
 
-    from starlette_apitally.starlette import ApitallyKeysBackend
+    from apitally.starlette import ApitallyKeysBackend
 
     @requires(["authenticated", "foo"])
     def foo(request: Request):
@@ -93,7 +93,7 @@ def get_starlette_app() -> Starlette:
     from starlette.responses import PlainTextResponse
     from starlette.routing import Route
 
-    from starlette_apitally.starlette import ApitallyMiddleware
+    from apitally.starlette import ApitallyMiddleware
 
     background_task_mock = MagicMock()
 
@@ -124,7 +124,7 @@ def get_starlette_app() -> Starlette:
 def get_fastapi_app() -> Starlette:
     from fastapi import FastAPI
 
-    from starlette_apitally.fastapi import ApitallyMiddleware
+    from apitally.fastapi import ApitallyMiddleware
 
     background_task_mock = MagicMock()
 
@@ -154,8 +154,8 @@ def get_fastapi_app() -> Starlette:
 
 
 def test_middleware_param_validation(app: Starlette):
-    from starlette_apitally.client import ApitallyClient
-    from starlette_apitally.starlette import ApitallyMiddleware
+    from apitally.client import ApitallyClient
+    from apitally.starlette import ApitallyMiddleware
 
     ApitallyClient._instance = None
 
@@ -172,7 +172,7 @@ def test_middleware_param_validation(app: Starlette):
 def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mock = mocker.patch("starlette_apitally.requests.RequestLogger.log_request")
+    mock = mocker.patch("apitally.requests.RequestLogger.log_request")
     client = TestClient(app)
     background_task_mock: MagicMock = app.state.background_task_mock  # type: ignore[attr-defined]
 
@@ -203,8 +203,8 @@ def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
 def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
-    mock = mocker.patch("starlette_apitally.requests.RequestLogger.log_request")
+    mocker.patch("apitally.client.ApitallyClient.send_app_info")
+    mock = mocker.patch("apitally.requests.RequestLogger.log_request")
     client = TestClient(app, raise_server_exceptions=False)
 
     response = client.post("/baz/")
@@ -220,8 +220,8 @@ def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
 def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
-    mock = mocker.patch("starlette_apitally.requests.RequestLogger.log_request")
+    mocker.patch("apitally.client.ApitallyClient.send_app_info")
+    mock = mocker.patch("apitally.requests.RequestLogger.log_request")
     client = TestClient(app)
 
     response = client.post("/xxx/")
@@ -232,7 +232,7 @@ def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
 def test_keys_auth_backend(app_with_auth: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    from starlette_apitally.keys import KeyInfo, KeyRegistry
+    from apitally.keys import KeyInfo, KeyRegistry
 
     client = TestClient(app_with_auth)
     key_registry = KeyRegistry()
@@ -245,7 +245,7 @@ def test_keys_auth_backend(app_with_auth: Starlette, mocker: MockerFixture):
         )
     }
     headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
-    mock = mocker.patch("starlette_apitally.starlette.ApitallyClient.get_instance")
+    mock = mocker.patch("apitally.starlette.ApitallyClient.get_instance")
     mock.return_value.key_registry = key_registry
 
     # Unauthenticated
@@ -277,9 +277,9 @@ def test_keys_auth_backend(app_with_auth: Starlette, mocker: MockerFixture):
 
 
 def test_get_app_info(app: Starlette, mocker: MockerFixture):
-    from starlette_apitally.starlette import _get_app_info
+    from apitally.starlette import _get_app_info
 
-    mocker.patch("starlette_apitally.starlette.ApitallyClient")
+    mocker.patch("apitally.starlette.ApitallyClient")
     if app.middleware_stack is None:
         app.middleware_stack = app.build_middleware_stack()
 

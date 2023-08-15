@@ -10,8 +10,8 @@ from uuid import uuid4
 import backoff
 import httpx
 
-from starlette_apitally.keys import KeyRegistry
-from starlette_apitally.requests import RequestLogger
+from apitally.keys import KeyRegistry
+from apitally.requests import RequestLogger
 
 
 logger = logging.getLogger(__name__)

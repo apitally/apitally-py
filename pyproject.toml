@@ -3,12 +3,12 @@ requires = ["poetry-core", "poetry-dynamic-versioning"]
 build-backend = "poetry_dynamic_versioning.backend"
 
 [tool.poetry]
-name = "starlette-apitally"
+name = "apitally"
 version = "0.0.0"
-description = "Apitally integration for Starlette"
+description = "Apitally client library for Python"
 authors = ["Simon Gurcke <simon@gurcke.de>"]
 license = "MIT License"
-repository = "https://github.com/apitally/starlette-apitally"
+repository = "https://github.com/apitally/apitally-python"
 readme = "README.md"
 
 [tool.poetry.dependencies]
@@ -58,7 +58,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["starlette_apitally"]
+source = ["apitally"]
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING"]

@@ -23,9 +23,9 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 from starlette.testclient import TestClient
 from starlette.types import ASGIApp
 
-import starlette_apitally
-from starlette_apitally.client import ApitallyClient
-from starlette_apitally.keys import KeyInfo
+import apitally
+from apitally.client import ApitallyClient
+from apitally.keys import KeyInfo
 
 
 if TYPE_CHECKING:
@@ -142,7 +142,7 @@ def _get_app_info(app: ASGIApp, app_version: Optional[str], openapi_url: Optiona
     elif endpoints := _get_endpoint_info(app):
         app_info["paths"] = [{"path": endpoint.path, "method": endpoint.http_method} for endpoint in endpoints]
     app_info["versions"] = _get_versions(app_version)
-    app_info["client"] = "starlette-apitally"
+    app_info["client"] = "apitally-python"
     return app_info
 
 
@@ -175,7 +175,7 @@ def _get_routes(app: ASGIApp) -> List[BaseRoute]:
 def _get_versions(app_version: Optional[str]) -> Dict[str, str]:
     versions = {
         "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "starlette-apitally": starlette_apitally.__version__,
+        "apitally": apitally.__version__,
         "starlette": starlette.__version__,
     }
     try:

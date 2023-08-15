@@ -2,7 +2,7 @@ import pytest
 
 
 def test_keys():
-    from starlette_apitally.keys import KeyRegistry
+    from apitally.keys import KeyRegistry
 
     keys = KeyRegistry()
 
