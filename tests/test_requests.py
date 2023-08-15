@@ -6,34 +6,34 @@ import pytest
 
 
 if TYPE_CHECKING:
-    from starlette_apitally.metrics import Metrics
+    from starlette_apitally.requests import RequestLogger
 
 
 @pytest.fixture()
-async def metrics() -> Metrics:
-    from starlette_apitally.metrics import Metrics
+def requests() -> RequestLogger:
+    from starlette_apitally.requests import RequestLogger
 
-    metrics = Metrics()
-    await metrics.log_request(
+    requests = RequestLogger()
+    requests.log_request(
         method="GET",
         path="/test",
         status_code=200,
         response_time=0.105,
     )
-    await metrics.log_request(
+    requests.log_request(
         method="GET",
         path="/test",
         status_code=200,
         response_time=0.227,
     )
-    return metrics
+    return requests
 
 
-async def test_metrics_get_and_reset_requests(metrics: Metrics):
-    assert len(metrics.request_count) > 0
+async def test_get_and_reset_requests(requests: RequestLogger):
+    assert len(requests.request_count) > 0
 
-    data = await metrics.get_and_reset_requests()
-    assert len(metrics.request_count) == 0
+    data = requests.get_and_reset_requests()
+    assert len(requests.request_count) == 0
     assert len(data) == 1
     assert data[0]["method"] == "GET"
     assert data[0]["path"] == "/test"
