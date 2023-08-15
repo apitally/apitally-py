@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from importlib.util import find_spec
 from typing import TYPE_CHECKING
 
 import pytest
 from pytest_mock import MockerFixture
 
+
+if find_spec("fastapi") is None:
+    pytest.skip("fastapi is not available", allow_module_level=True)
 
 if TYPE_CHECKING:
     from fastapi import FastAPI

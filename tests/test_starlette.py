@@ -9,6 +9,11 @@ from unittest.mock import MagicMock
 import pytest
 from pytest import FixtureRequest
 from pytest_mock import MockerFixture
+
+
+if find_spec("starlette") is None:
+    pytest.skip("starlette is not available", allow_module_level=True)
+
 from starlette.background import BackgroundTasks  # import here to avoid pydantic error
 
 
