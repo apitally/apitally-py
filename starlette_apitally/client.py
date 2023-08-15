@@ -9,9 +9,7 @@ from uuid import uuid4
 
 import backoff
 import httpx
-from starlette.types import ASGIApp
 
-from starlette_apitally.app_info import get_app_info
 from starlette_apitally.keys import Keys
 from starlette_apitally.requests import Requests
 
@@ -59,6 +57,12 @@ class ApitallyClient:
         self._stop_sync_loop = False
         self.start_sync_loop()
 
+    @classmethod
+    def get_instance(cls) -> ApitallyClient:
+        if cls._instance is None:
+            raise RuntimeError("Apitally client not initialized")
+        return cls._instance
+
     def get_http_client(self) -> httpx.AsyncClient:
         base_url = f"{HUB_BASE_URL}/{HUB_VERSION}/{self.client_id}/{self.env}"
         return httpx.AsyncClient(base_url=base_url)
@@ -83,8 +87,7 @@ class ApitallyClient:
     def stop_sync_loop(self) -> None:
         self._stop_sync_loop = True
 
-    def send_app_info(self, app: ASGIApp, app_version: Optional[str], openapi_url: Optional[str]) -> None:
-        app_info = get_app_info(app, app_version, openapi_url)
+    def send_app_info(self, app_info: Dict[str, Any]) -> None:
         payload = {
             "instance_uuid": self.instance_uuid,
             "message_uuid": str(uuid4()),

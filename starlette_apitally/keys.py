@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from hashlib import scrypt
 from typing import Any, Dict, List, Optional, Set
@@ -9,16 +9,23 @@ from typing import Any, Dict, List, Optional, Set
 @dataclass(frozen=True)
 class Key:
     key_id: int
+    name: str = ""
+    scopes: List[str] = field(default_factory=list)
     expires_at: Optional[datetime] = None
 
     @property
     def is_expired(self) -> bool:
         return self.expires_at is not None and self.expires_at < datetime.now()
 
+    def check_scopes(self, scopes: List[str]) -> bool:
+        return all(scope in self.scopes for scope in scopes)
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Key:
         return cls(
             key_id=data["key_id"],
+            name=data.get("name", ""),
+            scopes=data.get("scopes", []),
             expires_at=(
                 datetime.now() + timedelta(seconds=data["expires_in_seconds"])
                 if data["expires_in_seconds"] is not None

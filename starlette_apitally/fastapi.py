@@ -3,11 +3,17 @@ from typing import Optional
 from fastapi.exceptions import HTTPException
 from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.requests import Request
+from fastapi.security import SecurityScopes
 from fastapi.security.base import SecurityBase
 from fastapi.security.utils import get_authorization_scheme_param
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
 
-from starlette_apitally.keys import Key, Keys
+from starlette_apitally.client import ApitallyClient
+from starlette_apitally.keys import Key
+from starlette_apitally.starlette import ApitallyMiddleware
+
+
+__all__ = ["ApitallyMiddleware", "Key", "api_key_auth"]
 
 
 class AuthorizationAPIKeyHeader(SecurityBase):
@@ -20,7 +26,7 @@ class AuthorizationAPIKeyHeader(SecurityBase):
         self.scheme_name = "Authorization header with ApiKey scheme"
         self.auto_error = auto_error
 
-    async def __call__(self, request: Request) -> Optional[Key]:
+    async def __call__(self, request: Request, security_scopes: SecurityScopes) -> Optional[Key]:
         authorization = request.headers.get("Authorization")
         scheme, param = get_authorization_scheme_param(authorization)
         if not authorization or scheme.lower() != "apikey":
@@ -31,23 +37,19 @@ class AuthorizationAPIKeyHeader(SecurityBase):
                     headers={"WWW-Authenticate": "ApiKey"},
                 )
             else:
-                return None
-        keys = self._get_keys()
-        key = keys.get(param)
+                return None  # pragma: no cover
+        key = ApitallyClient.get_instance().keys.get(param)
         if key is None and self.auto_error:
             raise HTTPException(
                 status_code=HTTP_403_FORBIDDEN,
                 detail="Invalid API key",
             )
+        if key is not None and self.auto_error and not key.check_scopes(security_scopes.scopes):
+            raise HTTPException(
+                status_code=HTTP_403_FORBIDDEN,
+                detail="Permission denied",
+            )
         return key
-
-    def _get_keys(self) -> Keys:
-        from starlette_apitally.client import ApitallyClient
-
-        client = ApitallyClient._instance
-        if client is None:
-            raise RuntimeError("ApitallyClient not initialized")
-        return client.keys
 
 
 api_key_auth = AuthorizationAPIKeyHeader()

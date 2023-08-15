@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import TYPE_CHECKING, AsyncIterator
-from unittest.mock import MagicMock
 
 import pytest
 from pytest_httpx import HTTPXMock
@@ -55,14 +54,12 @@ async def test_send_requests_data(client: ApitallyClient, httpx_mock: HTTPXMock)
     assert request_data["requests"][0]["request_count"] == 2
 
 
-async def test_send_app_info(client: ApitallyClient, httpx_mock: HTTPXMock, mocker: MockerFixture):
+async def test_send_app_info(client: ApitallyClient, httpx_mock: HTTPXMock):
     from starlette_apitally.client import HUB_BASE_URL, HUB_VERSION
 
-    app_mock = MagicMock()
     httpx_mock.add_response()
     app_info = {"paths": [], "client_version": "1.0.0", "starlette_version": "0.28.0", "python_version": "3.11.4"}
-    mocker.patch("starlette_apitally.client.get_app_info", return_value=app_info)
-    client.send_app_info(app=app_mock, app_version="1.2.3", openapi_url="/openapi.json")
+    client.send_app_info(app_info=app_info)
     await asyncio.sleep(0.01)
 
     requests = httpx_mock.get_requests(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/info")
