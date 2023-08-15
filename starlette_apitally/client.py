@@ -59,9 +59,9 @@ class ApitallyClient:
         self._stop_sync_loop = False
         self.start_sync_loop()
 
-    @property
-    def base_url(self) -> str:
-        return f"{HUB_BASE_URL}/{HUB_VERSION}/{self.client_id}/{self.env}"
+    def get_http_client(self) -> httpx.AsyncClient:
+        base_url = f"{HUB_BASE_URL}/{HUB_VERSION}/{self.client_id}/{self.env}"
+        return httpx.AsyncClient(base_url=base_url)
 
     def start_sync_loop(self) -> None:
         self._stop_sync_loop = False
@@ -73,7 +73,7 @@ class ApitallyClient:
         while not self._stop_sync_loop:
             try:
                 await asyncio.sleep(self.send_every)
-                async with httpx.AsyncClient(base_url=self.base_url) as client:
+                async with self.get_http_client() as client:
                     await self.send_requests_data(client)
                     if self.enable_keys:
                         await self._get_keys(client)
@@ -94,7 +94,7 @@ class ApitallyClient:
 
     @retry
     async def _send_app_info(self, payload: Any) -> None:
-        async with httpx.AsyncClient(base_url=self.base_url) as client:
+        async with self.get_http_client() as client:
             response = await client.post(url="/info", json=payload)
             if response.status_code == 404 and "Client ID" in response.text:
                 self.stop_sync_loop()
@@ -119,7 +119,7 @@ class ApitallyClient:
         response.raise_for_status()
 
     async def get_keys(self) -> None:
-        async with httpx.AsyncClient(base_url=self.base_url) as client:
+        async with self.get_http_client() as client:
             await self._get_keys(client)
 
     @retry

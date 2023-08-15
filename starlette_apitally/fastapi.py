@@ -35,7 +35,6 @@ class AuthorizationAPIKeyHeader(SecurityBase):
         keys = self._get_keys()
         key = keys.get(param)
         if key is None and self.auto_error:
-            print(keys.keys)
             raise HTTPException(
                 status_code=HTTP_403_FORBIDDEN,
                 detail="Invalid API key",
