@@ -14,11 +14,10 @@ from pytest_mock import MockerFixture
 if find_spec("starlette") is None:
     pytest.skip("starlette is not available", allow_module_level=True)
 
-from starlette.background import BackgroundTasks  # import here to avoid pydantic error
-
-
 if TYPE_CHECKING:
     from starlette.applications import Starlette
+
+from starlette.background import BackgroundTasks  # import here to avoid pydantic error
 
 
 CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
@@ -246,7 +245,7 @@ def test_keys_auth_backend(app_with_auth: Starlette, mocker: MockerFixture):
         )
     }
     headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
-    mock = mocker.patch("starlette_apitally.fastapi.ApitallyClient.get_instance")
+    mock = mocker.patch("starlette_apitally.starlette.ApitallyClient.get_instance")
     mock.return_value.keys = keys
 
     # Unauthenticated

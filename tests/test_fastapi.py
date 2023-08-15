@@ -13,12 +13,14 @@ if find_spec("fastapi") is None:
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
+from starlette_apitally.keys import Key  # import here to avoid pydantic error
+
 
 @pytest.fixture()
 def app_with_auth() -> FastAPI:
     from fastapi import Depends, FastAPI, Security
 
-    from starlette_apitally.fastapi import Key, api_key_auth
+    from starlette_apitally.fastapi import api_key_auth
 
     app = FastAPI()
 
