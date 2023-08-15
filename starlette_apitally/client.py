@@ -10,8 +10,8 @@ from uuid import uuid4
 import backoff
 import httpx
 
-from starlette_apitally.keys import Keys
-from starlette_apitally.requests import Requests
+from starlette_apitally.keys import KeyRegistry
+from starlette_apitally.requests import RequestLogger
 
 
 logger = logging.getLogger(__name__)
@@ -52,8 +52,8 @@ class ApitallyClient:
         self.client_id = client_id
         self.env = env
         self.instance_uuid = str(uuid4())
-        self.requests = Requests()
-        self.keys = Keys()
+        self.request_logger = RequestLogger()
+        self.key_registry = KeyRegistry()
         self._stop_sync_loop = False
         self.start_sync_loop()
 
@@ -106,8 +106,8 @@ class ApitallyClient:
                 response.raise_for_status()
 
     async def send_requests_data(self, client: httpx.AsyncClient) -> None:
-        requests = self.requests.get_and_reset_requests()
-        used_key_ids = self.keys.get_and_reset_used_key_ids() if self.enable_keys else []
+        requests = self.request_logger.get_and_reset_requests()
+        used_key_ids = self.key_registry.get_and_reset_used_key_ids() if self.enable_keys else []
         payload: Dict[str, Any] = {
             "instance_uuid": self.instance_uuid,
             "message_uuid": str(uuid4()),
@@ -130,5 +130,5 @@ class ApitallyClient:
         response = await client.get(url="/keys")
         response.raise_for_status()
         response_data = response.json()
-        self.keys.salt = response_data["salt"]
-        self.keys.update(response_data["keys"])
+        self.key_registry.salt = response_data["salt"]
+        self.key_registry.update(response_data["keys"])

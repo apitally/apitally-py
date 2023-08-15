@@ -25,13 +25,13 @@ async def client(mocker: MockerFixture) -> AsyncIterator[ApitallyClient]:
     mocker.patch("starlette_apitally.client.ApitallyClient._run_sync_loop")
 
     client = ApitallyClient(client_id=CLIENT_ID, env=ENV, enable_keys=True)
-    client.requests.log_request(
+    client.request_logger.log_request(
         method="GET",
         path="/test",
         status_code=200,
         response_time=0.105,
     )
-    client.requests.log_request(
+    client.request_logger.log_request(
         method="GET",
         path="/test",
         status_code=200,
@@ -78,4 +78,4 @@ async def test_get_keys(client: ApitallyClient, httpx_mock: HTTPXMock):
 
     requests = httpx_mock.get_requests(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/keys")
     assert len(requests) == 1
-    assert len(client.keys.keys) == 1
+    assert len(client.key_registry.keys) == 1

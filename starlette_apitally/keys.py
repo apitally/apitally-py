@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Set
 
 
 @dataclass(frozen=True)
-class Key:
+class KeyInfo:
     key_id: int
     name: str = ""
     scopes: List[str] = field(default_factory=list)
@@ -21,7 +21,7 @@ class Key:
         return all(scope in self.scopes for scope in scopes)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Key:
+    def from_dict(cls, data: Dict[str, Any]) -> KeyInfo:
         return cls(
             key_id=data["key_id"],
             name=data.get("name", ""),
@@ -34,13 +34,13 @@ class Key:
         )
 
 
-class Keys:
+class KeyRegistry:
     def __init__(self) -> None:
         self.salt: Optional[str] = None
-        self.keys: Dict[str, Key] = {}
+        self.keys: Dict[str, KeyInfo] = {}
         self.used_key_ids: Set[int] = set()
 
-    def get(self, api_key: str) -> Optional[Key]:
+    def get(self, api_key: str) -> Optional[KeyInfo]:
         hash = self.hash_api_key(api_key)
         key = self.keys.get(hash)
         if key is None or key.is_expired:
@@ -54,7 +54,7 @@ class Keys:
         return scrypt(api_key.encode(), salt=bytes.fromhex(self.salt), n=256, r=4, p=1, dklen=32).hex()
 
     def update(self, keys: Dict[str, Dict[str, Any]]) -> None:
-        self.keys = {hash: Key.from_dict(data) for hash, data in keys.items()}
+        self.keys = {hash: KeyInfo.from_dict(data) for hash, data in keys.items()}
 
     def get_and_reset_used_key_ids(self) -> List[int]:
         data = list(self.used_key_ids)

@@ -9,11 +9,11 @@ from fastapi.security.utils import get_authorization_scheme_param
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
 
 from starlette_apitally.client import ApitallyClient
-from starlette_apitally.keys import Key
+from starlette_apitally.keys import KeyInfo
 from starlette_apitally.starlette import ApitallyMiddleware
 
 
-__all__ = ["ApitallyMiddleware", "Key", "api_key_auth"]
+__all__ = ["ApitallyMiddleware", "KeyInfo", "api_key_auth"]
 
 
 class AuthorizationAPIKeyHeader(SecurityBase):
@@ -26,7 +26,7 @@ class AuthorizationAPIKeyHeader(SecurityBase):
         self.scheme_name = "Authorization header with ApiKey scheme"
         self.auto_error = auto_error
 
-    async def __call__(self, request: Request, security_scopes: SecurityScopes) -> Optional[Key]:
+    async def __call__(self, request: Request, security_scopes: SecurityScopes) -> Optional[KeyInfo]:
         authorization = request.headers.get("Authorization")
         scheme, param = get_authorization_scheme_param(authorization)
         if not authorization or scheme.lower() != "apikey":
@@ -38,18 +38,18 @@ class AuthorizationAPIKeyHeader(SecurityBase):
                 )
             else:
                 return None  # pragma: no cover
-        key = ApitallyClient.get_instance().keys.get(param)
-        if key is None and self.auto_error:
+        key_info = ApitallyClient.get_instance().key_registry.get(param)
+        if key_info is None and self.auto_error:
             raise HTTPException(
                 status_code=HTTP_403_FORBIDDEN,
                 detail="Invalid API key",
             )
-        if key is not None and self.auto_error and not key.check_scopes(security_scopes.scopes):
+        if key_info is not None and self.auto_error and not key_info.check_scopes(security_scopes.scopes):
             raise HTTPException(
                 status_code=HTTP_403_FORBIDDEN,
                 detail="Permission denied",
             )
-        return key
+        return key_info
 
 
 api_key_auth = AuthorizationAPIKeyHeader()

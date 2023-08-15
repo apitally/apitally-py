@@ -2,9 +2,9 @@ import pytest
 
 
 def test_keys():
-    from starlette_apitally.keys import Keys
+    from starlette_apitally.keys import KeyRegistry
 
-    keys = Keys()
+    keys = KeyRegistry()
 
     # Cannot get keys before they are initialized
     with pytest.raises(RuntimeError):

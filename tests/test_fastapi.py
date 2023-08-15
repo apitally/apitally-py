@@ -13,7 +13,7 @@ if find_spec("fastapi") is None:
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
-from starlette_apitally.keys import Key  # import here to avoid pydantic error
+from starlette_apitally.keys import KeyInfo  # import here to avoid pydantic error
 
 
 @pytest.fixture()
@@ -25,11 +25,11 @@ def app_with_auth() -> FastAPI:
     app = FastAPI()
 
     @app.get("/foo/")
-    def foo(key: Key = Security(api_key_auth, scopes=["foo"])):
+    def foo(key: KeyInfo = Security(api_key_auth, scopes=["foo"])):
         return "foo"
 
     @app.get("/bar/")
-    def bar(key: Key = Security(api_key_auth, scopes=["bar"])):
+    def bar(key: KeyInfo = Security(api_key_auth, scopes=["bar"])):
         return "bar"
 
     @app.get("/baz/", dependencies=[Depends(api_key_auth)])
@@ -42,13 +42,13 @@ def app_with_auth() -> FastAPI:
 def test_api_key_auth(app_with_auth: FastAPI, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    from starlette_apitally.keys import Key, Keys
+    from starlette_apitally.keys import KeyInfo, KeyRegistry
 
     client = TestClient(app_with_auth)
-    keys = Keys()
-    keys.salt = "54fd2b80dbfeb87d924affbc91b77c76"
-    keys.keys = {
-        "bcf46e16814691991c8ed756a7ca3f9cef5644d4f55cd5aaaa5ab4ab4f809208": Key(
+    key_registry = KeyRegistry()
+    key_registry.salt = "54fd2b80dbfeb87d924affbc91b77c76"
+    key_registry.keys = {
+        "bcf46e16814691991c8ed756a7ca3f9cef5644d4f55cd5aaaa5ab4ab4f809208": KeyInfo(
             key_id=1,
             name="Test key",
             scopes=["foo"],
@@ -56,7 +56,7 @@ def test_api_key_auth(app_with_auth: FastAPI, mocker: MockerFixture):
     }
     headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     mock = mocker.patch("starlette_apitally.fastapi.ApitallyClient.get_instance")
-    mock.return_value.keys = keys
+    mock.return_value.key_registry = key_registry
 
     # Unauthenticated
     response = client.get("/foo")

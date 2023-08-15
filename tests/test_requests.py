@@ -6,14 +6,14 @@ import pytest
 
 
 if TYPE_CHECKING:
-    from starlette_apitally.requests import Requests
+    from starlette_apitally.requests import RequestLogger
 
 
 @pytest.fixture()
-def requests() -> Requests:
-    from starlette_apitally.requests import Requests
+def requests() -> RequestLogger:
+    from starlette_apitally.requests import RequestLogger
 
-    requests = Requests()
+    requests = RequestLogger()
     requests.log_request(
         method="GET",
         path="/test",
@@ -29,7 +29,7 @@ def requests() -> Requests:
     return requests
 
 
-async def test_get_and_reset_requests(requests: Requests):
+async def test_get_and_reset_requests(requests: RequestLogger):
     assert len(requests.request_count) > 0
 
     data = requests.get_and_reset_requests()

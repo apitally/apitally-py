@@ -172,7 +172,7 @@ def test_middleware_param_validation(app: Starlette):
 def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mock = mocker.patch("starlette_apitally.requests.Requests.log_request")
+    mock = mocker.patch("starlette_apitally.requests.RequestLogger.log_request")
     client = TestClient(app)
     background_task_mock: MagicMock = app.state.background_task_mock  # type: ignore[attr-defined]
 
@@ -204,7 +204,7 @@ def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
     mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
-    mock = mocker.patch("starlette_apitally.requests.Requests.log_request")
+    mock = mocker.patch("starlette_apitally.requests.RequestLogger.log_request")
     client = TestClient(app, raise_server_exceptions=False)
 
     response = client.post("/baz/")
@@ -221,7 +221,7 @@ def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
     mocker.patch("starlette_apitally.client.ApitallyClient.send_app_info")
-    mock = mocker.patch("starlette_apitally.requests.Requests.log_request")
+    mock = mocker.patch("starlette_apitally.requests.RequestLogger.log_request")
     client = TestClient(app)
 
     response = client.post("/xxx/")
@@ -232,13 +232,13 @@ def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
 def test_keys_auth_backend(app_with_auth: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    from starlette_apitally.keys import Key, Keys
+    from starlette_apitally.keys import KeyInfo, KeyRegistry
 
     client = TestClient(app_with_auth)
-    keys = Keys()
-    keys.salt = "54fd2b80dbfeb87d924affbc91b77c76"
-    keys.keys = {
-        "bcf46e16814691991c8ed756a7ca3f9cef5644d4f55cd5aaaa5ab4ab4f809208": Key(
+    key_registry = KeyRegistry()
+    key_registry.salt = "54fd2b80dbfeb87d924affbc91b77c76"
+    key_registry.keys = {
+        "bcf46e16814691991c8ed756a7ca3f9cef5644d4f55cd5aaaa5ab4ab4f809208": KeyInfo(
             key_id=1,
             name="Test key",
             scopes=["foo"],
@@ -246,7 +246,7 @@ def test_keys_auth_backend(app_with_auth: Starlette, mocker: MockerFixture):
     }
     headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     mock = mocker.patch("starlette_apitally.starlette.ApitallyClient.get_instance")
-    mock.return_value.keys = keys
+    mock.return_value.key_registry = key_registry
 
     # Unauthenticated
     response = client.get("/foo")

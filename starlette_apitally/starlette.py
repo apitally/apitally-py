@@ -25,7 +25,7 @@ from starlette.types import ASGIApp
 
 import starlette_apitally
 from starlette_apitally.client import ApitallyClient
-from starlette_apitally.keys import Key
+from starlette_apitally.keys import KeyInfo
 
 
 if TYPE_CHECKING:
@@ -88,7 +88,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
     def log_request(self, request: Request, status_code: int, response_time: float) -> None:
         path_template, is_handled_path = self.get_path_template(request)
         if is_handled_path or not self.filter_unhandled_paths:
-            self.client.requests.log_request(
+            self.client.request_logger.log_request(
                 method=request.method,
                 path=path_template,
                 status_code=status_code,
@@ -109,18 +109,18 @@ class ApitallyKeysBackend(AuthenticationBackend):
         if "Authorization" not in conn.headers:
             return None
         auth = conn.headers["Authorization"]
-        scheme, _, credentials = auth.partition(" ")
+        scheme, _, param = auth.partition(" ")
         if scheme.lower() != "apikey":
             return None
-        key = ApitallyClient.get_instance().keys.get(credentials)
-        if key is None:
+        key_info = ApitallyClient.get_instance().key_registry.get(param)
+        if key_info is None:
             raise AuthenticationError("Invalid API key")
-        return AuthCredentials(["authenticated"] + key.scopes), ApitallyKeyUser(key)
+        return AuthCredentials(["authenticated"] + key_info.scopes), ApitallyKeyUser(key_info)
 
 
 class ApitallyKeyUser(BaseUser):
-    def __init__(self, key: Key) -> None:
-        self.key = key
+    def __init__(self, key_info: KeyInfo) -> None:
+        self.key_info = key_info
 
     @property
     def is_authenticated(self) -> bool:
@@ -128,11 +128,11 @@ class ApitallyKeyUser(BaseUser):
 
     @property
     def display_name(self) -> str:
-        return self.key.name
+        return self.key_info.name
 
     @property
     def identity(self) -> str:
-        return str(self.key.key_id)
+        return str(self.key_info.key_id)
 
 
 def _get_app_info(app: ASGIApp, app_version: Optional[str], openapi_url: Optional[str]) -> Dict[str, Any]:
