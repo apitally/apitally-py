@@ -97,7 +97,7 @@ class RequestLogger:
         self._lock = threading.Lock()
 
     def log_request(self, method: str, path: str, status_code: int, response_time: float) -> None:
-        request_info = RequestInfo(method=method, path=path, status_code=status_code)
+        request_info = RequestInfo(method=method.upper(), path=path, status_code=status_code)
         response_time_ms_bin = int(floor(response_time / 0.01) * 10)  # In ms, rounded down to nearest 10ms
         with self._lock:
             self.request_counts[request_info] += 1

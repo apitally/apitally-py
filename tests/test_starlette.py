@@ -27,6 +27,7 @@ ENV = "default"
     params=["starlette", "fastapi"] if find_spec("fastapi") is not None else ["starlette"],
 )
 async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlette:
+    module_mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.asyncio.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.asyncio.ApitallyClient.send_app_info")
     if request.param == "starlette":
@@ -192,7 +193,6 @@ def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
 def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mocker.patch("apitally.starlette.ApitallyClient.send_app_info")
     mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
     client = TestClient(app, raise_server_exceptions=False)
 
@@ -209,7 +209,6 @@ def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
 def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mocker.patch("apitally.starlette.ApitallyClient.send_app_info")
     mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
     client = TestClient(app)
 

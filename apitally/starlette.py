@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import re
 import sys
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
-from uuid import UUID
 
 import starlette
 from httpx import HTTPStatusError
@@ -26,6 +24,7 @@ from starlette.types import ASGIApp
 import apitally
 from apitally.client.asyncio import ApitallyClient
 from apitally.client.base import KeyInfo
+from apitally.client.utils import validate_client_params
 
 
 if TYPE_CHECKING:
@@ -49,18 +48,8 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         filter_unhandled_paths: bool = True,
         openapi_url: Optional[str] = "/openapi.json",
     ) -> None:
-        try:
-            UUID(client_id)
-        except ValueError:
-            raise ValueError(f"invalid client_id '{client_id}' (expected hexadecimal UUID format)")
-        if re.match(r"^[\w-]{1,32}$", env) is None:
-            raise ValueError(f"invalid env '{env}' (expected 1-32 alphanumeric lowercase characters and hyphens only)")
-        if app_version is not None and len(app_version) > 32:
-            raise ValueError(f"invalid app_version '{app_version}' (expected 1-32 characters)")
-        if sync_interval < 10:
-            raise ValueError("sync_interval has to be greater or equal to 10 seconds")
-
         self.filter_unhandled_paths = filter_unhandled_paths
+        validate_client_params(client_id=client_id, env=env, app_version=app_version, sync_interval=sync_interval)
         self.client = ApitallyClient(client_id=client_id, env=env, enable_keys=enable_keys, sync_interval=sync_interval)
         self.client.send_app_info(app_info=_get_app_info(app, app_version, openapi_url))
         self.client.start_sync_loop()
