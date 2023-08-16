@@ -24,8 +24,8 @@ from starlette.testclient import TestClient
 from starlette.types import ASGIApp
 
 import apitally
-from apitally.client import ApitallyClient
-from apitally.keys import KeyInfo
+from apitally.client.asyncio import ApitallyClient
+from apitally.client.base import KeyInfo
 
 
 if TYPE_CHECKING:
@@ -45,7 +45,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         env: str = "default",
         app_version: Optional[str] = None,
         enable_keys: bool = False,
-        send_every: float = 60,
+        sync_interval: float = 60,
         filter_unhandled_paths: bool = True,
         openapi_url: Optional[str] = "/openapi.json",
     ) -> None:
@@ -57,12 +57,13 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
             raise ValueError(f"invalid env '{env}' (expected 1-32 alphanumeric lowercase characters and hyphens only)")
         if app_version is not None and len(app_version) > 32:
             raise ValueError(f"invalid app_version '{app_version}' (expected 1-32 characters)")
-        if send_every < 10:
-            raise ValueError("send_every has to be greater or equal to 10 seconds")
+        if sync_interval < 10:
+            raise ValueError("sync_interval has to be greater or equal to 10 seconds")
 
         self.filter_unhandled_paths = filter_unhandled_paths
-        self.client = ApitallyClient(client_id=client_id, env=env, enable_keys=enable_keys, send_every=send_every)
+        self.client = ApitallyClient(client_id=client_id, env=env, enable_keys=enable_keys, sync_interval=sync_interval)
         self.client.send_app_info(app_info=_get_app_info(app, app_version, openapi_url))
+        self.client.start_sync_loop()
         super().__init__(app)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:

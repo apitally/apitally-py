@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import asyncio
-from asyncio import AbstractEventLoop
 from importlib.util import find_spec
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -24,21 +22,13 @@ CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
 ENV = "default"
 
 
-@pytest.fixture(scope="module")
-def event_loop() -> Iterator[AbstractEventLoop]:
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    yield loop
-    loop.close()
-
-
 @pytest.fixture(
     scope="module",
     params=["starlette", "fastapi"] if find_spec("fastapi") is not None else ["starlette"],
 )
 async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlette:
-    module_mocker.patch("apitally.client.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.ApitallyClient.send_app_info")
+    module_mocker.patch("apitally.client.asyncio.ApitallyClient.start_sync_loop")
+    module_mocker.patch("apitally.client.asyncio.ApitallyClient.send_app_info")
     if request.param == "starlette":
         return get_starlette_app()
     elif request.param == "fastapi":
@@ -154,8 +144,7 @@ def get_fastapi_app() -> Starlette:
 
 
 def test_middleware_param_validation(app: Starlette):
-    from apitally.client import ApitallyClient
-    from apitally.starlette import ApitallyMiddleware
+    from apitally.starlette import ApitallyClient, ApitallyMiddleware
 
     ApitallyClient._instance = None
 
@@ -166,13 +155,13 @@ def test_middleware_param_validation(app: Starlette):
     with pytest.raises(ValueError):
         ApitallyMiddleware(app, client_id=CLIENT_ID, app_version="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
     with pytest.raises(ValueError):
-        ApitallyMiddleware(app, client_id=CLIENT_ID, send_every=1)
+        ApitallyMiddleware(app, client_id=CLIENT_ID, sync_interval=1)
 
 
 def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mock = mocker.patch("apitally.requests.RequestLogger.log_request")
+    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
     client = TestClient(app)
     background_task_mock: MagicMock = app.state.background_task_mock  # type: ignore[attr-defined]
 
@@ -203,8 +192,8 @@ def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
 def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mocker.patch("apitally.client.ApitallyClient.send_app_info")
-    mock = mocker.patch("apitally.requests.RequestLogger.log_request")
+    mocker.patch("apitally.starlette.ApitallyClient.send_app_info")
+    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
     client = TestClient(app, raise_server_exceptions=False)
 
     response = client.post("/baz/")
@@ -220,8 +209,8 @@ def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
 def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mocker.patch("apitally.client.ApitallyClient.send_app_info")
-    mock = mocker.patch("apitally.requests.RequestLogger.log_request")
+    mocker.patch("apitally.starlette.ApitallyClient.send_app_info")
+    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
     client = TestClient(app)
 
     response = client.post("/xxx/")
@@ -232,7 +221,7 @@ def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
 def test_keys_auth_backend(app_with_auth: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    from apitally.keys import KeyInfo, KeyRegistry
+    from apitally.client.base import KeyInfo, KeyRegistry
 
     client = TestClient(app_with_auth)
     key_registry = KeyRegistry()
