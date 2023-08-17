@@ -1,0 +1,187 @@
+from __future__ import annotations
+
+import logging
+import os
+import re
+import threading
+from collections import Counter
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from hashlib import scrypt
+from math import floor
+from typing import Any, Dict, List, Optional, Set, Type, TypeVar, cast
+from uuid import UUID, uuid4
+
+
+logger = logging.getLogger(__name__)
+
+HUB_BASE_URL = os.getenv("APITALLY_HUB_BASE_URL") or "https://hub.apitally.io"
+HUB_VERSION = "v1"
+
+TApitallyClient = TypeVar("TApitallyClient", bound="ApitallyClientBase")
+
+
+def handle_retry_giveup(details) -> None:  # pragma: no cover
+    logger.exception("Apitally client failed to sync with hub: {target.__name__}(): {exception}".format(**details))
+
+
+class ApitallyClientBase:
+    _instance: Optional[ApitallyClientBase] = None
+    _lock = threading.Lock()
+
+    def __new__(cls, *args, **kwargs) -> ApitallyClientBase:
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self, client_id: str, env: str, enable_keys: bool = False, sync_interval: float = 60) -> None:
+        if hasattr(self, "client_id"):
+            raise RuntimeError("Apitally client is already initialized")  # pragma: no cover
+        try:
+            UUID(client_id)
+        except ValueError:
+            raise ValueError(f"invalid client_id '{client_id}' (expected hexadecimal UUID format)")
+        if re.match(r"^[\w-]{1,32}$", env) is None:
+            raise ValueError(f"invalid env '{env}' (expected 1-32 alphanumeric lowercase characters and hyphens only)")
+        if sync_interval < 10:
+            raise ValueError("sync_interval has to be greater or equal to 10 seconds")
+
+        self.client_id = client_id
+        self.env = env
+        self.enable_keys = enable_keys
+        self.sync_interval = sync_interval
+        self.instance_uuid = str(uuid4())
+        self.request_logger = RequestLogger()
+        self.key_registry = KeyRegistry()
+
+    @classmethod
+    def get_instance(cls: Type[TApitallyClient]) -> TApitallyClient:
+        if cls._instance is None:
+            raise RuntimeError("Apitally client not initialized")  # pragma: no cover
+        return cast(TApitallyClient, cls._instance)
+
+    @property
+    def hub_url(self) -> str:
+        return f"{HUB_BASE_URL}/{HUB_VERSION}/{self.client_id}/{self.env}"
+
+    def get_info_payload(self, app_info: Dict[str, Any]) -> Dict[str, Any]:
+        payload = {
+            "instance_uuid": self.instance_uuid,
+            "message_uuid": str(uuid4()),
+        }
+        payload.update(app_info)
+        return payload
+
+    def get_requests_payload(self) -> Dict[str, Any]:
+        requests = self.request_logger.get_and_reset_requests()
+        used_key_ids = self.key_registry.get_and_reset_used_key_ids() if self.enable_keys else []
+        return {
+            "instance_uuid": self.instance_uuid,
+            "message_uuid": str(uuid4()),
+            "requests": requests,
+            "used_key_ids": used_key_ids,
+        }
+
+    def handle_keys_response(self, response_data: Dict[str, Any]) -> None:
+        self.key_registry.salt = response_data["salt"]
+        self.key_registry.update(response_data["keys"])
+
+
+@dataclass(frozen=True)
+class RequestInfo:
+    method: str
+    path: str
+    status_code: int
+
+
+class RequestLogger:
+    def __init__(self) -> None:
+        self.request_counts: Counter[RequestInfo] = Counter()
+        self.response_times: Dict[RequestInfo, Counter[int]] = {}
+        self._lock = threading.Lock()
+
+    def log_request(self, method: str, path: str, status_code: int, response_time: float) -> None:
+        request_info = RequestInfo(method=method.upper(), path=path, status_code=status_code)
+        response_time_ms_bin = int(floor(response_time / 0.01) * 10)  # In ms, rounded down to nearest 10ms
+        with self._lock:
+            self.request_counts[request_info] += 1
+            self.response_times.setdefault(request_info, Counter())[response_time_ms_bin] += 1
+
+    def get_and_reset_requests(self) -> List[Dict[str, Any]]:
+        data: List[Dict[str, Any]] = []
+        with self._lock:
+            for request_info, count in self.request_counts.items():
+                data.append(
+                    {
+                        "method": request_info.method,
+                        "path": request_info.path,
+                        "status_code": request_info.status_code,
+                        "request_count": count,
+                        "response_times": self.response_times.get(request_info) or Counter(),
+                    }
+                )
+            self.request_counts.clear()
+            self.response_times.clear()
+        return data
+
+
+@dataclass(frozen=True)
+class KeyInfo:
+    key_id: int
+    name: str = ""
+    scopes: List[str] = field(default_factory=list)
+    expires_at: Optional[datetime] = None
+
+    @property
+    def is_expired(self) -> bool:
+        return self.expires_at is not None and self.expires_at < datetime.now()
+
+    def check_scopes(self, scopes: List[str]) -> bool:
+        return all(scope in self.scopes for scope in scopes)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> KeyInfo:
+        return cls(
+            key_id=data["key_id"],
+            name=data.get("name", ""),
+            scopes=data.get("scopes", []),
+            expires_at=(
+                datetime.now() + timedelta(seconds=data["expires_in_seconds"])
+                if data["expires_in_seconds"] is not None
+                else None
+            ),
+        )
+
+
+class KeyRegistry:
+    def __init__(self) -> None:
+        self.salt: Optional[str] = None
+        self.keys: Dict[str, KeyInfo] = {}
+        self.used_key_ids: Set[int] = set()
+        self._lock = threading.Lock()
+
+    def get(self, api_key: str) -> Optional[KeyInfo]:
+        hash = self.hash_api_key(api_key)
+        with self._lock:
+            key = self.keys.get(hash)
+            if key is None or key.is_expired:
+                return None
+            self.used_key_ids.add(key.key_id)
+        return key
+
+    def hash_api_key(self, api_key: str) -> str:
+        if self.salt is None:
+            raise RuntimeError("Apitally keys not initialized")
+        return scrypt(api_key.encode(), salt=bytes.fromhex(self.salt), n=256, r=4, p=1, dklen=32).hex()
+
+    def update(self, keys: Dict[str, Dict[str, Any]]) -> None:
+        with self._lock:
+            self.keys = {hash: KeyInfo.from_dict(data) for hash, data in keys.items()}
+
+    def get_and_reset_used_key_ids(self) -> List[int]:
+        with self._lock:
+            data = list(self.used_key_ids)
+            self.used_key_ids.clear()
+        return data

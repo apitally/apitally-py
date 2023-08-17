@@ -8,8 +8,8 @@ from fastapi.security.base import SecurityBase
 from fastapi.security.utils import get_authorization_scheme_param
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
 
-from apitally.client import ApitallyClient
-from apitally.keys import KeyInfo
+from apitally.client.asyncio import ApitallyClient
+from apitally.client.base import KeyInfo
 from apitally.starlette import ApitallyMiddleware
 
 

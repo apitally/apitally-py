@@ -13,7 +13,7 @@ if find_spec("fastapi") is None:
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
-from apitally.keys import KeyInfo  # import here to avoid pydantic error
+from apitally.client.base import KeyInfo  # import here to avoid pydantic error
 
 
 @pytest.fixture()
@@ -42,7 +42,7 @@ def app_with_auth() -> FastAPI:
 def test_api_key_auth(app_with_auth: FastAPI, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    from apitally.keys import KeyInfo, KeyRegistry
+    from apitally.client.base import KeyInfo, KeyRegistry
 
     client = TestClient(app_with_auth)
     key_registry = KeyRegistry()
