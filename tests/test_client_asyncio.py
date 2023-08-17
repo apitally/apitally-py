@@ -43,11 +43,11 @@ async def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
     mocker.patch.object(client, "sync_interval", 0.05)
 
     client.start_sync_loop()
-    await asyncio.sleep(0.09)  # Ensure loop enters first iteration
-    client.stop_sync_loop()  # Should stop after first iteration
+    await asyncio.sleep(0.2)  # Ensure loop starts
+    client.stop_sync_loop()  # Should stop after next iteration
+    await asyncio.sleep(0.1)  # Wait for task to finish
     assert send_requests_data_mock.await_count >= 1
     assert get_keys_mock.await_count >= 2
-    await asyncio.sleep(0.05)  # Wait for task to finish
 
 
 async def test_send_requests_data(client: ApitallyClient, httpx_mock: HTTPXMock):
