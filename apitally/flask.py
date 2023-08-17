@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import sys
 import time
+from functools import wraps
 from threading import Timer
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 
 import flask
+from flask import g, make_response, request
 from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
 
@@ -16,6 +18,9 @@ from apitally.client.threading import ApitallyClient
 if TYPE_CHECKING:
     from _typeshed.wsgi import StartResponse, WSGIApplication, WSGIEnvironment
     from werkzeug.routing.map import Map
+
+
+__all__ = ["ApitallyMiddleware", "require_api_key"]
 
 
 class ApitallyMiddleware:
@@ -32,7 +37,7 @@ class ApitallyMiddleware:
         filter_unhandled_paths: bool = True,
     ) -> None:
         url_map = url_map or _get_url_map(app)
-        if url_map is None:
+        if url_map is None:  # pragma: no cover
             raise ValueError(
                 "Could not extract url_map from app. Please provide it as an argument to ApitallyMiddleware."
             )
@@ -85,6 +90,29 @@ class ApitallyMiddleware:
             return rule.rule, True
         except NotFound:
             return environ["PATH_INFO"], False
+
+
+def require_api_key(func=None, *, scopes: Optional[List[str]] = None):
+    def decorator(func):
+        @wraps(func)
+        def wrapped_func(*args, **kwargs):
+            authorization = request.headers.get("Authorization")
+            if authorization is None:
+                return make_response("Not authenticated", 401, {"WWW-Authenticate": "ApiKey"})
+            scheme, _, param = authorization.partition(" ")
+            if scheme.lower() != "apikey":
+                return make_response("Unsupported authentication scheme", 401, {"WWW-Authenticate": "ApiKey"})
+            key_info = ApitallyClient.get_instance().key_registry.get(param)
+            if key_info is None:
+                return make_response("Invalid API key", 403)
+            if scopes is not None and not key_info.check_scopes(scopes):
+                return make_response("Permission denied", 403)
+            g.key_info = key_info
+            return func(*args, **kwargs)
+
+        return wrapped_func
+
+    return decorator if func is None else decorator(func)
 
 
 def _get_app_info(

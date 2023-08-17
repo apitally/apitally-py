@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 import time
 from threading import Event, Thread
 from typing import Any, Callable, Dict, Optional
@@ -79,8 +80,12 @@ class ApitallyClient(ApitallyClientBase):
         self._send_requests_data(session, payload)
 
     def get_keys(self, session: requests.Session) -> None:
-        response_data = self._get_keys(session)
-        self.handle_keys_response(response_data)
+        if response_data := self._get_keys(session):  # Response data can be None if backoff gives up
+            self.handle_keys_response(response_data)
+        elif self.key_registry.salt is None:
+            logger.error("Initial Apitally key sync failed")
+            # Exit because the application will not be able to authenticate requests
+            sys.exit(1)
 
     @retry
     def _send_app_info(self, payload: Dict[str, Any]) -> None:

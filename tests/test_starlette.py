@@ -15,6 +15,8 @@ if find_spec("starlette") is None:
 if TYPE_CHECKING:
     from starlette.applications import Starlette
 
+    from apitally.client.base import KeyRegistry
+
 from starlette.background import BackgroundTasks  # import here to avoid pydantic error
 
 
@@ -202,21 +204,10 @@ def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
     mock.assert_not_called()
 
 
-def test_keys_auth_backend(app_with_auth: Starlette, mocker: MockerFixture):
+def test_keys_auth_backend(app_with_auth: Starlette, key_registry: KeyRegistry, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    from apitally.client.base import KeyInfo, KeyRegistry
-
     client = TestClient(app_with_auth)
-    key_registry = KeyRegistry()
-    key_registry.salt = "54fd2b80dbfeb87d924affbc91b77c76"
-    key_registry.keys = {
-        "bcf46e16814691991c8ed756a7ca3f9cef5644d4f55cd5aaaa5ab4ab4f809208": KeyInfo(
-            key_id=1,
-            name="Test key",
-            scopes=["foo"],
-        )
-    }
     headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     mock = mocker.patch("apitally.starlette.ApitallyClient.get_instance")
     mock.return_value.key_registry = key_registry

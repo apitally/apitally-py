@@ -47,6 +47,7 @@ async def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
     client.stop_sync_loop()  # Should stop after first iteration
     assert send_requests_data_mock.await_count >= 1
     assert get_keys_mock.await_count >= 2
+    await asyncio.sleep(0.05)  # Wait for task to finish
 
 
 async def test_send_requests_data(client: ApitallyClient, httpx_mock: HTTPXMock):

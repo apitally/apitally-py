@@ -13,6 +13,8 @@ if find_spec("flask") is None:
 if TYPE_CHECKING:
     from flask import Flask
 
+    from apitally.client.base import KeyRegistry
+
 
 CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
 ENV = "default"
@@ -43,6 +45,38 @@ def app(module_mocker: MockerFixture) -> Flask:
     @app.route("/baz/", methods=["PUT"])
     def baz():
         raise ValueError("baz")
+
+    return app
+
+
+@pytest.fixture(scope="module")
+def app_with_auth(module_mocker: MockerFixture) -> Flask:
+    from flask import Flask
+
+    from apitally.flask import ApitallyMiddleware, require_api_key
+
+    module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
+    module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
+    module_mocker.patch("apitally.client.threading.ApitallyClient.send_app_info")
+    module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_send_app_info")
+
+    app = Flask("test")
+    app.wsgi_app = ApitallyMiddleware(app.wsgi_app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]
+
+    @app.route("/foo/")
+    @require_api_key(scopes=["foo"])
+    def foo():
+        return "foo"
+
+    @app.route("/bar/")
+    @require_api_key(scopes=["bar"])
+    def bar():
+        return "bar"
+
+    @app.route("/baz/")
+    @require_api_key
+    def baz():
+        return "baz"
 
     return app
 
@@ -88,6 +122,40 @@ def test_middleware_requests_unhandled(app: Flask, mocker: MockerFixture):
     response = client.post("/xxx/")
     assert response.status_code == 404
     mock.assert_not_called()
+
+
+def test_require_api_key(app_with_auth: Flask, key_registry: KeyRegistry, mocker: MockerFixture):
+    client = app_with_auth.test_client()
+    headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
+    mock = mocker.patch("apitally.flask.ApitallyClient.get_instance")
+    mock.return_value.key_registry = key_registry
+
+    # Unauthenticated
+    response = client.get("/foo/")
+    assert response.status_code == 401
+
+    response = client.get("/baz/")
+    assert response.status_code == 401
+
+    # Invalid auth scheme
+    response = client.get("/foo/", headers={"Authorization": "Bearer something"})
+    assert response.status_code == 401
+
+    # Invalid API key
+    response = client.get("/foo/", headers={"Authorization": "ApiKey invalid"})
+    assert response.status_code == 403
+
+    # Valid API key with required scope
+    response = client.get("/foo/", headers=headers)
+    assert response.status_code == 200
+
+    # Valid API key, no scope required
+    response = client.get("/baz/", headers=headers)
+    assert response.status_code == 200
+
+    # Valid API key without required scope
+    response = client.get("/bar/", headers=headers)
+    assert response.status_code == 403
 
 
 def test_get_app_info(app: Flask):

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict
+import sys
+from typing import Any, Dict, Optional
 
 import backoff
 import httpx
@@ -24,13 +25,14 @@ class ApitallyClient(ApitallyClientBase):
     def __init__(self, client_id: str, env: str, enable_keys: bool = False, sync_interval: float = 60) -> None:
         super().__init__(client_id=client_id, env=env, enable_keys=enable_keys, sync_interval=sync_interval)
         self._stop_sync_loop = False
+        self._sync_loop_task: Optional[asyncio.Task[Any]] = None
 
     def get_http_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(base_url=self.hub_url, timeout=1)
 
     def start_sync_loop(self) -> None:
         self._stop_sync_loop = False
-        asyncio.create_task(self._run_sync_loop())
+        self._sync_loop_task = asyncio.create_task(self._run_sync_loop())
 
     async def _run_sync_loop(self) -> None:
         if self.enable_keys:
@@ -61,8 +63,12 @@ class ApitallyClient(ApitallyClientBase):
         await self._send_requests_data(client, payload)
 
     async def get_keys(self, client: httpx.AsyncClient) -> None:
-        if response_data := await self._get_keys(client):
+        if response_data := await self._get_keys(client):  # Response data can be None if backoff gives up
             self.handle_keys_response(response_data)
+        elif self.key_registry.salt is None:
+            logger.error("Initial Apitally key sync failed")
+            # Exit because the application will not be able to authenticate requests
+            sys.exit(1)
 
     @retry
     async def _send_app_info(self, payload: Dict[str, Any]) -> None:
