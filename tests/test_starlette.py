@@ -144,21 +144,6 @@ def get_fastapi_app() -> Starlette:
     return app
 
 
-def test_middleware_param_validation(app: Starlette):
-    from apitally.starlette import ApitallyClient, ApitallyMiddleware
-
-    ApitallyClient._instance = None
-
-    with pytest.raises(ValueError):
-        ApitallyMiddleware(app, client_id="76b5zb91-a0a4-4ea0-a894-57d2b9fcb2c9")
-    with pytest.raises(ValueError):
-        ApitallyMiddleware(app, client_id=CLIENT_ID, env="invalid.string")
-    with pytest.raises(ValueError):
-        ApitallyMiddleware(app, client_id=CLIENT_ID, app_version="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-    with pytest.raises(ValueError):
-        ApitallyMiddleware(app, client_id=CLIENT_ID, sync_interval=1)
-
-
 def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 

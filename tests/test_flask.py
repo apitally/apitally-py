@@ -27,8 +27,10 @@ def app(module_mocker: MockerFixture) -> Flask:
     module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.threading.ApitallyClient.send_app_info")
+    module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_send_app_info")
 
     app = Flask("test")
+    app.wsgi_app = ApitallyMiddleware(app.wsgi_app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]
 
     @app.route("/foo/<bar>/")
     def foo_bar(bar: int):
@@ -42,7 +44,6 @@ def app(module_mocker: MockerFixture) -> Flask:
     def baz():
         raise ValueError("baz")
 
-    app.wsgi_app = ApitallyMiddleware(app.wsgi_app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]
     return app
 
 
@@ -87,3 +88,12 @@ def test_middleware_requests_unhandled(app: Flask, mocker: MockerFixture):
     response = client.post("/xxx/")
     assert response.status_code == 404
     mock.assert_not_called()
+
+
+def test_get_app_info(app: Flask):
+    from apitally.flask import _get_app_info
+
+    app_info = _get_app_info(app.wsgi_app, app.url_map, app_version="1.2.3", openapi_url="/openapi.json")
+    assert len(app_info["paths"]) == 3
+    assert len(app_info["versions"]) > 1
+    app_info["versions"]["app"] == "1.2.3"

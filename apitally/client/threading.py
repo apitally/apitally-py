@@ -14,7 +14,7 @@ from apitally.client.base import ApitallyClientBase, handle_retry_giveup
 logger = logging.getLogger(__name__)
 retry = backoff.on_exception(
     backoff.expo,
-    requests.HTTPError,
+    requests.RequestException,
     max_tries=3,
     on_giveup=handle_retry_giveup,
     raise_on_giveup=False,

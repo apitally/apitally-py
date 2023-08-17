@@ -26,7 +26,7 @@ class ApitallyClient(ApitallyClientBase):
         self._stop_sync_loop = False
 
     def get_http_client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(base_url=self.hub_url)
+        return httpx.AsyncClient(base_url=self.hub_url, timeout=1)
 
     def start_sync_loop(self) -> None:
         self._stop_sync_loop = False
@@ -34,8 +34,11 @@ class ApitallyClient(ApitallyClientBase):
 
     async def _run_sync_loop(self) -> None:
         if self.enable_keys:
-            async with self.get_http_client() as client:
-                await self.get_keys(client)
+            try:
+                async with self.get_http_client() as client:
+                    await self.get_keys(client)
+            except Exception as e:
+                logger.exception(e)
         while not self._stop_sync_loop:
             try:
                 await asyncio.sleep(self.sync_interval)
@@ -58,13 +61,13 @@ class ApitallyClient(ApitallyClientBase):
         await self._send_requests_data(client, payload)
 
     async def get_keys(self, client: httpx.AsyncClient) -> None:
-        response_data = await self._get_keys(client)
-        self.handle_keys_response(response_data)
+        if response_data := await self._get_keys(client):
+            self.handle_keys_response(response_data)
 
     @retry
     async def _send_app_info(self, payload: Dict[str, Any]) -> None:
         async with self.get_http_client() as client:
-            response = await client.post(url="/info", json=payload)
+            response = await client.post(url="/info", json=payload, timeout=1)
             if response.status_code == 404 and "Client ID" in response.text:
                 self.stop_sync_loop()
                 logger.error(f"Invalid Apitally client ID {self.client_id}")

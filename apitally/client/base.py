@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 from collections import Counter
 from dataclasses import dataclass, field
@@ -9,7 +10,7 @@ from datetime import datetime, timedelta
 from hashlib import scrypt
 from math import floor
 from typing import Any, Dict, List, Optional, Set, Type, TypeVar, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ TApitallyClient = TypeVar("TApitallyClient", bound="ApitallyClientBase")
 
 
 def handle_retry_giveup(details) -> None:  # pragma: no cover
-    logger.error("Apitally client failed to sync with hub: {target.__name__}: {exception}".format(**details))
+    logger.exception("Apitally client failed to sync with hub: {target.__name__}(): {exception}".format(**details))
 
 
 class ApitallyClientBase:
@@ -38,6 +39,14 @@ class ApitallyClientBase:
     def __init__(self, client_id: str, env: str, enable_keys: bool = False, sync_interval: float = 60) -> None:
         if hasattr(self, "client_id"):
             raise RuntimeError("Apitally client is already initialized")  # pragma: no cover
+        try:
+            UUID(client_id)
+        except ValueError:
+            raise ValueError(f"invalid client_id '{client_id}' (expected hexadecimal UUID format)")
+        if re.match(r"^[\w-]{1,32}$", env) is None:
+            raise ValueError(f"invalid env '{env}' (expected 1-32 alphanumeric lowercase characters and hyphens only)")
+        if sync_interval < 10:
+            raise ValueError("sync_interval has to be greater or equal to 10 seconds")
 
         self.client_id = client_id
         self.env = env
@@ -56,9 +65,6 @@ class ApitallyClientBase:
     @property
     def hub_url(self) -> str:
         return f"{HUB_BASE_URL}/{HUB_VERSION}/{self.client_id}/{self.env}"
-
-    def send_app_info(self, app_info: Dict[str, Any]) -> None:
-        raise NotImplementedError  # pragma: no cover
 
     def get_info_payload(self, app_info: Dict[str, Any]) -> Dict[str, Any]:
         payload = {

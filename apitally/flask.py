@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import time
+from threading import Timer
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 
 import flask
@@ -10,7 +11,6 @@ from werkzeug.test import Client
 
 import apitally
 from apitally.client.threading import ApitallyClient
-from apitally.client.utils import validate_client_params
 
 
 if TYPE_CHECKING:
@@ -27,21 +27,28 @@ class ApitallyMiddleware:
         app_version: Optional[str] = None,
         enable_keys: bool = False,
         sync_interval: float = 60,
-        filter_unhandled_paths: bool = True,
         openapi_url: Optional[str] = "/openapi.json",
         url_map: Optional[Map] = None,
+        filter_unhandled_paths: bool = True,
     ) -> None:
-        self.app = app
-        self.url_map = url_map or self.get_url_map()
-        if self.url_map is None:
+        url_map = url_map or _get_url_map(app)
+        if url_map is None:
             raise ValueError(
                 "Could not extract url_map from app. Please provide it as an argument to ApitallyMiddleware."
             )
+        self.app = app
+        self.url_map = url_map
         self.filter_unhandled_paths = filter_unhandled_paths
-        validate_client_params(client_id=client_id, env=env, app_version=app_version, sync_interval=sync_interval)
         self.client = ApitallyClient(client_id=client_id, env=env, enable_keys=enable_keys, sync_interval=sync_interval)
-        self.client.send_app_info(app_info=_get_app_info(self.app, self.url_map, app_version, openapi_url))
         self.client.start_sync_loop()
+
+        # Get and send app info after a short delay to allow app routes to be registered first
+        timer = Timer(0.5, self.delayed_send_app_info, kwargs={"app_version": app_version, "openapi_url": openapi_url})
+        timer.start()
+
+    def delayed_send_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
+        app_info = _get_app_info(self.app, self.url_map, app_version, openapi_url)
+        self.client.send_app_info(app_info=app_info)
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
         status_code = 200
@@ -70,16 +77,7 @@ class ApitallyMiddleware:
                 response_time=response_time,
             )
 
-    def get_url_map(self) -> Optional[Map]:
-        if hasattr(self.app, "url_map"):
-            return self.app.url_map
-        elif hasattr(self.app, "__self__") and hasattr(self.app.__self__, "url_map"):
-            return self.app.__self__.url_map
-        return None
-
     def get_path_template(self, environ: WSGIEnvironment) -> Tuple[str, bool]:
-        if self.url_map is None:
-            return environ["PATH_INFO"], False  # pragma: no cover
         url_adapter = self.url_map.bind_to_environ(environ)
         try:
             endpoint, _ = url_adapter.match()
@@ -103,6 +101,14 @@ def _get_app_info(
     app_info["versions"] = _get_versions(app_version)
     app_info["client"] = "apitally-python"
     return app_info
+
+
+def _get_url_map(app: WSGIApplication) -> Optional[Map]:
+    if hasattr(app, "url_map"):
+        return app.url_map
+    elif hasattr(app, "__self__") and hasattr(app.__self__, "url_map"):
+        return app.__self__.url_map
+    return None
 
 
 def _get_endpoint_info(url_map: Map) -> List[Dict[str, str]]:
