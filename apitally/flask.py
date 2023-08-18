@@ -128,6 +128,7 @@ def _get_app_info(
         app_info["paths"] = endpoints
     app_info["versions"] = _get_versions(app_version)
     app_info["client"] = "apitally-python"
+    app_info["framework"] = "flask"
     return app_info
 
 

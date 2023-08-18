@@ -252,5 +252,6 @@ def test_get_app_info(app: Starlette, mocker: MockerFixture):
 
     app_info = _get_app_info(app=app.middleware_stack, app_version="1.2.3", openapi_url=None)
     assert len(app_info["paths"]) == 4
-    assert len(app_info["versions"]) > 1
-    app_info["versions"]["app"] == "1.2.3"
+    assert app_info["versions"]["starlette"]
+    assert app_info["versions"]["app"] == "1.2.3"
+    assert app_info["framework"] == "starlette"
