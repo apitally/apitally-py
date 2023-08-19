@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from importlib.util import find_spec
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator
 
 import pytest
 from pytest_mock import MockerFixture
@@ -15,16 +15,17 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture(scope="module", autouse=True)
-def setup(module_mocker: MockerFixture) -> None:
+def setup(module_mocker: MockerFixture) -> Iterator[None]:
     import django
     from django.conf import settings
+    from django.utils.functional import empty
 
     module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.threading.ApitallyClient.send_app_info")
 
     settings.configure(
-        ROOT_URLCONF="tests.django_app.urls",
+        ROOT_URLCONF="tests.django_urls",
         ALLOWED_HOSTS=["testserver"],
         SECRET_KEY="secret",
         MIDDLEWARE=[
@@ -41,6 +42,8 @@ def setup(module_mocker: MockerFixture) -> None:
         },
     )
     django.setup()
+    yield
+    settings._wrapped = empty
 
 
 @pytest.fixture(scope="module")

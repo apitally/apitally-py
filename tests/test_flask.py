@@ -138,7 +138,7 @@ def test_require_api_key(app_with_auth: Flask, key_registry: KeyRegistry, mocker
     assert response.status_code == 401
 
     # Invalid auth scheme
-    response = client.get("/foo/", headers={"Authorization": "Bearer something"})
+    response = client.get("/foo/", headers={"Authorization": "Bearer invalid"})
     assert response.status_code == 401
 
     # Invalid API key
