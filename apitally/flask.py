@@ -122,10 +122,10 @@ def _get_app_info(
     openapi_url: Optional[str],
 ) -> Dict[str, Any]:
     app_info: Dict[str, Any] = {}
-    if openapi := _get_openapi(app, openapi_url):
+    if openapi_url and (openapi := _get_openapi(app, openapi_url)):
         app_info["openapi"] = openapi
-    elif endpoints := _get_endpoint_info(url_map):
-        app_info["paths"] = endpoints
+    elif paths := _get_paths(url_map):
+        app_info["paths"] = paths
     app_info["versions"] = _get_versions(app_version)
     app_info["client"] = "apitally-python"
     app_info["framework"] = "flask"
@@ -140,7 +140,7 @@ def _get_url_map(app: WSGIApplication) -> Optional[Map]:
     return None
 
 
-def _get_endpoint_info(url_map: Map) -> List[Dict[str, str]]:
+def _get_paths(url_map: Map) -> List[Dict[str, str]]:
     return [
         {"path": rule.rule, "method": method}
         for rule in url_map.iter_rules()
@@ -150,9 +150,7 @@ def _get_endpoint_info(url_map: Map) -> List[Dict[str, str]]:
     ]
 
 
-def _get_openapi(app: WSGIApplication, openapi_url: Optional[str]) -> Optional[str]:
-    if not openapi_url:
-        return None
+def _get_openapi(app: WSGIApplication, openapi_url: str) -> Optional[str]:
     client = Client(app)
     response = client.get(openapi_url)
     if response.status_code != 200:

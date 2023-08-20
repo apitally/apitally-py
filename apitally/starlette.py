@@ -125,7 +125,7 @@ class ApitallyKeyUser(BaseUser):
 
 def _get_app_info(app: ASGIApp, app_version: Optional[str], openapi_url: Optional[str]) -> Dict[str, Any]:
     app_info: Dict[str, Any] = {}
-    if openapi := _get_openapi(app, openapi_url):
+    if openapi_url and (openapi := _get_openapi(app, openapi_url)):
         app_info["openapi"] = openapi
     elif endpoints := _get_endpoint_info(app):
         app_info["paths"] = [{"path": endpoint.path, "method": endpoint.http_method} for endpoint in endpoints]
@@ -135,9 +135,7 @@ def _get_app_info(app: ASGIApp, app_version: Optional[str], openapi_url: Optiona
     return app_info
 
 
-def _get_openapi(app: ASGIApp, openapi_url: Optional[str]) -> Optional[str]:
-    if not openapi_url:
-        return None
+def _get_openapi(app: ASGIApp, openapi_url: str) -> Optional[str]:
     try:
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get(openapi_url)

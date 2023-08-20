@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from importlib.util import find_spec
 from typing import TYPE_CHECKING, Iterator
 
@@ -19,12 +20,15 @@ if TYPE_CHECKING:
 @pytest.fixture(scope="module", autouse=True)
 def setup(module_mocker: MockerFixture) -> Iterator[None]:
     import django
+    from django.apps.registry import Apps
     from django.conf import settings
     from django.utils.functional import empty
 
     module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.threading.ApitallyClient.send_app_info")
+
+    module_mocker.patch("django.apps.registry.apps", Apps())
 
     settings.configure(
         ROOT_URLCONF="tests.django_ninja_urls",
@@ -113,3 +117,11 @@ def test_api_key_auth(client: Client, key_registry: KeyRegistry, mocker: MockerF
     # Valid API key without required scope
     response = client.post("/api/bar", headers=headers)  # type: ignore[arg-type]
     assert response.status_code == 403
+
+
+def test_get_app_info(mocker: MockerFixture):
+    from apitally.django import _get_app_info
+
+    app_info = _get_app_info()
+    openapi = json.loads(app_info["openapi"])
+    assert len(app_info["paths"]) == len(openapi["paths"])

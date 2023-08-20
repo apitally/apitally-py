@@ -89,6 +89,7 @@ def test_get_app_info():
     from apitally.django import _get_app_info
 
     app_info = _get_app_info(app_version="1.2.3")
+    assert len(app_info["paths"]) == 3
     assert app_info["versions"]["django"]
     assert app_info["versions"]["app"] == "1.2.3"
     assert app_info["framework"] == "django"
