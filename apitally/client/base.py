@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from hashlib import scrypt
 from math import floor
-from typing import Any, Dict, List, Optional, Set, Type, TypeVar, Union, cast
+from typing import Any, Dict, List, Optional, Type, TypeVar, Union, cast
 from uuid import UUID, uuid4
 
 
@@ -76,12 +76,12 @@ class ApitallyClientBase:
 
     def get_requests_payload(self) -> Dict[str, Any]:
         requests = self.request_logger.get_and_reset_requests()
-        used_key_ids = self.key_registry.get_and_reset_used_key_ids() if self.enable_keys else []
+        api_key_usage = self.key_registry.get_and_reset_usage_counts() if self.enable_keys else {}
         return {
             "instance_uuid": self.instance_uuid,
             "message_uuid": str(uuid4()),
             "requests": requests,
-            "used_key_ids": used_key_ids,
+            "api_key_usage": api_key_usage,
         }
 
     def handle_keys_response(self, response_data: Dict[str, Any]) -> None:
@@ -130,6 +130,7 @@ class RequestLogger:
 @dataclass(frozen=True)
 class KeyInfo:
     key_id: int
+    api_key_id: int
     name: str = ""
     scopes: List[str] = field(default_factory=list)
     expires_at: Optional[datetime] = None
@@ -149,6 +150,7 @@ class KeyInfo:
     def from_dict(cls, data: Dict[str, Any]) -> KeyInfo:
         return cls(
             key_id=data["key_id"],
+            api_key_id=data["api_key_id"],
             name=data.get("name", ""),
             scopes=data.get("scopes", []),
             expires_at=(
@@ -163,7 +165,7 @@ class KeyRegistry:
     def __init__(self) -> None:
         self.salt: Optional[str] = None
         self.keys: Dict[str, KeyInfo] = {}
-        self.used_key_ids: Set[int] = set()
+        self.usage_counts: Counter[int] = Counter()
         self._lock = threading.Lock()
 
     def get(self, api_key: str) -> Optional[KeyInfo]:
@@ -172,7 +174,7 @@ class KeyRegistry:
             key = self.keys.get(hash)
             if key is None or key.is_expired:
                 return None
-            self.used_key_ids.add(key.key_id)
+            self.usage_counts[key.api_key_id] += 1
         return key
 
     def hash_api_key(self, api_key: str) -> str:
@@ -184,8 +186,8 @@ class KeyRegistry:
         with self._lock:
             self.keys = {hash: KeyInfo.from_dict(data) for hash, data in keys.items()}
 
-    def get_and_reset_used_key_ids(self) -> List[int]:
+    def get_and_reset_usage_counts(self) -> Dict[int, int]:
         with self._lock:
-            data = list(self.used_key_ids)
-            self.used_key_ids.clear()
+            data = dict(self.usage_counts)
+            self.usage_counts.clear()
         return data

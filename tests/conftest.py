@@ -40,6 +40,7 @@ def key_registry() -> KeyRegistry:
     key_registry.keys = {
         "bcf46e16814691991c8ed756a7ca3f9cef5644d4f55cd5aaaa5ab4ab4f809208": KeyInfo(
             key_id=1,
+            api_key_id=1,
             name="Test key",
             scopes=["foo"],
         )

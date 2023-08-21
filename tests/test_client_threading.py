@@ -82,7 +82,7 @@ def test_get_keys(client: ApitallyClient, requests_mock: Mocker):
     mock = requests_mock.register_uri(
         "GET",
         f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/keys",
-        json={"salt": "x", "keys": {"x": {"key_id": 1, "expires_in_seconds": None}}},
+        json={"salt": "x", "keys": {"x": {"key_id": 1, "api_key_id": 1, "expires_in_seconds": None}}},
     )
     with requests.Session() as session:
         client.get_keys(session)

@@ -44,12 +44,14 @@ def test_key_registry():
         {
             "bcf46e16814691991c8ed756a7ca3f9cef5644d4f55cd5aaaa5ab4ab4f809208": {
                 "key_id": 1,
+                "api_key_id": 1,
                 "name": "Test key 1",
                 "scopes": ["test"],
                 "expires_in_seconds": 60,
             },
             "ba05534cd4af03497416ef9db0a149a1234a4ded7d37a8bc3cde43f3ed56484a": {
                 "key_id": 2,
+                "api_key_id": 2,
                 "name": "Test key 2",
                 "expires_in_seconds": 0,
             },
@@ -71,5 +73,5 @@ def test_key_registry():
     key = keys.get("F9vNgPM.fiXFjMxmSn1TZeuyIm0CxF7gfmfrjKSZ")
     assert key is None
 
-    used_key_ids = keys.get_and_reset_used_key_ids()
-    assert used_key_ids == [1]
+    api_key_usage = keys.get_and_reset_usage_counts()
+    assert api_key_usage == {1: 1}

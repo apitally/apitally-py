@@ -82,7 +82,9 @@ async def test_send_app_info(client: ApitallyClient, httpx_mock: HTTPXMock):
 async def test_get_keys(client: ApitallyClient, httpx_mock: HTTPXMock):
     from apitally.client.base import HUB_BASE_URL, HUB_VERSION
 
-    httpx_mock.add_response(json={"salt": "x", "keys": {"x": {"key_id": 1, "expires_in_seconds": None}}})
+    httpx_mock.add_response(
+        json={"salt": "x", "keys": {"x": {"key_id": 1, "api_key_id": 1, "expires_in_seconds": None}}}
+    )
     async with client.get_http_client() as http_client:
         await client.get_keys(http_client)
 
