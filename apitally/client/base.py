@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from hashlib import scrypt
 from math import floor
-from typing import Any, Dict, List, Optional, Set, Type, TypeVar, cast
+from typing import Any, Dict, List, Optional, Set, Type, TypeVar, Union, cast
 from uuid import UUID, uuid4
 
 
@@ -138,7 +138,11 @@ class KeyInfo:
     def is_expired(self) -> bool:
         return self.expires_at is not None and self.expires_at < datetime.now()
 
-    def check_scopes(self, scopes: List[str]) -> bool:
+    def check_scopes(self, scopes: Union[List[str], str]) -> bool:
+        if isinstance(scopes, str):
+            scopes = [scopes]
+        if not isinstance(scopes, list):
+            raise ValueError("scopes must be a string or a list of strings")
         return all(scope in self.scopes for scope in scopes)
 
     @classmethod

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from importlib.util import find_spec
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING
 
 import pytest
 from pytest_mock import MockerFixture
@@ -18,9 +18,9 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture(scope="module", autouse=True)
-def setup(module_mocker: MockerFixture) -> Iterator[None]:
+def setup(module_mocker: MockerFixture) -> None:
     import django
-    from django.apps.registry import Apps
+    from django.apps.registry import apps
     from django.conf import settings
     from django.utils.functional import empty
 
@@ -29,7 +29,10 @@ def setup(module_mocker: MockerFixture) -> Iterator[None]:
     module_mocker.patch("apitally.client.threading.ApitallyClient.send_app_info")
     module_mocker.patch("apitally.django.ApitallyMiddleware.config", None)
 
-    module_mocker.patch("django.apps.registry.apps", Apps())
+    settings._wrapped = empty
+    apps.app_configs.clear()
+    apps.loading = False
+    apps.ready = False
 
     settings.configure(
         ROOT_URLCONF="tests.django_ninja_urls",
@@ -44,8 +47,6 @@ def setup(module_mocker: MockerFixture) -> Iterator[None]:
         },
     )
     django.setup()
-    yield
-    settings._wrapped = empty
 
 
 @pytest.fixture(scope="module")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from importlib.util import find_spec
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING
 
 import pytest
 from pytest_mock import MockerFixture
@@ -13,10 +13,13 @@ if find_spec("rest_framework") is None:
 if TYPE_CHECKING:
     from rest_framework.test import APIClient
 
+    from apitally.client.base import KeyRegistry
+
 
 @pytest.fixture(scope="module", autouse=True)
-def setup(module_mocker: MockerFixture) -> Iterator[None]:
+def setup(module_mocker: MockerFixture) -> None:
     import django
+    from django.apps.registry import apps
     from django.conf import settings
     from django.utils.functional import empty
 
@@ -25,12 +28,17 @@ def setup(module_mocker: MockerFixture) -> Iterator[None]:
     module_mocker.patch("apitally.client.threading.ApitallyClient.send_app_info")
     module_mocker.patch("apitally.django.ApitallyMiddleware.config", None)
 
+    settings._wrapped = empty
+    apps.app_configs.clear()
+    apps.loading = False
+    apps.ready = False
+
     settings.configure(
-        ROOT_URLCONF="tests.django_urls",
+        ROOT_URLCONF="tests.django_rest_framework_urls",
         ALLOWED_HOSTS=["testserver"],
         SECRET_KEY="secret",
         MIDDLEWARE=[
-            "apitally.django.ApitallyMiddleware",
+            "apitally.django_rest_framework.ApitallyMiddleware",
         ],
         INSTALLED_APPS=[
             "django.contrib.auth",
@@ -43,8 +51,6 @@ def setup(module_mocker: MockerFixture) -> Iterator[None]:
         },
     )
     django.setup()
-    yield
-    settings._wrapped = empty
 
 
 @pytest.fixture(scope="module")
@@ -56,6 +62,7 @@ def client() -> APIClient:
 
 def test_middleware_requests_ok(client: APIClient, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    mocker.patch("apitally.django_rest_framework.HasAPIKey.has_permission", return_value=True)
 
     response = client.get("/foo/123/")
     assert response.status_code == 200
@@ -75,6 +82,7 @@ def test_middleware_requests_ok(client: APIClient, mocker: MockerFixture):
 
 def test_middleware_requests_error(client: APIClient, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    mocker.patch("apitally.django_rest_framework.HasAPIKey.has_permission", return_value=True)
 
     response = client.put("/baz/")
     assert response.status_code == 500
@@ -86,6 +94,38 @@ def test_middleware_requests_error(client: APIClient, mocker: MockerFixture):
     assert mock.call_args.kwargs["response_time"] > 0
 
 
+def test_api_key_auth(client: APIClient, key_registry: KeyRegistry, mocker: MockerFixture):
+    mock = mocker.patch("apitally.django_rest_framework.ApitallyClient.get_instance")
+    mock.return_value.key_registry = key_registry
+
+    # Unauthenticated
+    response = client.get("/foo/123/")
+    assert response.status_code == 403
+
+    # Invalid auth scheme
+    headers = {"Authorization": "Bearer invalid"}
+    response = client.get("/foo/123/", headers=headers)  # type: ignore[arg-type]
+    assert response.status_code == 403
+
+    # Invalid API key
+    headers = {"Authorization": "ApiKey invalid"}
+    response = client.get("/foo/123/", headers=headers)  # type: ignore[arg-type]
+    assert response.status_code == 403
+
+    # Valid API key, no scope required
+    headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
+    response = client.get("/foo/", headers=headers)  # type: ignore[arg-type]
+    assert response.status_code == 200
+
+    # Valid API key with required scope
+    response = client.get("/foo/123/", headers=headers)  # type: ignore[arg-type]
+    assert response.status_code == 200
+
+    # Valid API key without required scope
+    response = client.post("/bar/", headers=headers)  # type: ignore[arg-type]
+    assert response.status_code == 403
+
+
 def test_get_app_info():
     from django.urls import get_resolver
 
@@ -93,7 +133,7 @@ def test_get_app_info():
 
     views = _extract_views_from_url_patterns(get_resolver().url_patterns)
     app_info = _get_app_info(views=views, app_version="1.2.3")
-    assert len(app_info["paths"]) == 3
+    assert len(app_info["paths"]) == 4
     assert app_info["versions"]["django"]
     assert app_info["versions"]["app"] == "1.2.3"
     assert app_info["framework"] == "django"
