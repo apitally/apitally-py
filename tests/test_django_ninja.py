@@ -125,3 +125,7 @@ def test_get_app_info(mocker: MockerFixture):
     app_info = _get_app_info()
     openapi = json.loads(app_info["openapi"])
     assert len(app_info["paths"]) == len(openapi["paths"])
+
+    app_info = _get_app_info(app_version="1.2.3", openapi_url="/api/openapi.json")
+    assert "openapi" in app_info
+    assert app_info["versions"]["app"] == "1.2.3"

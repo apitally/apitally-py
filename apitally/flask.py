@@ -73,16 +73,16 @@ class ApitallyMiddleware:
         return response
 
     def log_request(self, environ: WSGIEnvironment, status_code: int, response_time: float) -> None:
-        path_template, is_handled_path = self.get_path_template(environ)
+        rule, is_handled_path = self.get_rule(environ)
         if is_handled_path or not self.filter_unhandled_paths:
             self.client.request_logger.log_request(
                 method=environ["REQUEST_METHOD"],
-                path=path_template,
+                path=rule,
                 status_code=status_code,
                 response_time=response_time,
             )
 
-    def get_path_template(self, environ: WSGIEnvironment) -> Tuple[str, bool]:
+    def get_rule(self, environ: WSGIEnvironment) -> Tuple[str, bool]:
         url_adapter = self.url_map.bind_to_environ(environ)
         try:
             endpoint, _ = url_adapter.match()

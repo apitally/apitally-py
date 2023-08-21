@@ -26,6 +26,7 @@ class ApitallyMiddlewareConfig:
     app_version: Optional[str]
     enable_keys: bool
     sync_interval: float
+    openapi_url: Optional[str]
 
 
 class ApitallyMiddleware:
@@ -44,7 +45,12 @@ class ApitallyMiddleware:
             sync_interval=self.config.sync_interval,
         )
         self.client.start_sync_loop()
-        self.client.send_app_info(app_info=_get_app_info(app_version=self.config.app_version))
+        self.client.send_app_info(
+            app_info=_get_app_info(
+                app_version=self.config.app_version,
+                openapi_url=self.config.openapi_url,
+            )
+        )
 
     @classmethod
     def configure(
@@ -55,7 +61,6 @@ class ApitallyMiddleware:
         enable_keys: bool = False,
         sync_interval: float = 60,
         openapi_url: Optional[str] = None,
-        discover_openapi_url: bool = True,
     ) -> None:
         cls.config = ApitallyMiddlewareConfig(
             client_id=client_id,
@@ -63,6 +68,7 @@ class ApitallyMiddleware:
             app_version=app_version,
             enable_keys=enable_keys,
             sync_interval=sync_interval,
+            openapi_url=openapi_url,
         )
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
@@ -117,10 +123,10 @@ class DjangoViewInfo:
         return []  # pragma: no cover
 
 
-def _get_app_info(app_version: Optional[str] = None) -> Dict[str, Any]:
+def _get_app_info(app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> Dict[str, Any]:
     app_info: Dict[str, Any] = {}
     views = _extract_views_from_url_patterns(get_resolver().url_patterns)
-    if openapi := _get_openapi(views):
+    if openapi := _get_openapi(views, openapi_url):
         app_info["openapi"] = openapi
     if paths := _get_paths(views):
         app_info["paths"] = paths
@@ -140,7 +146,7 @@ def _get_paths(views: List[DjangoViewInfo]) -> List[Dict[str, str]]:
     ]
 
 
-def _get_openapi(views: List[DjangoViewInfo]) -> Optional[str]:
+def _get_openapi(views: List[DjangoViewInfo], openapi_url: Optional[str] = None) -> Optional[str]:
     if (view := _discover_openapi_view(views)) is not None:
         rf = RequestFactory()
         request = rf.get(view.pattern)
@@ -150,9 +156,11 @@ def _get_openapi(views: List[DjangoViewInfo]) -> Optional[str]:
     return None
 
 
-def _discover_openapi_view(views: List[DjangoViewInfo]) -> Optional[DjangoViewInfo]:
+def _discover_openapi_view(views: List[DjangoViewInfo], openapi_url: Optional[str] = None) -> Optional[DjangoViewInfo]:
     for view in views:
-        if view.pattern.endswith("openapi.json") and "<" not in view.pattern:
+        if (openapi_url is not None and view.pattern == openapi_url.removeprefix("/")) or (
+            view.pattern.endswith("openapi.json") and "<" not in view.pattern
+        ):
             return view
     return None
 
