@@ -3,17 +3,20 @@ from __future__ import annotations
 import sys
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import django
 from django.conf import settings
 from django.core.exceptions import ViewDoesNotExist
-from django.http import HttpRequest, HttpResponse
 from django.test import RequestFactory
 from django.urls import URLPattern, URLResolver, get_resolver, resolve
 
 import apitally
 from apitally.client.threading import ApitallyClient
+
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest, HttpResponse
 
 
 __all__ = ["ApitallyMiddleware"]
@@ -38,6 +41,7 @@ class ApitallyMiddleware:
             config = getattr(settings, "APITALLY_MIDDLEWARE", {})
             self.configure(**config)
             assert self.config is not None
+        self.views = _extract_views_from_url_patterns(get_resolver().url_patterns)
         self.client = ApitallyClient(
             client_id=self.config.client_id,
             env=self.config.env,
@@ -47,6 +51,7 @@ class ApitallyMiddleware:
         self.client.start_sync_loop()
         self.client.send_app_info(
             app_info=_get_app_info(
+                views=self.views,
                 app_version=self.config.app_version,
                 openapi_url=self.config.openapi_url,
             )
@@ -123,9 +128,10 @@ class DjangoViewInfo:
         return []  # pragma: no cover
 
 
-def _get_app_info(app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> Dict[str, Any]:
+def _get_app_info(
+    views: List[DjangoViewInfo], app_version: Optional[str] = None, openapi_url: Optional[str] = None
+) -> Dict[str, Any]:
     app_info: Dict[str, Any] = {}
-    views = _extract_views_from_url_patterns(get_resolver().url_patterns)
     if openapi := _get_openapi(views, openapi_url):
         app_info["openapi"] = openapi
     if paths := _get_paths(views):
@@ -147,21 +153,21 @@ def _get_paths(views: List[DjangoViewInfo]) -> List[Dict[str, str]]:
 
 
 def _get_openapi(views: List[DjangoViewInfo], openapi_url: Optional[str] = None) -> Optional[str]:
-    if (view := _discover_openapi_view(views)) is not None:
+    openapi_view = next(
+        (
+            view
+            for view in views
+            if (openapi_url is not None and view.pattern == openapi_url.removeprefix("/"))
+            or (openapi_url is None and view.pattern.endswith("openapi.json") and "<" not in view.pattern)
+        ),
+        None,
+    )
+    if openapi_view is not None:
         rf = RequestFactory()
-        request = rf.get(view.pattern)
-        response = view.func(request)
+        request = rf.get(openapi_view.pattern)
+        response = openapi_view.func(request)
         if response.status_code == 200:
             return response.content.decode()
-    return None
-
-
-def _discover_openapi_view(views: List[DjangoViewInfo], openapi_url: Optional[str] = None) -> Optional[DjangoViewInfo]:
-    for view in views:
-        if (openapi_url is not None and view.pattern == openapi_url.removeprefix("/")) or (
-            view.pattern.endswith("openapi.json") and "<" not in view.pattern
-        ):
-            return view
     return None
 
 

@@ -1,25 +1,11 @@
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest
 from django.urls import path
 from ninja import NinjaAPI
 
-from apitally.django_ninja import (
-    AuthorizationAPIKeyHeader,
-    InvalidAPIKey,
-    PermissionDenied,
-)
+from apitally.django_ninja import AuthorizationAPIKeyHeader
 
 
 api = NinjaAPI()
-
-
-@api.exception_handler(InvalidAPIKey)
-def on_invalid_api_key(request: HttpRequest, exc) -> HttpResponse:
-    return api.create_response(request, {"detail": "Invalid API key"}, status=403)
-
-
-@api.exception_handler(PermissionDenied)
-def on_permission_denied(request: HttpRequest, exc) -> HttpResponse:
-    return api.create_response(request, {"detail": "Permission denied"}, status=403)
 
 
 @api.get("/foo", auth=AuthorizationAPIKeyHeader())

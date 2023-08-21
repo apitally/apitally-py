@@ -27,6 +27,7 @@ def setup(module_mocker: MockerFixture) -> Iterator[None]:
     module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.threading.ApitallyClient.send_app_info")
+    module_mocker.patch("apitally.django.ApitallyMiddleware.config", None)
 
     module_mocker.patch("django.apps.registry.apps", Apps())
 
@@ -39,6 +40,7 @@ def setup(module_mocker: MockerFixture) -> Iterator[None]:
         APITALLY_MIDDLEWARE={
             "client_id": "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9",
             "env": "default",
+            "enable_keys": True,
         },
     )
     django.setup()
@@ -120,12 +122,16 @@ def test_api_key_auth(client: Client, key_registry: KeyRegistry, mocker: MockerF
 
 
 def test_get_app_info(mocker: MockerFixture):
-    from apitally.django import _get_app_info
+    from django.urls import get_resolver
 
-    app_info = _get_app_info()
+    from apitally.django import _extract_views_from_url_patterns, _get_app_info
+
+    views = _extract_views_from_url_patterns(get_resolver().url_patterns)
+
+    app_info = _get_app_info(views=views)
     openapi = json.loads(app_info["openapi"])
     assert len(app_info["paths"]) == len(openapi["paths"])
 
-    app_info = _get_app_info(app_version="1.2.3", openapi_url="/api/openapi.json")
+    app_info = _get_app_info(views=views, app_version="1.2.3", openapi_url="/api/openapi.json")
     assert "openapi" in app_info
     assert app_info["versions"]["app"] == "1.2.3"

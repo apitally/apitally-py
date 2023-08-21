@@ -23,6 +23,7 @@ def setup(module_mocker: MockerFixture) -> Iterator[None]:
     module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.threading.ApitallyClient.send_app_info")
+    module_mocker.patch("apitally.django.ApitallyMiddleware.config", None)
 
     settings.configure(
         ROOT_URLCONF="tests.django_urls",
@@ -86,9 +87,12 @@ def test_middleware_requests_error(client: APIClient, mocker: MockerFixture):
 
 
 def test_get_app_info():
-    from apitally.django import _get_app_info
+    from django.urls import get_resolver
 
-    app_info = _get_app_info(app_version="1.2.3")
+    from apitally.django import _extract_views_from_url_patterns, _get_app_info
+
+    views = _extract_views_from_url_patterns(get_resolver().url_patterns)
+    app_info = _get_app_info(views=views, app_version="1.2.3")
     assert len(app_info["paths"]) == 3
     assert app_info["versions"]["django"]
     assert app_info["versions"]["app"] == "1.2.3"

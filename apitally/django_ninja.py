@@ -1,23 +1,33 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
 
-from django.http import HttpRequest
 from ninja.security import APIKeyHeader
 
 from apitally.client.asyncio import ApitallyClient
 from apitally.client.base import KeyInfo
-from apitally.django import ApitallyMiddleware
+from apitally.django import ApitallyMiddleware as _ApitallyMiddleware
+from apitally.django import DjangoViewInfo
+
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest, HttpResponse
+    from ninja import NinjaAPI
 
 
 __all__ = [
     "ApitallyMiddleware",
     "AuthorizationAPIKeyHeader",
     "KeyInfo",
-    "AuthError",
-    "InvalidAPIKey",
-    "PermissionDenied",
 ]
+
+
+class ApitallyMiddleware(_ApitallyMiddleware):
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
+        super().__init__(get_response)
+        if self.client.enable_keys:
+            api = _get_api(self.views)
+            _add_exception_handlers(api)
 
 
 class AuthError(Exception):
@@ -51,3 +61,23 @@ class AuthorizationAPIKeyHeader(APIKeyHeader):
         if not key_info.check_scopes(self.scopes):
             raise PermissionDenied()
         return key_info
+
+
+def _get_api(views: List[DjangoViewInfo]) -> NinjaAPI:
+    try:
+        return next(
+            (view.func.__self__.api for view in views if view.is_ninja_path_view and hasattr(view.func, "__self__"))
+        )
+    except StopIteration:
+        raise RuntimeError("Could not find NinjaAPI instance")
+
+
+def _add_exception_handlers(api: NinjaAPI) -> None:
+    def on_invalid_api_key(request: HttpRequest, exc) -> HttpResponse:
+        return api.create_response(request, {"detail": "Invalid API key"}, status=403)
+
+    def on_permission_denied(request: HttpRequest, exc) -> HttpResponse:
+        return api.create_response(request, {"detail": "Permission denied"}, status=403)
+
+    api.add_exception_handler(InvalidAPIKey, on_invalid_api_key)
+    api.add_exception_handler(PermissionDenied, on_permission_denied)
