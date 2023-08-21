@@ -53,7 +53,7 @@ types-six = "*"
 types-ujson = "*"
 
 [tool.poetry.extras]
-django = ["django", "djangorestframework", "requests"]
+django_rest_framework = ["django", "djangorestframework", "requests"]
 django_ninja = ["django", "django-ninja", "requests"]
 fastapi = ["fastapi", "starlette", "httpx"]
 flask = ["flask", "requests"]
