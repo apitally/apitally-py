@@ -103,26 +103,26 @@ def test_api_key_auth(client: APIClient, key_registry: KeyRegistry, mocker: Mock
     assert response.status_code == 403
 
     # Invalid auth scheme
-    headers = {"Authorization": "Bearer invalid"}
-    response = client.get("/foo/123/", headers=headers)  # type: ignore[arg-type]
+    headers = {"HTTP_AUTHORIZATION": "Bearer invalid"}
+    response = client.get("/foo/123/", **headers)  # type: ignore[arg-type]
     assert response.status_code == 403
 
     # Invalid API key
-    headers = {"Authorization": "ApiKey invalid"}
-    response = client.get("/foo/123/", headers=headers)  # type: ignore[arg-type]
+    headers = {"HTTP_AUTHORIZATION": "ApiKey invalid"}
+    response = client.get("/foo/123/", **headers)  # type: ignore[arg-type]
     assert response.status_code == 403
 
     # Valid API key, no scope required
-    headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
-    response = client.get("/foo/", headers=headers)  # type: ignore[arg-type]
+    headers = {"HTTP_AUTHORIZATION": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
+    response = client.get("/foo/", **headers)  # type: ignore[arg-type]
     assert response.status_code == 200
 
     # Valid API key with required scope
-    response = client.get("/foo/123/", headers=headers)  # type: ignore[arg-type]
+    response = client.get("/foo/123/", **headers)  # type: ignore[arg-type]
     assert response.status_code == 200
 
     # Valid API key without required scope
-    response = client.post("/bar/", headers=headers)  # type: ignore[arg-type]
+    response = client.post("/bar/", **headers)  # type: ignore[arg-type]
     assert response.status_code == 403
 
 
