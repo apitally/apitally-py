@@ -7,8 +7,8 @@ import pytest
 from pytest_mock import MockerFixture
 
 
-if find_spec("django") is None:
-    pytest.skip("django is not available", allow_module_level=True)
+if find_spec("rest_framework") is None:
+    pytest.skip("django-rest-framework is not available", allow_module_level=True)
 
 if TYPE_CHECKING:
     from rest_framework.test import APIClient

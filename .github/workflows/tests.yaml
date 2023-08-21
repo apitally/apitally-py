@@ -60,9 +60,9 @@ jobs:
           - flask
           - flask==2.3.*
           - flask==2.0.3
-          - django
-          - django==4.2.*
-          - django==3.2.*
+          - djangorestframework django
+          - djangorestframework django==4.2.*
+          - djangorestframework==3.12.* django==3.2.*
           - django-ninja django
           - django-ninja==0.22.* django
           - django-ninja==0.18.0 django
