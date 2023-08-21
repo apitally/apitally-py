@@ -138,7 +138,7 @@ def test_require_api_key(app_with_auth: Flask, key_registry: KeyRegistry, mocker
     assert response.status_code == 401
 
     # Invalid auth scheme
-    response = client.get("/foo/", headers={"Authorization": "Bearer something"})
+    response = client.get("/foo/", headers={"Authorization": "Bearer invalid"})
     assert response.status_code == 401
 
     # Invalid API key
@@ -163,5 +163,6 @@ def test_get_app_info(app: Flask):
 
     app_info = _get_app_info(app.wsgi_app, app.url_map, app_version="1.2.3", openapi_url="/openapi.json")
     assert len(app_info["paths"]) == 3
-    assert len(app_info["versions"]) > 1
-    app_info["versions"]["app"] == "1.2.3"
+    assert app_info["versions"]["flask"]
+    assert app_info["versions"]["app"] == "1.2.3"
+    assert app_info["framework"] == "flask"

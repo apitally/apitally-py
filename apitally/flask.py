@@ -32,7 +32,7 @@ class ApitallyMiddleware:
         app_version: Optional[str] = None,
         enable_keys: bool = False,
         sync_interval: float = 60,
-        openapi_url: Optional[str] = "/openapi.json",
+        openapi_url: Optional[str] = None,
         url_map: Optional[Map] = None,
         filter_unhandled_paths: bool = True,
     ) -> None:
@@ -73,16 +73,16 @@ class ApitallyMiddleware:
         return response
 
     def log_request(self, environ: WSGIEnvironment, status_code: int, response_time: float) -> None:
-        path_template, is_handled_path = self.get_path_template(environ)
+        rule, is_handled_path = self.get_rule(environ)
         if is_handled_path or not self.filter_unhandled_paths:
             self.client.request_logger.log_request(
                 method=environ["REQUEST_METHOD"],
-                path=path_template,
+                path=rule,
                 status_code=status_code,
                 response_time=response_time,
             )
 
-    def get_path_template(self, environ: WSGIEnvironment) -> Tuple[str, bool]:
+    def get_rule(self, environ: WSGIEnvironment) -> Tuple[str, bool]:
         url_adapter = self.url_map.bind_to_environ(environ)
         try:
             endpoint, _ = url_adapter.match()
@@ -116,18 +116,16 @@ def require_api_key(func=None, *, scopes: Optional[List[str]] = None):
 
 
 def _get_app_info(
-    app: WSGIApplication,
-    url_map: Map,
-    app_version: Optional[str],
-    openapi_url: Optional[str],
+    app: WSGIApplication, url_map: Map, app_version: Optional[str] = None, openapi_url: Optional[str] = None
 ) -> Dict[str, Any]:
     app_info: Dict[str, Any] = {}
-    if openapi := _get_openapi(app, openapi_url):
+    if openapi_url and (openapi := _get_openapi(app, openapi_url)):
         app_info["openapi"] = openapi
-    elif endpoints := _get_endpoint_info(url_map):
-        app_info["paths"] = endpoints
+    elif paths := _get_paths(url_map):
+        app_info["paths"] = paths
     app_info["versions"] = _get_versions(app_version)
     app_info["client"] = "apitally-python"
+    app_info["framework"] = "flask"
     return app_info
 
 
@@ -139,7 +137,7 @@ def _get_url_map(app: WSGIApplication) -> Optional[Map]:
     return None
 
 
-def _get_endpoint_info(url_map: Map) -> List[Dict[str, str]]:
+def _get_paths(url_map: Map) -> List[Dict[str, str]]:
     return [
         {"path": rule.rule, "method": method}
         for rule in url_map.iter_rules()
@@ -149,9 +147,7 @@ def _get_endpoint_info(url_map: Map) -> List[Dict[str, str]]:
     ]
 
 
-def _get_openapi(app: WSGIApplication, openapi_url: Optional[str]) -> Optional[str]:
-    if not openapi_url:
-        return None
+def _get_openapi(app: WSGIApplication, openapi_url: str) -> Optional[str]:
     client = Client(app)
     response = client.get(openapi_url)
     if response.status_code != 200:

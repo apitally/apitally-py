@@ -13,6 +13,8 @@ if find_spec("fastapi") is None:
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
+    from apitally.client.base import KeyRegistry
+
 from apitally.client.base import KeyInfo  # import here to avoid pydantic error
 
 
@@ -39,21 +41,10 @@ def app_with_auth() -> FastAPI:
     return app
 
 
-def test_api_key_auth(app_with_auth: FastAPI, mocker: MockerFixture):
+def test_api_key_auth(app_with_auth: FastAPI, key_registry: KeyRegistry, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    from apitally.client.base import KeyInfo, KeyRegistry
-
     client = TestClient(app_with_auth)
-    key_registry = KeyRegistry()
-    key_registry.salt = "54fd2b80dbfeb87d924affbc91b77c76"
-    key_registry.keys = {
-        "bcf46e16814691991c8ed756a7ca3f9cef5644d4f55cd5aaaa5ab4ab4f809208": KeyInfo(
-            key_id=1,
-            name="Test key",
-            scopes=["foo"],
-        )
-    }
     headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     mock = mocker.patch("apitally.fastapi.ApitallyClient.get_instance")
     mock.return_value.key_registry = key_registry
@@ -63,6 +54,10 @@ def test_api_key_auth(app_with_auth: FastAPI, mocker: MockerFixture):
     assert response.status_code == 401
 
     response = client.get("/baz")
+    assert response.status_code == 401
+
+    # Invalid auth scheme
+    response = client.get("/foo", headers={"Authorization": "Bearer invalid"})
     assert response.status_code == 401
 
     # Invalid API key

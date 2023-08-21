@@ -123,20 +123,19 @@ class ApitallyKeyUser(BaseUser):
         return str(self.key_info.key_id)
 
 
-def _get_app_info(app: ASGIApp, app_version: Optional[str], openapi_url: Optional[str]) -> Dict[str, Any]:
+def _get_app_info(app: ASGIApp, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> Dict[str, Any]:
     app_info: Dict[str, Any] = {}
-    if openapi := _get_openapi(app, openapi_url):
+    if openapi_url and (openapi := _get_openapi(app, openapi_url)):
         app_info["openapi"] = openapi
     elif endpoints := _get_endpoint_info(app):
         app_info["paths"] = [{"path": endpoint.path, "method": endpoint.http_method} for endpoint in endpoints]
     app_info["versions"] = _get_versions(app_version)
     app_info["client"] = "apitally-python"
+    app_info["framework"] = "starlette"
     return app_info
 
 
-def _get_openapi(app: ASGIApp, openapi_url: Optional[str]) -> Optional[str]:
-    if not openapi_url:
-        return None
+def _get_openapi(app: ASGIApp, openapi_url: str) -> Optional[str]:
     try:
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get(openapi_url)
