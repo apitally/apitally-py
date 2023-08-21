@@ -153,19 +153,16 @@ def _get_paths(views: List[DjangoViewInfo]) -> List[Dict[str, str]]:
 
 
 def _get_openapi(views: List[DjangoViewInfo], openapi_url: Optional[str] = None) -> Optional[str]:
-    openapi_view = next(
-        (
-            view
-            for view in views
-            if (openapi_url is not None and view.pattern == openapi_url.removeprefix("/"))
-            or (openapi_url is None and view.pattern.endswith("openapi.json") and "<" not in view.pattern)
-        ),
-        None,
-    )
-    if openapi_view is not None:
+    openapi_views = [
+        view
+        for view in views
+        if (openapi_url is not None and view.pattern == openapi_url.removeprefix("/"))
+        or (openapi_url is None and view.pattern.endswith("openapi.json") and "<" not in view.pattern)
+    ]
+    if len(openapi_views) == 1:
         rf = RequestFactory()
-        request = rf.get(openapi_view.pattern)
-        response = openapi_view.func(request)
+        request = rf.get(openapi_views[0].pattern)
+        response = openapi_views[0].func(request)
         if response.status_code == 200:
             return response.content.decode()
     return None

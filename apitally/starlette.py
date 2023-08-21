@@ -123,7 +123,7 @@ class ApitallyKeyUser(BaseUser):
         return str(self.key_info.key_id)
 
 
-def _get_app_info(app: ASGIApp, app_version: Optional[str], openapi_url: Optional[str]) -> Dict[str, Any]:
+def _get_app_info(app: ASGIApp, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> Dict[str, Any]:
     app_info: Dict[str, Any] = {}
     if openapi_url and (openapi := _get_openapi(app, openapi_url)):
         app_info["openapi"] = openapi

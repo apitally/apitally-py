@@ -60,6 +60,8 @@ class AuthorizationAPIKeyHeader(APIKeyHeader):
             raise InvalidAPIKey()
         if not key_info.check_scopes(self.scopes):
             raise PermissionDenied()
+        if not hasattr(request, "key_info"):
+            setattr(request, "key_info", key_info)
         return key_info
 
 

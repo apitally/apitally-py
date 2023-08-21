@@ -32,7 +32,7 @@ class ApitallyMiddleware:
         app_version: Optional[str] = None,
         enable_keys: bool = False,
         sync_interval: float = 60,
-        openapi_url: Optional[str] = "/openapi.json",
+        openapi_url: Optional[str] = None,
         url_map: Optional[Map] = None,
         filter_unhandled_paths: bool = True,
     ) -> None:
@@ -116,10 +116,7 @@ def require_api_key(func=None, *, scopes: Optional[List[str]] = None):
 
 
 def _get_app_info(
-    app: WSGIApplication,
-    url_map: Map,
-    app_version: Optional[str],
-    openapi_url: Optional[str],
+    app: WSGIApplication, url_map: Map, app_version: Optional[str] = None, openapi_url: Optional[str] = None
 ) -> Dict[str, Any]:
     app_info: Dict[str, Any] = {}
     if openapi_url and (openapi := _get_openapi(app, openapi_url)):
