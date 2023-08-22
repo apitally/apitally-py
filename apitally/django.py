@@ -77,17 +77,21 @@ class ApitallyMiddleware:
         )
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
-        resolver_match = resolve(request.path_info)
+        view = self.get_view(request)
         start_time = time.perf_counter()
         response = self.get_response(request)
-        if request.method is not None:
+        if request.method is not None and view is not None and view.is_api_view:
             self.client.request_logger.log_request(
                 method=request.method,
-                path=resolver_match.route,
+                path=view.pattern,
                 status_code=response.status_code,
                 response_time=time.perf_counter() - start_time,
             )
         return response
+
+    def get_view(self, request: HttpRequest) -> Optional[DjangoViewInfo]:
+        resolver_match = resolve(request.path_info)
+        return next((view for view in self.views if view.pattern == resolver_match.route), None)
 
 
 @dataclass
