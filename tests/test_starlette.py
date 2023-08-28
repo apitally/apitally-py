@@ -48,7 +48,7 @@ def app_with_auth() -> Starlette:
     from starlette.responses import JSONResponse, PlainTextResponse
     from starlette.routing import Route
 
-    from apitally.starlette import ApitallyKeysBackend
+    from apitally.starlette import APIKeyBackend
 
     @requires(["authenticated", "foo"])
     def foo(request: Request):
@@ -75,7 +75,7 @@ def app_with_auth() -> Starlette:
         Route("/baz/", baz),
     ]
     app = Starlette(routes=routes)
-    app.add_middleware(AuthenticationMiddleware, backend=ApitallyKeysBackend())
+    app.add_middleware(AuthenticationMiddleware, backend=APIKeyBackend())
     return app
 
 

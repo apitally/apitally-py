@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ninja import NinjaAPI
 
 
-__all__ = ["ApitallyMiddleware", "AuthorizationAPIKeyHeader", "KeyInfo"]
+__all__ = ["ApitallyMiddleware", "APIKeyAuth", "KeyInfo"]
 
 
 class ApitallyMiddleware(_ApitallyMiddleware):
@@ -38,7 +38,7 @@ class PermissionDenied(AuthError):
     pass
 
 
-class AuthorizationAPIKeyHeader(APIKeyHeader):
+class APIKeyAuth(APIKeyHeader):
     param_name = "Authorization"
     openapi_description = "Provide your API key using the <code>Authorization</code> header and the scheme prefix <code>ApiKey</code>.<br>Example: <pre>Authorization: ApiKey your_api_key_here</pre>"
 

@@ -16,7 +16,7 @@ from apitally.starlette import ApitallyMiddleware
 __all__ = ["ApitallyMiddleware", "KeyInfo", "api_key_auth"]
 
 
-class AuthorizationAPIKeyHeader(SecurityBase):
+class APIKeyAuth(SecurityBase):
     def __init__(self, *, auto_error: bool = True):
         self.model = APIKey(
             **{"in": APIKeyIn.header},  # type: ignore[arg-type]
@@ -52,4 +52,4 @@ class AuthorizationAPIKeyHeader(SecurityBase):
         return key_info
 
 
-api_key_auth = AuthorizationAPIKeyHeader()
+api_key_auth = APIKeyAuth()

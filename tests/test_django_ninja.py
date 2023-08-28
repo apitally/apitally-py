@@ -58,7 +58,7 @@ def client() -> Client:
 
 def test_middleware_requests_ok(client: Client, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
-    mocker.patch("apitally.django_ninja.AuthorizationAPIKeyHeader.authenticate")
+    mocker.patch("apitally.django_ninja.APIKeyAuth.authenticate")
 
     response = client.get("/api/foo/123")
     assert response.status_code == 200
@@ -78,7 +78,7 @@ def test_middleware_requests_ok(client: Client, mocker: MockerFixture):
 
 def test_middleware_requests_error(client: Client, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
-    mocker.patch("apitally.django_ninja.AuthorizationAPIKeyHeader.authenticate")
+    mocker.patch("apitally.django_ninja.APIKeyAuth.authenticate")
 
     response = client.put("/api/baz")
     assert response.status_code == 500

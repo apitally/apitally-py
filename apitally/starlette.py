@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from starlette.responses import Response
 
 
-__all__ = ["ApitallyMiddleware", "ApitallyKeysBackend"]
+__all__ = ["ApitallyMiddleware", "APIKeyBackend"]
 
 
 class ApitallyMiddleware(BaseHTTPMiddleware):
@@ -92,7 +92,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         return request.url.path, False
 
 
-class ApitallyKeysBackend(AuthenticationBackend):
+class APIKeyBackend(AuthenticationBackend):
     async def authenticate(self, conn: HTTPConnection) -> Optional[Tuple[AuthCredentials, BaseUser]]:
         if "Authorization" not in conn.headers:
             return None
