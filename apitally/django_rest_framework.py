@@ -10,7 +10,7 @@ from apitally.django import ApitallyMiddleware
 
 
 if TYPE_CHECKING:
-    from django.http import HttpRequest
+    from rest_framework.request import Request
     from rest_framework.views import APIView
 
 
@@ -18,7 +18,7 @@ __all__ = ["ApitallyMiddleware", "HasAPIKey", "KeyInfo"]
 
 
 class HasAPIKey(BasePermission):  # type: ignore[misc]
-    def has_permission(self, request: HttpRequest, view: APIView) -> bool:
+    def has_permission(self, request: Request, view: APIView) -> bool:
         authorization = request.headers.get("Authorization")
         if not authorization:
             return False
@@ -30,6 +30,5 @@ class HasAPIKey(BasePermission):  # type: ignore[misc]
             return False
         if hasattr(view, "required_scopes") and not key_info.check_scopes(view.required_scopes):
             return False
-        if not hasattr(request, "key_info"):
-            setattr(request, "key_info", key_info)
+        request.auth = key_info
         return True
