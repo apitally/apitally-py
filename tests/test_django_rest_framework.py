@@ -125,6 +125,18 @@ def test_api_key_auth(client: APIClient, key_registry: KeyRegistry, mocker: Mock
     response = client.post("/bar/", **headers)  # type: ignore[arg-type]
     assert response.status_code == 403
 
+    # Valid API key, custom header
+    mocker.patch.dict("django.conf.settings.__dict__", {"APITALLY_CUSTOM_API_KEY_HEADER": "ApiKey"})
+    headers = {"HTTP_APIKEY": "7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
+    response = client.get("/foo/", **headers)  # type: ignore[arg-type]
+    assert response.status_code == 200
+
+    # Invalid API key, custom header
+    mocker.patch.dict("django.conf.settings.__dict__", {"APITALLY_CUSTOM_API_KEY_HEADER": "ApiKey"})
+    headers = {"HTTP_APIKEY": "invalid"}
+    response = client.get("/foo/", **headers)  # type: ignore[arg-type]
+    assert response.status_code == 403
+
 
 def test_get_app_info():
     from django.urls import get_resolver

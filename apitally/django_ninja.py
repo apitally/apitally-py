@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ninja import NinjaAPI
 
 
-__all__ = ["ApitallyMiddleware", "APIKeyAuth", "KeyInfo"]
+__all__ = ["ApitallyMiddleware", "APIKeyAuth", "APIKeyAuthBase", "KeyInfo"]
 
 
 class ApitallyMiddleware(_ApitallyMiddleware):
@@ -38,25 +38,30 @@ class PermissionDenied(AuthError):
     pass
 
 
-class APIKeyAuth(APIKeyHeader):
-    param_name = "Authorization"
-    openapi_description = "Provide your API key using the <code>Authorization</code> header and the scheme prefix <code>ApiKey</code>.<br>Example: <pre>Authorization: ApiKey your_api_key_here</pre>"
-
+class APIKeyAuthBase(APIKeyHeader):
     def __init__(self, scopes: Optional[List[str]] = None) -> None:
         self.scopes = scopes or []
 
     def authenticate(self, request: HttpRequest, key: Optional[str]) -> Optional[KeyInfo]:
         if key is None:
             return None
-        scheme, _, param = key.partition(" ")
-        if scheme.lower() != "apikey":
-            return None
-        key_info = ApitallyClient.get_instance().key_registry.get(param)
+        if self.param_name == "Authorization":
+            scheme, _, api_key = key.partition(" ")
+            if scheme.lower() != "apikey":
+                return None
+        else:
+            api_key = key
+        key_info = ApitallyClient.get_instance().key_registry.get(api_key)
         if key_info is None:
             raise InvalidAPIKey()
         if not key_info.check_scopes(self.scopes):
             raise PermissionDenied()
         return key_info
+
+
+class APIKeyAuth(APIKeyAuthBase):
+    param_name = "Authorization"
+    openapi_description = "Provide your API key using the <code>Authorization</code> header and the scheme prefix <code>ApiKey</code>.<br>Example: <pre>Authorization: ApiKey your_api_key_here</pre>"
 
 
 def _get_api(views: List[DjangoViewInfo]) -> NinjaAPI:

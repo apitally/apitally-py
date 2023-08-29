@@ -69,7 +69,7 @@ def app_with_auth(module_mocker: MockerFixture) -> Flask:
         return "foo"
 
     @app.route("/bar/")
-    @require_api_key(scopes=["bar"])
+    @require_api_key(custom_header="ApiKey", scopes=["bar"])
     def bar():
         return "bar"
 
@@ -127,6 +127,7 @@ def test_middleware_requests_unhandled(app: Flask, mocker: MockerFixture):
 def test_require_api_key(app_with_auth: Flask, key_registry: KeyRegistry, mocker: MockerFixture):
     client = app_with_auth.test_client()
     headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
+    headers_custom = {"ApiKey": "7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     mock = mocker.patch("apitally.flask.ApitallyClient.get_instance")
     mock.return_value.key_registry = key_registry
 
@@ -145,6 +146,10 @@ def test_require_api_key(app_with_auth: Flask, key_registry: KeyRegistry, mocker
     response = client.get("/foo/", headers={"Authorization": "ApiKey invalid"})
     assert response.status_code == 403
 
+    # Invalid API key, custom header
+    response = client.get("/bar/", headers={"ApiKey": "invalid"})
+    assert response.status_code == 403
+
     # Valid API key with required scope
     response = client.get("/foo/", headers=headers)
     assert response.status_code == 200
@@ -153,8 +158,8 @@ def test_require_api_key(app_with_auth: Flask, key_registry: KeyRegistry, mocker
     response = client.get("/baz/", headers=headers)
     assert response.status_code == 200
 
-    # Valid API key without required scope
-    response = client.get("/bar/", headers=headers)
+    # Valid API key without required scope, custom header
+    response = client.get("/bar/", headers=headers_custom)
     assert response.status_code == 403
 
 

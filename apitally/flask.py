@@ -92,17 +92,22 @@ class ApitallyMiddleware:
             return environ["PATH_INFO"], False
 
 
-def require_api_key(func=None, *, scopes: Optional[List[str]] = None):
+def require_api_key(func=None, *, scopes: Optional[List[str]] = None, custom_header: Optional[str] = None):
     def decorator(func):
         @wraps(func)
         def wrapped_func(*args, **kwargs):
-            authorization = request.headers.get("Authorization")
-            if authorization is None:
-                return make_response("Not authenticated", 401, {"WWW-Authenticate": "ApiKey"})
-            scheme, _, param = authorization.partition(" ")
-            if scheme.lower() != "apikey":
-                return make_response("Unsupported authentication scheme", 401, {"WWW-Authenticate": "ApiKey"})
-            key_info = ApitallyClient.get_instance().key_registry.get(param)
+            if custom_header is None:
+                authorization = request.headers.get("Authorization")
+                if authorization is None:
+                    return make_response("Not authenticated", 401, {"WWW-Authenticate": "ApiKey"})
+                scheme, _, api_key = authorization.partition(" ")
+                if scheme.lower() != "apikey":
+                    return make_response("Unsupported authentication scheme", 401, {"WWW-Authenticate": "ApiKey"})
+            else:
+                api_key = request.headers.get(custom_header)
+                if api_key is None:
+                    return make_response("Missing API key", 403)
+            key_info = ApitallyClient.get_instance().key_registry.get(api_key)
             if key_info is None:
                 return make_response("Invalid API key", 403)
             if scopes is not None and not key_info.check_scopes(scopes):

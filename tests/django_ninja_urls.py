@@ -2,13 +2,17 @@ from django.http import HttpRequest
 from django.urls import path
 from ninja import NinjaAPI
 
-from apitally.django_ninja import APIKeyAuth
+from apitally.django_ninja import APIKeyAuth, APIKeyAuthBase
+
+
+class CustomAPIKeyAuth(APIKeyAuthBase):
+    param_name = "ApiKey"
 
 
 api = NinjaAPI()
 
 
-@api.get("/foo", auth=APIKeyAuth())
+@api.get("/foo", auth=CustomAPIKeyAuth())
 def foo(request: HttpRequest) -> str:
     return "foo"
 

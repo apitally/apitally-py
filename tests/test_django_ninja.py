@@ -108,12 +108,18 @@ def test_api_key_auth(client: Client, key_registry: KeyRegistry, mocker: MockerF
     response = client.get("/api/foo/123", **headers)  # type: ignore[arg-type]
     assert response.status_code == 403
 
-    # Valid API key, no scope required
-    headers = {"HTTP_AUTHORIZATION": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
+    # Invalid API key, custom header
+    headers = {"HTTP_APIKEY": "invalid"}
+    response = client.get("/api/foo", **headers)  # type: ignore[arg-type]
+    assert response.status_code == 403
+
+    # Valid API key, no scope required, custom header
+    headers = {"HTTP_APIKEY": "7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     response = client.get("/api/foo", **headers)  # type: ignore[arg-type]
     assert response.status_code == 200
 
     # Valid API key with required scope
+    headers = {"HTTP_AUTHORIZATION": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     response = client.get("/api/foo/123", **headers)  # type: ignore[arg-type]
     assert response.status_code == 200
 

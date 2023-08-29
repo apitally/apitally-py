@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, List, Type
 
+from django.conf import settings
 from rest_framework.permissions import BasePermission
 
 from apitally.client.base import KeyInfo
@@ -21,13 +22,17 @@ class HasAPIKey(BasePermission):  # type: ignore[misc]
     required_scopes: List[str] = []
 
     def has_permission(self, request: Request, view: APIView) -> bool:
-        authorization = request.headers.get("Authorization")
-        if not authorization:
+        custom_header = getattr(settings, "APITALLY_CUSTOM_API_KEY_HEADER", None)
+        header = request.headers.get("Authorization" if custom_header is None else custom_header)
+        if not header:
             return False
-        scheme, _, param = authorization.partition(" ")
-        if scheme.lower() != "apikey":
-            return False
-        key_info = ApitallyClient.get_instance().key_registry.get(param)
+        if custom_header is None:
+            scheme, _, api_key = header.partition(" ")
+            if scheme.lower() != "apikey":
+                return False
+        else:
+            api_key = header
+        key_info = ApitallyClient.get_instance().key_registry.get(api_key)
         if key_info is None:
             return False
         if self.required_scopes and not key_info.check_scopes(self.required_scopes):

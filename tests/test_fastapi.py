@@ -22,9 +22,10 @@ from apitally.client.base import KeyInfo  # import here to avoid pydantic error
 def app_with_auth() -> FastAPI:
     from fastapi import Depends, FastAPI, Security
 
-    from apitally.fastapi import api_key_auth
+    from apitally.fastapi import APIKeyAuth, api_key_auth
 
     app = FastAPI()
+    api_key_auth_custom = APIKeyAuth(custom_header="ApiKey")
 
     @app.get("/foo/")
     def foo(key: KeyInfo = Security(api_key_auth, scopes=["foo"])):
@@ -34,7 +35,7 @@ def app_with_auth() -> FastAPI:
     def bar(key: KeyInfo = Security(api_key_auth, scopes=["bar"])):
         return "bar"
 
-    @app.get("/baz/", dependencies=[Depends(api_key_auth)])
+    @app.get("/baz/", dependencies=[Depends(api_key_auth_custom)])
     def baz():
         return "baz"
 
@@ -46,6 +47,7 @@ def test_api_key_auth(app_with_auth: FastAPI, key_registry: KeyRegistry, mocker:
 
     client = TestClient(app_with_auth)
     headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
+    headers_custom = {"ApiKey": "7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     mock = mocker.patch("apitally.fastapi.ApitallyClient.get_instance")
     mock.return_value.key_registry = key_registry
 
@@ -53,8 +55,9 @@ def test_api_key_auth(app_with_auth: FastAPI, key_registry: KeyRegistry, mocker:
     response = client.get("/foo")
     assert response.status_code == 401
 
+    # Unauthenticated, custom header
     response = client.get("/baz")
-    assert response.status_code == 401
+    assert response.status_code == 403
 
     # Invalid auth scheme
     response = client.get("/foo", headers={"Authorization": "Bearer invalid"})
@@ -64,12 +67,16 @@ def test_api_key_auth(app_with_auth: FastAPI, key_registry: KeyRegistry, mocker:
     response = client.get("/foo", headers={"Authorization": "ApiKey invalid"})
     assert response.status_code == 403
 
+    # Invalid API key, custom header
+    response = client.get("/baz", headers={"ApiKey": "invalid"})
+    assert response.status_code == 403
+
     # Valid API key with required scope
     response = client.get("/foo", headers=headers)
     assert response.status_code == 200
 
-    # Valid API key, no scope required
-    response = client.get("/baz", headers=headers)
+    # Valid API key, no scope required, custom header
+    response = client.get("/baz", headers=headers_custom)
     assert response.status_code == 200
 
     # Valid API key without required scope

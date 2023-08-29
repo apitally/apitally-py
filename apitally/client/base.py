@@ -169,7 +169,7 @@ class KeyRegistry:
         self._lock = threading.Lock()
 
     def get(self, api_key: str) -> Optional[KeyInfo]:
-        hash = self.hash_api_key(api_key)
+        hash = self.hash_api_key(api_key.strip())
         with self._lock:
             key = self.keys.get(hash)
             if key is None or key.is_expired:

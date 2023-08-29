@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from importlib.util import find_spec
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple
 from unittest.mock import MagicMock
 
 import pytest
@@ -39,8 +39,8 @@ async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlett
     raise NotImplementedError
 
 
-@pytest.fixture()
-def app_with_auth() -> Starlette:
+@pytest.fixture(params=["Authorization", "ApiKey"])
+def app_with_auth(request: FixtureRequest) -> Tuple[Starlette, str]:
     from starlette.applications import Starlette
     from starlette.authentication import requires
     from starlette.middleware.authentication import AuthenticationMiddleware
@@ -48,7 +48,7 @@ def app_with_auth() -> Starlette:
     from starlette.responses import JSONResponse, PlainTextResponse
     from starlette.routing import Route
 
-    from apitally.starlette import APIKeyBackend
+    from apitally.starlette import APIKeyAuth
 
     @requires(["authenticated", "foo"])
     def foo(request: Request):
@@ -74,9 +74,13 @@ def app_with_auth() -> Starlette:
         Route("/bar/", bar),
         Route("/baz/", baz),
     ]
+    api_key_header = request.param
     app = Starlette(routes=routes)
-    app.add_middleware(AuthenticationMiddleware, backend=APIKeyBackend())
-    return app
+    app.add_middleware(
+        AuthenticationMiddleware,
+        backend=APIKeyAuth() if api_key_header == "Authorization" else APIKeyAuth(custom_header=api_key_header),
+    )
+    return (app, api_key_header)
 
 
 def get_starlette_app() -> Starlette:
@@ -204,11 +208,19 @@ def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
     mock.assert_not_called()
 
 
-def test_keys_auth_backend(app_with_auth: Starlette, key_registry: KeyRegistry, mocker: MockerFixture):
+def test_api_key_auth(app_with_auth: Tuple[Starlette, str], key_registry: KeyRegistry, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    client = TestClient(app_with_auth)
-    headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
+    app, api_key_header = app_with_auth
+    client = TestClient(app)
+    headers = (
+        {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
+        if api_key_header == "Authorization"
+        else {api_key_header: "7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
+    )
+    headers_invalid = (
+        {"Authorization": "ApiKey invalid"} if api_key_header == "Authorization" else {api_key_header: "invalid"}
+    )
     mock = mocker.patch("apitally.starlette.ApitallyClient.get_instance")
     mock.return_value.key_registry = key_registry
 
@@ -220,7 +232,7 @@ def test_keys_auth_backend(app_with_auth: Starlette, key_registry: KeyRegistry, 
     assert response.status_code == 403
 
     # Invalid API key
-    response = client.get("/foo", headers={"Authorization": "ApiKey invalid"})
+    response = client.get("/foo", headers=headers_invalid)
     assert response.status_code == 400
 
     # Valid API key with required scope

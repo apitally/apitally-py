@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from starlette.responses import Response
 
 
-__all__ = ["ApitallyMiddleware", "APIKeyBackend"]
+__all__ = ["ApitallyMiddleware", "APIKeyAuth"]
 
 
 class ApitallyMiddleware(BaseHTTPMiddleware):
@@ -92,21 +92,29 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         return request.url.path, False
 
 
-class APIKeyBackend(AuthenticationBackend):
+class APIKeyAuth(AuthenticationBackend):
+    def __init__(self, custom_header: Optional[str] = None) -> None:
+        self.custom_header = custom_header
+
     async def authenticate(self, conn: HTTPConnection) -> Optional[Tuple[AuthCredentials, BaseUser]]:
-        if "Authorization" not in conn.headers:
+        if self.custom_header is None:
+            if "Authorization" not in conn.headers:
+                return None
+            auth = conn.headers["Authorization"]
+            scheme, _, api_key = auth.partition(" ")
+            if scheme.lower() != "apikey":
+                return None
+        elif self.custom_header not in conn.headers:
             return None
-        auth = conn.headers["Authorization"]
-        scheme, _, param = auth.partition(" ")
-        if scheme.lower() != "apikey":
-            return None
-        key_info = ApitallyClient.get_instance().key_registry.get(param)
+        else:
+            api_key = conn.headers[self.custom_header]
+        key_info = ApitallyClient.get_instance().key_registry.get(api_key)
         if key_info is None:
             raise AuthenticationError("Invalid API key")
-        return AuthCredentials(["authenticated"] + key_info.scopes), ApitallyKeyUser(key_info)
+        return AuthCredentials(["authenticated"] + key_info.scopes), APIKeyUser(key_info)
 
 
-class ApitallyKeyUser(BaseUser):
+class APIKeyUser(BaseUser):
     def __init__(self, key_info: KeyInfo) -> None:
         self.key_info = key_info
 
