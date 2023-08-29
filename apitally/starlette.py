@@ -42,13 +42,15 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         client_id: str,
         env: str = "default",
         app_version: Optional[str] = None,
-        enable_keys: bool = False,
+        sync_api_keys: bool = False,
         sync_interval: float = 60,
         openapi_url: Optional[str] = "/openapi.json",
         filter_unhandled_paths: bool = True,
     ) -> None:
         self.filter_unhandled_paths = filter_unhandled_paths
-        self.client = ApitallyClient(client_id=client_id, env=env, enable_keys=enable_keys, sync_interval=sync_interval)
+        self.client = ApitallyClient(
+            client_id=client_id, env=env, sync_api_keys=sync_api_keys, sync_interval=sync_interval
+        )
         self.client.send_app_info(app_info=_get_app_info(app, app_version, openapi_url))
         self.client.start_sync_loop()
         super().__init__(app)

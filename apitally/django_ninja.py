@@ -21,7 +21,7 @@ __all__ = ["ApitallyMiddleware", "APIKeyAuth", "APIKeyAuthBase", "KeyInfo"]
 class ApitallyMiddleware(_ApitallyMiddleware):
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         super().__init__(get_response)
-        if self.client.enable_keys:
+        if self.client.sync_api_keys:
             api = _get_api(self.views)
             _add_exception_handlers(api)
 

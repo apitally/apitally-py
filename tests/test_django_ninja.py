@@ -43,7 +43,7 @@ def setup(module_mocker: MockerFixture) -> None:
         APITALLY_MIDDLEWARE={
             "client_id": "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9",
             "env": "default",
-            "enable_keys": True,
+            "sync_api_keys": True,
         },
     )
     django.setup()

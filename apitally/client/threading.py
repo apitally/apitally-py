@@ -39,8 +39,8 @@ except NameError:
 
 
 class ApitallyClient(ApitallyClientBase):
-    def __init__(self, client_id: str, env: str, enable_keys: bool = False, sync_interval: float = 60) -> None:
-        super().__init__(client_id=client_id, env=env, enable_keys=enable_keys, sync_interval=sync_interval)
+    def __init__(self, client_id: str, env: str, sync_api_keys: bool = False, sync_interval: float = 60) -> None:
+        super().__init__(client_id=client_id, env=env, sync_api_keys=sync_api_keys, sync_interval=sync_interval)
         self._thread: Optional[Thread] = None
         self._stop_sync_loop = Event()
 
@@ -52,7 +52,7 @@ class ApitallyClient(ApitallyClientBase):
             register_exit(self.stop_sync_loop)
 
     def _run_sync_loop(self) -> None:
-        if self.enable_keys:
+        if self.sync_api_keys:
             with requests.Session() as session:
                 self.get_keys(session)
         while not self._stop_sync_loop.is_set():
@@ -60,7 +60,7 @@ class ApitallyClient(ApitallyClientBase):
                 time.sleep(self.sync_interval)
                 with requests.Session() as session:
                     self.send_requests_data(session)
-                    if self.enable_keys:
+                    if self.sync_api_keys:
                         self.get_keys(session)
             except Exception as e:  # pragma: no cover
                 logger.exception(e)

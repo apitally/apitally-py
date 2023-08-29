@@ -21,7 +21,7 @@ ENV = "default"
 def client() -> ApitallyClient:
     from apitally.client.threading import ApitallyClient
 
-    client = ApitallyClient(client_id=CLIENT_ID, env=ENV, enable_keys=True)
+    client = ApitallyClient(client_id=CLIENT_ID, env=ENV, sync_api_keys=True)
     client.request_logger.log_request(
         method="GET",
         path="/test",

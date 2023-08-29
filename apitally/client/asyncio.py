@@ -22,8 +22,8 @@ retry = backoff.on_exception(
 
 
 class ApitallyClient(ApitallyClientBase):
-    def __init__(self, client_id: str, env: str, enable_keys: bool = False, sync_interval: float = 60) -> None:
-        super().__init__(client_id=client_id, env=env, enable_keys=enable_keys, sync_interval=sync_interval)
+    def __init__(self, client_id: str, env: str, sync_api_keys: bool = False, sync_interval: float = 60) -> None:
+        super().__init__(client_id=client_id, env=env, sync_api_keys=sync_api_keys, sync_interval=sync_interval)
         self._stop_sync_loop = False
         self._sync_loop_task: Optional[asyncio.Task[Any]] = None
 
@@ -35,7 +35,7 @@ class ApitallyClient(ApitallyClientBase):
         self._sync_loop_task = asyncio.create_task(self._run_sync_loop())
 
     async def _run_sync_loop(self) -> None:
-        if self.enable_keys:
+        if self.sync_api_keys:
             try:
                 async with self.get_http_client() as client:
                     await self.get_keys(client)
@@ -46,7 +46,7 @@ class ApitallyClient(ApitallyClientBase):
                 await asyncio.sleep(self.sync_interval)
                 async with self.get_http_client() as client:
                     await self.send_requests_data(client)
-                    if self.enable_keys:
+                    if self.sync_api_keys:
                         await self.get_keys(client)
             except Exception as e:  # pragma: no cover
                 logger.exception(e)

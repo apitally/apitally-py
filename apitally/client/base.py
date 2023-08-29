@@ -36,7 +36,7 @@ class ApitallyClientBase:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, client_id: str, env: str, enable_keys: bool = False, sync_interval: float = 60) -> None:
+    def __init__(self, client_id: str, env: str, sync_api_keys: bool = False, sync_interval: float = 60) -> None:
         if hasattr(self, "client_id"):
             raise RuntimeError("Apitally client is already initialized")  # pragma: no cover
         try:
@@ -50,7 +50,7 @@ class ApitallyClientBase:
 
         self.client_id = client_id
         self.env = env
-        self.enable_keys = enable_keys
+        self.sync_api_keys = sync_api_keys
         self.sync_interval = sync_interval
         self.instance_uuid = str(uuid4())
         self.request_logger = RequestLogger()
@@ -76,7 +76,7 @@ class ApitallyClientBase:
 
     def get_requests_payload(self) -> Dict[str, Any]:
         requests = self.request_logger.get_and_reset_requests()
-        api_key_usage = self.key_registry.get_and_reset_usage_counts() if self.enable_keys else {}
+        api_key_usage = self.key_registry.get_and_reset_usage_counts() if self.sync_api_keys else {}
         return {
             "instance_uuid": self.instance_uuid,
             "message_uuid": str(uuid4()),
