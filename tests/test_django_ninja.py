@@ -90,6 +90,20 @@ def test_middleware_requests_error(client: Client, mocker: MockerFixture):
     assert mock.call_args.kwargs["response_time"] > 0
 
 
+def test_middleware_validation_error(client: Client, mocker: MockerFixture):
+    mock = mocker.patch("apitally.client.base.ValidationErrorLogger.log_validation_errors")
+    mocker.patch("apitally.django_ninja.APIKeyAuth.authenticate")
+
+    response = client.get("/api/val?foo=bar")
+    assert response.status_code == 422
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["method"] == "GET"
+    assert mock.call_args.kwargs["path"] == "api/val"
+    assert len(mock.call_args.kwargs["detail"]) == 1
+    assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
+
+
 def test_api_key_auth(client: Client, key_registry: KeyRegistry, mocker: MockerFixture):
     mock = mocker.patch("apitally.django_ninja.ApitallyClient.get_instance")
     mock.return_value.key_registry = key_registry

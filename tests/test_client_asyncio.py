@@ -34,6 +34,23 @@ async def client(module_mocker: MockerFixture) -> ApitallyClient:
         status_code=200,
         response_time=0.227,
     )
+    client.request_logger.log_request(
+        method="GET",
+        path="/test",
+        status_code=422,
+        response_time=0.02,
+    )
+    client.validation_error_logger.log_validation_errors(
+        method="GET",
+        path="/test",
+        detail=[
+            {
+                "loc": ["query", "foo"],
+                "type": "type_error.integer",
+                "msg": "value is not a valid integer",
+            },
+        ],
+    )
     return client
 
 
@@ -60,8 +77,10 @@ async def test_send_requests_data(client: ApitallyClient, httpx_mock: HTTPXMock)
     requests = httpx_mock.get_requests(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/requests")
     assert len(requests) == 1
     request_data = json.loads(requests[0].content)
-    assert len(request_data["requests"]) == 1
+    assert len(request_data["requests"]) == 2
     assert request_data["requests"][0]["request_count"] == 2
+    assert len(request_data["validation_errors"]) == 1
+    assert request_data["validation_errors"][0]["error_count"] == 1
 
 
 async def test_send_app_info(client: ApitallyClient, httpx_mock: HTTPXMock):

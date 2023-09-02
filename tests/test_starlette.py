@@ -106,11 +106,15 @@ def get_starlette_app() -> Starlette:
     def baz(request: Request):
         raise ValueError("baz")
 
+    def val(request: Request):
+        return PlainTextResponse("validation error", status_code=422)
+
     routes = [
         Route("/foo/", foo),
         Route("/foo/{bar}/", foo_bar),
         Route("/bar/", bar, methods=["POST"]),
         Route("/baz/", baz, methods=["POST"]),
+        Route("/val/", val),
     ]
     app = Starlette(routes=routes)
     app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV)
@@ -119,7 +123,7 @@ def get_starlette_app() -> Starlette:
 
 
 def get_fastapi_app() -> Starlette:
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Query
 
     from apitally.fastapi import ApitallyMiddleware
 
@@ -146,6 +150,10 @@ def get_fastapi_app() -> Starlette:
     @app.post("/baz/")
     def baz():
         raise ValueError("baz")
+
+    @app.get("/val/")
+    def val(foo: int = Query()):
+        return "val"
 
     return app
 
@@ -208,6 +216,25 @@ def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
     mock.assert_not_called()
 
 
+def test_middleware_validation_error(app: Starlette, mocker: MockerFixture):
+    from starlette.testclient import TestClient
+
+    mock = mocker.patch("apitally.client.base.ValidationErrorLogger.log_validation_errors")
+    client = TestClient(app)
+
+    response = client.get("/val?foo=bar")
+    assert response.status_code == 422
+
+    # FastAPI only
+    if response.headers["Content-Type"] == "application/json":
+        mock.assert_called_once()
+        assert mock.call_args is not None
+        assert mock.call_args.kwargs["method"] == "GET"
+        assert mock.call_args.kwargs["path"] == "/val/"
+        assert len(mock.call_args.kwargs["detail"]) == 1
+        assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
+
+
 def test_api_key_auth(app_with_auth: Tuple[Starlette, str], key_registry: KeyRegistry, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
@@ -263,7 +290,7 @@ def test_get_app_info(app: Starlette, mocker: MockerFixture):
     assert ("paths" in app_info) != ("openapi" in app_info)  # only one, not both
 
     app_info = _get_app_info(app=app.middleware_stack, app_version="1.2.3", openapi_url=None)
-    assert len(app_info["paths"]) == 4
+    assert len(app_info["paths"]) == 5
     assert app_info["versions"]["starlette"]
     assert app_info["versions"]["app"] == "1.2.3"
     assert app_info["framework"] == "starlette"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import time
 from dataclasses import dataclass
@@ -87,6 +88,22 @@ class ApitallyMiddleware:
                 status_code=response.status_code,
                 response_time=time.perf_counter() - start_time,
             )
+            if (
+                response.status_code == 422
+                and (content_type := response.get("Content-Type")) is not None
+                and content_type.startswith("application/json")
+            ):
+                try:
+                    body = json.loads(response.content)
+                    if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
+                        # Log Django Ninja / Pydantic validation errors
+                        self.client.validation_error_logger.log_validation_errors(
+                            method=request.method,
+                            path=view.pattern,
+                            detail=body["detail"],
+                        )
+                except json.JSONDecodeError:
+                    pass
         return response
 
     def get_view(self, request: HttpRequest) -> Optional[DjangoViewInfo]:

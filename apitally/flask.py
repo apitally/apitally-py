@@ -98,6 +98,7 @@ def require_api_key(func=None, *, scopes: Optional[List[str]] = None, custom_hea
     def decorator(func):
         @wraps(func)
         def wrapped_func(*args, **kwargs):
+            api_key: Optional[str]
             if custom_header is None:
                 authorization = request.headers.get("Authorization")
                 if authorization is None:

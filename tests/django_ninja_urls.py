@@ -32,6 +32,11 @@ def baz(request: HttpRequest) -> str:
     raise ValueError("baz")
 
 
+@api.get("/val")
+def val(request: HttpRequest, foo: int) -> str:
+    return "val"
+
+
 urlpatterns = [
     path("api/", api.urls),  # type: ignore[arg-type]
 ]

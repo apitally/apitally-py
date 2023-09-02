@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -12,7 +13,7 @@ from starlette.authentication import (
     AuthenticationError,
     BaseUser,
 )
-from starlette.background import BackgroundTask
+from starlette.concurrency import iterate_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import HTTPConnection
 from starlette.routing import BaseRoute, Match, Router
@@ -60,22 +61,25 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
             start_time = time.perf_counter()
             response = await call_next(request)
         except BaseException as e:
-            self.log_request(
+            await self.log_request(
                 request=request,
+                response=None,
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                 response_time=time.perf_counter() - start_time,
             )
             raise e from None
         else:
-            response.background = BackgroundTask(
-                self.log_request,
+            await self.log_request(
                 request=request,
+                response=response,
                 status_code=response.status_code,
                 response_time=time.perf_counter() - start_time,
             )
         return response
 
-    def log_request(self, request: Request, status_code: int, response_time: float) -> None:
+    async def log_request(
+        self, request: Request, response: Optional[Response], status_code: int, response_time: float
+    ) -> None:
         path_template, is_handled_path = self.get_path_template(request)
         if is_handled_path or not self.filter_unhandled_paths:
             self.client.request_logger.log_request(
@@ -84,6 +88,37 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
                 status_code=status_code,
                 response_time=response_time,
             )
+            if (
+                status_code == 422
+                and response is not None
+                and response.headers.get("Content-Type") == "application/json"
+            ):
+                try:
+                    body = await self.get_response_json(response)
+                    if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
+                        # Log FastAPI / Pydantic validation errors
+                        self.client.validation_error_logger.log_validation_errors(
+                            method=request.method,
+                            path=path_template,
+                            detail=body["detail"],
+                        )
+                except json.JSONDecodeError:
+                    pass
+
+    @staticmethod
+    async def get_response_json(response: Response) -> Any:
+        if hasattr(response, "body"):
+            try:
+                return json.loads(response.body)
+            except json.JSONDecodeError:
+                return None
+        elif hasattr(response, "body_iterator"):
+            try:
+                response_body = [section async for section in response.body_iterator]
+                response.body_iterator = iterate_in_threadpool(iter(response_body))
+                return json.loads(b"".join(response_body))
+            except json.JSONDecodeError:
+                return None
 
     @staticmethod
     def get_path_template(request: Request) -> Tuple[str, bool]:

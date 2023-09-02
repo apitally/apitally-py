@@ -34,6 +34,23 @@ def client() -> ApitallyClient:
         status_code=200,
         response_time=0.227,
     )
+    client.request_logger.log_request(
+        method="GET",
+        path="/test",
+        status_code=422,
+        response_time=0.02,
+    )
+    client.validation_error_logger.log_validation_errors(
+        method="GET",
+        path="/test",
+        detail=[
+            {
+                "loc": ["query", "foo"],
+                "type": "type_error.integer",
+                "msg": "value is not a valid integer",
+            },
+        ],
+    )
     return client
 
 
@@ -59,8 +76,10 @@ def test_send_requests_data(client: ApitallyClient, requests_mock: Mocker):
 
     assert len(mock.request_history) == 1
     request_data = mock.request_history[0].json()
-    assert len(request_data["requests"]) == 1
+    assert len(request_data["requests"]) == 2
     assert request_data["requests"][0]["request_count"] == 2
+    assert len(request_data["validation_errors"]) == 1
+    assert request_data["validation_errors"][0]["error_count"] == 1
 
 
 def test_send_app_info(client: ApitallyClient, requests_mock: Mocker):

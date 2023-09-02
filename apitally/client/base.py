@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from hashlib import scrypt
 from math import floor
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, cast
 from uuid import UUID, uuid4
 
 
@@ -54,6 +54,7 @@ class ApitallyClientBase:
         self.sync_interval = sync_interval
         self.instance_uuid = str(uuid4())
         self.request_logger = RequestLogger()
+        self.validation_error_logger = ValidationErrorLogger()
         self.key_registry = KeyRegistry()
 
     @classmethod
@@ -76,11 +77,13 @@ class ApitallyClientBase:
 
     def get_requests_payload(self) -> Dict[str, Any]:
         requests = self.request_logger.get_and_reset_requests()
+        validation_errors = self.validation_error_logger.get_and_reset_validation_errors()
         api_key_usage = self.key_registry.get_and_reset_usage_counts() if self.sync_api_keys else {}
         return {
             "instance_uuid": self.instance_uuid,
             "message_uuid": str(uuid4()),
             "requests": requests,
+            "validation_errors": validation_errors,
             "api_key_usage": api_key_usage,
         }
 
@@ -124,6 +127,53 @@ class RequestLogger:
                 )
             self.request_counts.clear()
             self.response_times.clear()
+        return data
+
+
+@dataclass(frozen=True)
+class ValidationError:
+    method: str
+    path: str
+    loc: Tuple[str, ...]
+    msg: str
+    type: str
+
+
+class ValidationErrorLogger:
+    def __init__(self) -> None:
+        self.error_counts: Counter[ValidationError] = Counter()
+        self._lock = threading.Lock()
+
+    def log_validation_errors(self, method: str, path: str, detail: List[Dict[str, Any]]) -> None:
+        with self._lock:
+            for error in detail:
+                try:
+                    validation_error = ValidationError(
+                        method=method.upper(),
+                        path=path,
+                        loc=tuple(str(loc) for loc in error["loc"]),
+                        type=error["type"],
+                        msg=error["msg"],
+                    )
+                    self.error_counts[validation_error] += 1
+                except (KeyError, TypeError):  # pragma: no cover
+                    pass
+
+    def get_and_reset_validation_errors(self) -> List[Dict[str, Any]]:
+        data: List[Dict[str, Any]] = []
+        with self._lock:
+            for validation_error, count in self.error_counts.items():
+                data.append(
+                    {
+                        "method": validation_error.method,
+                        "path": validation_error.path,
+                        "loc": validation_error.loc,
+                        "msg": validation_error.msg,
+                        "type": validation_error.type,
+                        "error_count": count,
+                    }
+                )
+            self.error_counts.clear()
         return data
 
 

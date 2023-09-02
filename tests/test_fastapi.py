@@ -19,7 +19,7 @@ from apitally.client.base import KeyInfo  # import here to avoid pydantic error
 
 
 @pytest.fixture()
-def app_with_auth() -> FastAPI:
+def app() -> FastAPI:
     from fastapi import Depends, FastAPI, Security
 
     from apitally.fastapi import APIKeyAuth, api_key_auth
@@ -42,10 +42,10 @@ def app_with_auth() -> FastAPI:
     return app
 
 
-def test_api_key_auth(app_with_auth: FastAPI, key_registry: KeyRegistry, mocker: MockerFixture):
+def test_api_key_auth(app: FastAPI, key_registry: KeyRegistry, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    client = TestClient(app_with_auth)
+    client = TestClient(app)
     headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     headers_custom = {"ApiKey": "7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     mock = mocker.patch("apitally.fastapi.ApitallyClient.get_instance")
