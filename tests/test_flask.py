@@ -32,7 +32,7 @@ def app(module_mocker: MockerFixture) -> Flask:
     module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_send_app_info")
 
     app = Flask("test")
-    app.wsgi_app = ApitallyMiddleware(app.wsgi_app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]
+    app.wsgi_app = ApitallyMiddleware(app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]
 
     @app.route("/foo/<bar>/")
     def foo_bar(bar: int):
@@ -61,7 +61,7 @@ def app_with_auth(module_mocker: MockerFixture) -> Flask:
     module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_send_app_info")
 
     app = Flask("test")
-    app.wsgi_app = ApitallyMiddleware(app.wsgi_app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]
+    app.wsgi_app = ApitallyMiddleware(app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]
 
     @app.route("/foo/")
     @require_api_key(scopes=["foo"])
@@ -128,8 +128,9 @@ def test_require_api_key(app_with_auth: Flask, key_registry: KeyRegistry, mocker
     client = app_with_auth.test_client()
     headers = {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     headers_custom = {"ApiKey": "7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
-    mock = mocker.patch("apitally.flask.ApitallyClient.get_instance")
-    mock.return_value.key_registry = key_registry
+    client_get_instance_mock = mocker.patch("apitally.flask.ApitallyClient.get_instance")
+    client_get_instance_mock.return_value.key_registry = key_registry
+    log_request_mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
 
     # Unauthenticated
     response = client.get("/foo/")
@@ -153,6 +154,7 @@ def test_require_api_key(app_with_auth: Flask, key_registry: KeyRegistry, mocker
     # Valid API key with required scope
     response = client.get("/foo/", headers=headers)
     assert response.status_code == 200
+    assert log_request_mock.call_args.kwargs["consumer"] == "key:1"
 
     # Valid API key, no scope required
     response = client.get("/baz/", headers=headers)
@@ -166,7 +168,7 @@ def test_require_api_key(app_with_auth: Flask, key_registry: KeyRegistry, mocker
 def test_get_app_info(app: Flask):
     from apitally.flask import _get_app_info
 
-    app_info = _get_app_info(app.wsgi_app, app.url_map, app_version="1.2.3", openapi_url="/openapi.json")
+    app_info = _get_app_info(app, app_version="1.2.3", openapi_url="/openapi.json")
     assert len(app_info["paths"]) == 3
     assert app_info["versions"]["flask"]
     assert app_info["versions"]["app"] == "1.2.3"

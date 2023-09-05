@@ -4,14 +4,15 @@ import sys
 import time
 from functools import wraps
 from threading import Timer
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import flask
-from flask import g, make_response, request
+from flask import Flask, g, make_response, request
 from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
 
 import apitally
+from apitally.client.base import KeyInfo
 from apitally.client.threading import ApitallyClient
 
 
@@ -26,24 +27,20 @@ __all__ = ["ApitallyMiddleware", "require_api_key"]
 class ApitallyMiddleware:
     def __init__(
         self,
-        app: WSGIApplication,
+        app: Flask,
         client_id: str,
         env: str = "default",
         app_version: Optional[str] = None,
         sync_api_keys: bool = False,
         sync_interval: float = 60,
         openapi_url: Optional[str] = None,
-        url_map: Optional[Map] = None,
         filter_unhandled_paths: bool = True,
+        identify_consumer_func: Optional[Callable[[], Optional[str]]] = None,
     ) -> None:
-        url_map = url_map or _get_url_map(app)
-        if url_map is None:  # pragma: no cover
-            raise ValueError(
-                "Could not extract url_map from app. Please provide it as an argument to ApitallyMiddleware."
-            )
         self.app = app
-        self.url_map = url_map
+        self.wsgi_app = app.wsgi_app
         self.filter_unhandled_paths = filter_unhandled_paths
+        self.identify_consumer_func = identify_consumer_func
         self.client = ApitallyClient(
             client_id=client_id, env=env, sync_api_keys=sync_api_keys, sync_interval=sync_interval
         )
@@ -54,7 +51,7 @@ class ApitallyMiddleware:
         timer.start()
 
     def delayed_send_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
-        app_info = _get_app_info(self.app, self.url_map, app_version, openapi_url)
+        app_info = _get_app_info(self.app, app_version, openapi_url)
         self.client.send_app_info(app_info=app_info)
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
@@ -66,18 +63,20 @@ class ApitallyMiddleware:
             return start_response(status, headers, exc_info)
 
         start_time = time.perf_counter()
-        response = self.app(environ, catching_start_response)
-        self.log_request(
-            environ=environ,
-            status_code=status_code,
-            response_time=time.perf_counter() - start_time,
-        )
+        with self.app.app_context():
+            response = self.wsgi_app(environ, catching_start_response)
+            self.log_request(
+                environ=environ,
+                status_code=status_code,
+                response_time=time.perf_counter() - start_time,
+            )
         return response
 
     def log_request(self, environ: WSGIEnvironment, status_code: int, response_time: float) -> None:
         rule, is_handled_path = self.get_rule(environ)
         if is_handled_path or not self.filter_unhandled_paths:
             self.client.request_logger.log_request(
+                consumer=self.get_consumer(),
                 method=environ["REQUEST_METHOD"],
                 path=rule,
                 status_code=status_code,
@@ -85,13 +84,24 @@ class ApitallyMiddleware:
             )
 
     def get_rule(self, environ: WSGIEnvironment) -> Tuple[str, bool]:
-        url_adapter = self.url_map.bind_to_environ(environ)
+        url_adapter = self.app.url_map.bind_to_environ(environ)
         try:
             endpoint, _ = url_adapter.match()
-            rule = self.url_map._rules_by_endpoint[endpoint][0]
+            rule = self.app.url_map._rules_by_endpoint[endpoint][0]
             return rule.rule, True
         except NotFound:
             return environ["PATH_INFO"], False
+
+    def get_consumer(self) -> Optional[str]:
+        if self.identify_consumer_func is not None:
+            consumer_identifier = self.identify_consumer_func()
+            if consumer_identifier is not None:
+                return str(consumer_identifier)
+        if "consumer_identifier" in g:
+            return str(g.consumer_identifier)
+        if "key_info" in g and isinstance(g.key_info, KeyInfo):
+            return f"key:{g.key_info.key_id}"
+        return None
 
 
 def require_api_key(func=None, *, scopes: Optional[List[str]] = None, custom_header: Optional[str] = None):
@@ -123,26 +133,16 @@ def require_api_key(func=None, *, scopes: Optional[List[str]] = None, custom_hea
     return decorator if func is None else decorator(func)
 
 
-def _get_app_info(
-    app: WSGIApplication, url_map: Map, app_version: Optional[str] = None, openapi_url: Optional[str] = None
-) -> Dict[str, Any]:
+def _get_app_info(app: Flask, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> Dict[str, Any]:
     app_info: Dict[str, Any] = {}
     if openapi_url and (openapi := _get_openapi(app, openapi_url)):
         app_info["openapi"] = openapi
-    elif paths := _get_paths(url_map):
+    elif paths := _get_paths(app.url_map):
         app_info["paths"] = paths
     app_info["versions"] = _get_versions(app_version)
     app_info["client"] = "apitally-python"
     app_info["framework"] = "flask"
     return app_info
-
-
-def _get_url_map(app: WSGIApplication) -> Optional[Map]:
-    if hasattr(app, "url_map"):
-        return app.url_map
-    elif hasattr(app, "__self__") and hasattr(app.__self__, "url_map"):
-        return app.__self__.url_map
-    return None
 
 
 def _get_paths(url_map: Map) -> List[Dict[str, str]]:

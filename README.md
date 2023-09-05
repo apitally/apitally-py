@@ -81,5 +81,5 @@ from flask import Flask
 from apitally.flask import ApitallyMiddleware
 
 app = Flask(__name__)
-app.wsgi_app = ApitallyMiddleware(app.wsgi_app, client_id="<your-client-id>")
+app.wsgi_app = ApitallyMiddleware(app, client_id="<your-client-id>")
 ```

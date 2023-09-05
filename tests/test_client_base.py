@@ -6,12 +6,14 @@ def test_request_logger():
 
     requests = RequestLogger()
     requests.log_request(
+        consumer=None,
         method="GET",
         path="/test",
         status_code=200,
         response_time=0.105,
     )
     requests.log_request(
+        consumer=None,
         method="GET",
         path="/test",
         status_code=200,
@@ -35,6 +37,7 @@ def test_validation_error_logger():
 
     validation_errors = ValidationErrorLogger()
     validation_errors.log_validation_errors(
+        consumer=None,
         method="GET",
         path="/test",
         detail=[
@@ -51,6 +54,7 @@ def test_validation_error_logger():
         ],
     )
     validation_errors.log_validation_errors(
+        consumer=None,
         method="GET",
         path="/test",
         detail=[

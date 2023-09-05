@@ -105,8 +105,9 @@ def test_middleware_validation_error(client: Client, mocker: MockerFixture):
 
 
 def test_api_key_auth(client: Client, key_registry: KeyRegistry, mocker: MockerFixture):
-    mock = mocker.patch("apitally.django_ninja.ApitallyClient.get_instance")
-    mock.return_value.key_registry = key_registry
+    client_get_instance_mock = mocker.patch("apitally.django_ninja.ApitallyClient.get_instance")
+    client_get_instance_mock.return_value.key_registry = key_registry
+    log_request_mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
 
     # Unauthenticated
     response = client.get("/api/foo/123")
@@ -131,6 +132,7 @@ def test_api_key_auth(client: Client, key_registry: KeyRegistry, mocker: MockerF
     headers = {"HTTP_APIKEY": "7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     response = client.get("/api/foo", **headers)  # type: ignore[arg-type]
     assert response.status_code == 200
+    assert log_request_mock.call_args.kwargs["consumer"] == "key:1"
 
     # Valid API key with required scope
     headers = {"HTTP_AUTHORIZATION": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
