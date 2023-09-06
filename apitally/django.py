@@ -11,8 +11,10 @@ from django.conf import settings
 from django.core.exceptions import ViewDoesNotExist
 from django.test import RequestFactory
 from django.urls import URLPattern, URLResolver, get_resolver, resolve
+from django.utils.module_loading import import_string
 
 import apitally
+from apitally.client.base import KeyInfo
 from apitally.client.threading import ApitallyClient
 
 
@@ -31,6 +33,7 @@ class ApitallyMiddlewareConfig:
     sync_api_keys: bool
     sync_interval: float
     openapi_url: Optional[str]
+    identify_consumer_callback: Optional[Callable[[HttpRequest], Optional[str]]]
 
 
 class ApitallyMiddleware:
@@ -67,6 +70,7 @@ class ApitallyMiddleware:
         sync_api_keys: bool = False,
         sync_interval: float = 60,
         openapi_url: Optional[str] = None,
+        identify_consumer_callback: Optional[str] = None,
     ) -> None:
         cls.config = ApitallyMiddlewareConfig(
             client_id=client_id,
@@ -75,6 +79,9 @@ class ApitallyMiddleware:
             sync_api_keys=sync_api_keys,
             sync_interval=sync_interval,
             openapi_url=openapi_url,
+            identify_consumer_callback=import_string(identify_consumer_callback)
+            if identify_consumer_callback
+            else None,
         )
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
@@ -82,7 +89,9 @@ class ApitallyMiddleware:
         start_time = time.perf_counter()
         response = self.get_response(request)
         if request.method is not None and view is not None and view.is_api_view:
+            consumer = self.get_consumer(request)
             self.client.request_logger.log_request(
+                consumer=consumer,
                 method=request.method,
                 path=view.pattern,
                 status_code=response.status_code,
@@ -98,17 +107,29 @@ class ApitallyMiddleware:
                     if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
                         # Log Django Ninja / Pydantic validation errors
                         self.client.validation_error_logger.log_validation_errors(
+                            consumer=consumer,
                             method=request.method,
                             path=view.pattern,
                             detail=body["detail"],
                         )
-                except json.JSONDecodeError:
+                except json.JSONDecodeError:  # pragma: no cover
                     pass
         return response
 
     def get_view(self, request: HttpRequest) -> Optional[DjangoViewInfo]:
         resolver_match = resolve(request.path_info)
         return next((view for view in self.views if view.pattern == resolver_match.route), None)
+
+    def get_consumer(self, request: HttpRequest) -> Optional[str]:
+        if hasattr(request, "consumer_identifier"):
+            return str(request.consumer_identifier)
+        if self.config is not None and self.config.identify_consumer_callback is not None:
+            consumer_identifier = self.config.identify_consumer_callback(request)
+            if consumer_identifier is not None:
+                return str(consumer_identifier)
+        if hasattr(request, "auth") and isinstance(request.auth, KeyInfo):
+            return f"key:{request.auth.key_id}"
+        return None
 
 
 @dataclass

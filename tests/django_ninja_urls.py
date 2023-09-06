@@ -29,6 +29,7 @@ def bar(request: HttpRequest) -> str:
 
 @api.put("/baz", auth=APIKeyAuth())
 def baz(request: HttpRequest) -> str:
+    request.consumer_identifier = "baz"  # type: ignore[attr-defined]
     raise ValueError("baz")
 
 

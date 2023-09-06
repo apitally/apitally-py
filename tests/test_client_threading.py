@@ -23,24 +23,28 @@ def client() -> ApitallyClient:
 
     client = ApitallyClient(client_id=CLIENT_ID, env=ENV, sync_api_keys=True)
     client.request_logger.log_request(
+        consumer=None,
         method="GET",
         path="/test",
         status_code=200,
         response_time=0.105,
     )
     client.request_logger.log_request(
+        consumer=None,
         method="GET",
         path="/test",
         status_code=200,
         response_time=0.227,
     )
     client.request_logger.log_request(
+        consumer=None,
         method="GET",
         path="/test",
         status_code=422,
         response_time=0.02,
     )
     client.validation_error_logger.log_validation_errors(
+        consumer=None,
         method="GET",
         path="/test",
         detail=[

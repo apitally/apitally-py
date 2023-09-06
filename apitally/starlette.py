@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 import starlette
 from httpx import HTTPStatusError
@@ -47,8 +47,10 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         sync_interval: float = 60,
         openapi_url: Optional[str] = "/openapi.json",
         filter_unhandled_paths: bool = True,
+        identify_consumer_callback: Optional[Callable[[Request], Optional[str]]] = None,
     ) -> None:
         self.filter_unhandled_paths = filter_unhandled_paths
+        self.identify_consumer_callback = identify_consumer_callback
         self.client = ApitallyClient(
             client_id=client_id, env=env, sync_api_keys=sync_api_keys, sync_interval=sync_interval
         )
@@ -82,7 +84,9 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
     ) -> None:
         path_template, is_handled_path = self.get_path_template(request)
         if is_handled_path or not self.filter_unhandled_paths:
+            consumer = self.get_consumer(request)
             self.client.request_logger.log_request(
+                consumer=consumer,
                 method=request.method,
                 path=path_template,
                 status_code=status_code,
@@ -93,31 +97,29 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
                 and response is not None
                 and response.headers.get("Content-Type") == "application/json"
             ):
-                try:
-                    body = await self.get_response_json(response)
-                    if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
-                        # Log FastAPI / Pydantic validation errors
-                        self.client.validation_error_logger.log_validation_errors(
-                            method=request.method,
-                            path=path_template,
-                            detail=body["detail"],
-                        )
-                except json.JSONDecodeError:
-                    pass
+                body = await self.get_response_json(response)
+                if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
+                    # Log FastAPI / Pydantic validation errors
+                    self.client.validation_error_logger.log_validation_errors(
+                        consumer=consumer,
+                        method=request.method,
+                        path=path_template,
+                        detail=body["detail"],
+                    )
 
     @staticmethod
     async def get_response_json(response: Response) -> Any:
         if hasattr(response, "body"):
             try:
                 return json.loads(response.body)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError:  # pragma: no cover
                 return None
         elif hasattr(response, "body_iterator"):
             try:
                 response_body = [section async for section in response.body_iterator]
                 response.body_iterator = iterate_in_threadpool(iter(response_body))
                 return json.loads(b"".join(response_body))
-            except json.JSONDecodeError:
+            except json.JSONDecodeError:  # pragma: no cover
                 return None
 
     @staticmethod
@@ -127,6 +129,19 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
             if match == Match.FULL:
                 return route.path, True
         return request.url.path, False
+
+    def get_consumer(self, request: Request) -> Optional[str]:
+        if hasattr(request.state, "consumer_identifier"):
+            return str(request.state.consumer_identifier)
+        if self.identify_consumer_callback is not None:
+            consumer_identifier = self.identify_consumer_callback(request)
+            if consumer_identifier is not None:
+                return str(consumer_identifier)
+        if hasattr(request.state, "key_info") and isinstance(key_info := request.state.key_info, KeyInfo):
+            return f"key:{key_info.key_id}"
+        if "user" in request.scope and isinstance(user := request.scope["user"], APIKeyUser):
+            return f"key:{user.key_info.key_id}"
+        return None
 
 
 class APIKeyAuth(AuthenticationBackend):
@@ -201,7 +216,7 @@ def _get_routes(app: ASGIApp) -> List[BaseRoute]:
         return app.routes
     elif hasattr(app, "app"):
         return _get_routes(app.app)
-    return []
+    return []  # pragma: no cover
 
 
 def _get_versions(app_version: Optional[str]) -> Dict[str, str]:

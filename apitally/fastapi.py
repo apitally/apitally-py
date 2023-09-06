@@ -69,6 +69,8 @@ class APIKeyAuth(SecurityBase):
                 status_code=HTTP_403_FORBIDDEN,
                 detail="Permission denied",
             )
+        if key_info is not None:
+            request.state.key_info = key_info
         return key_info
 
 

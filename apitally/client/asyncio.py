@@ -66,7 +66,7 @@ class ApitallyClient(ApitallyClientBase):
         if response_data := await self._get_keys(client):  # Response data can be None if backoff gives up
             self.handle_keys_response(response_data)
         elif self.key_registry.salt is None:
-            logger.error("Initial Apitally key sync failed")
+            logger.error("Initial Apitally API key sync failed")
             # Exit because the application will not be able to authenticate requests
             sys.exit(1)
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from importlib.util import find_spec
 from typing import TYPE_CHECKING, Tuple
-from unittest.mock import MagicMock
 
 import pytest
 from pytest import FixtureRequest
@@ -16,8 +15,6 @@ if TYPE_CHECKING:
     from starlette.applications import Starlette
 
     from apitally.client.base import KeyRegistry
-
-from starlette.background import BackgroundTasks  # import here to avoid pydantic error
 
 
 CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
@@ -40,7 +37,7 @@ async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlett
 
 
 @pytest.fixture(params=["Authorization", "ApiKey"])
-def app_with_auth(request: FixtureRequest) -> Tuple[Starlette, str]:
+def app_with_auth(request: FixtureRequest, mocker: MockerFixture) -> Tuple[Starlette, str]:
     from starlette.applications import Starlette
     from starlette.authentication import requires
     from starlette.middleware.authentication import AuthenticationMiddleware
@@ -48,7 +45,9 @@ def app_with_auth(request: FixtureRequest) -> Tuple[Starlette, str]:
     from starlette.responses import JSONResponse, PlainTextResponse
     from starlette.routing import Route
 
-    from apitally.starlette import APIKeyAuth
+    from apitally.starlette import APIKeyAuth, ApitallyMiddleware
+
+    mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
 
     @requires(["authenticated", "foo"])
     def foo(request: Request):
@@ -61,6 +60,7 @@ def app_with_auth(request: FixtureRequest) -> Tuple[Starlette, str]:
 
     @requires("authenticated")
     def baz(request: Request):
+        request.state.consumer_identifier = "baz"
         return JSONResponse(
             {
                 "key_id": int(request.user.identity),
@@ -80,25 +80,23 @@ def app_with_auth(request: FixtureRequest) -> Tuple[Starlette, str]:
         AuthenticationMiddleware,
         backend=APIKeyAuth() if api_key_header == "Authorization" else APIKeyAuth(custom_header=api_key_header),
     )
+    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV)
     return (app, api_key_header)
 
 
 def get_starlette_app() -> Starlette:
     from starlette.applications import Starlette
-    from starlette.background import BackgroundTask, BackgroundTasks
     from starlette.requests import Request
     from starlette.responses import PlainTextResponse
     from starlette.routing import Route
 
     from apitally.starlette import ApitallyMiddleware
 
-    background_task_mock = MagicMock()
-
     def foo(request: Request):
-        return PlainTextResponse("foo", background=BackgroundTasks([BackgroundTask(background_task_mock)]))
+        return PlainTextResponse("foo")
 
     def foo_bar(request: Request):
-        return PlainTextResponse(f"foo: {request.path_params['bar']}", background=BackgroundTask(background_task_mock))
+        return PlainTextResponse(f"foo: {request.path_params['bar']}")
 
     def bar(request: Request):
         return PlainTextResponse("bar")
@@ -118,7 +116,6 @@ def get_starlette_app() -> Starlette:
     ]
     app = Starlette(routes=routes)
     app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV)
-    app.state.background_task_mock = background_task_mock
     return app
 
 
@@ -127,20 +124,15 @@ def get_fastapi_app() -> Starlette:
 
     from apitally.fastapi import ApitallyMiddleware
 
-    background_task_mock = MagicMock()
-
     app = FastAPI(title="Test App", description="A simple test app.", version="1.2.3")
     app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV)
-    app.state.background_task_mock = background_task_mock
 
     @app.get("/foo/")
-    def foo(background_tasks: BackgroundTasks):
-        background_tasks.add_task(background_task_mock)
+    def foo():
         return "foo"
 
     @app.get("/foo/{bar}/")
-    def foo_bar(bar: str, background_tasks: BackgroundTasks):
-        background_tasks.add_task(background_task_mock)
+    def foo_bar(bar: str):
         return f"foo: {bar}"
 
     @app.post("/bar/")
@@ -163,11 +155,9 @@ def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
 
     mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
     client = TestClient(app)
-    background_task_mock: MagicMock = app.state.background_task_mock  # type: ignore[attr-defined]
 
     response = client.get("/foo/")
     assert response.status_code == 200
-    background_task_mock.assert_called_once()
     mock.assert_called_once()
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "GET"
@@ -177,7 +167,6 @@ def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
 
     response = client.get("/foo/123/")
     assert response.status_code == 200
-    assert background_task_mock.call_count == 2
     assert mock.call_count == 2
     assert mock.call_args is not None
     assert mock.call_args.kwargs["path"] == "/foo/{bar}/"
@@ -222,6 +211,7 @@ def test_middleware_validation_error(app: Starlette, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.ValidationErrorLogger.log_validation_errors")
     client = TestClient(app)
 
+    # Validation error as foo must be an integer
     response = client.get("/val?foo=bar")
     assert response.status_code == 422
 
@@ -248,8 +238,9 @@ def test_api_key_auth(app_with_auth: Tuple[Starlette, str], key_registry: KeyReg
     headers_invalid = (
         {"Authorization": "ApiKey invalid"} if api_key_header == "Authorization" else {api_key_header: "invalid"}
     )
-    mock = mocker.patch("apitally.starlette.ApitallyClient.get_instance")
-    mock.return_value.key_registry = key_registry
+    client_get_instance_mock = mocker.patch("apitally.starlette.ApitallyClient.get_instance")
+    client_get_instance_mock.return_value.key_registry = key_registry
+    log_request_mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
 
     # Unauthenticated
     response = client.get("/foo")
@@ -258,21 +249,27 @@ def test_api_key_auth(app_with_auth: Tuple[Starlette, str], key_registry: KeyReg
     response = client.get("/baz")
     assert response.status_code == 403
 
+    # Invalid auth scheme
+    response = client.get("/foo", headers={"Authorization": "Bearer invalid"})
+    assert response.status_code == 403
+
     # Invalid API key
     response = client.get("/foo", headers=headers_invalid)
     assert response.status_code == 400
 
-    # Valid API key with required scope
+    # Valid API key with required scope, consumer identified by API key
     response = client.get("/foo", headers=headers)
     assert response.status_code == 200
+    assert log_request_mock.call_args.kwargs["consumer"] == "key:1"
 
-    # Valid API key, no scope required
+    # Valid API key, no scope required, consumer identifier from request.state object
     response = client.get("/baz", headers=headers)
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["key_id"] == 1
     assert response_data["key_name"] == "Test key"
     assert response_data["key_scopes"] == ["authenticated", "foo"]
+    assert log_request_mock.call_args.kwargs["consumer"] == "baz"
 
     # Valid API key without required scope
     response = client.get("/bar", headers=headers)

@@ -94,6 +94,7 @@ class ApitallyClientBase:
 
 @dataclass(frozen=True)
 class RequestInfo:
+    consumer: Optional[str]
     method: str
     path: str
     status_code: int
@@ -105,8 +106,15 @@ class RequestLogger:
         self.response_times: Dict[RequestInfo, Counter[int]] = {}
         self._lock = threading.Lock()
 
-    def log_request(self, method: str, path: str, status_code: int, response_time: float) -> None:
-        request_info = RequestInfo(method=method.upper(), path=path, status_code=status_code)
+    def log_request(
+        self, consumer: Optional[str], method: str, path: str, status_code: int, response_time: float
+    ) -> None:
+        request_info = RequestInfo(
+            consumer=consumer,
+            method=method.upper(),
+            path=path,
+            status_code=status_code,
+        )
         response_time_ms_bin = int(floor(response_time / 0.01) * 10)  # In ms, rounded down to nearest 10ms
         with self._lock:
             self.request_counts[request_info] += 1
@@ -118,6 +126,7 @@ class RequestLogger:
             for request_info, count in self.request_counts.items():
                 data.append(
                     {
+                        "consumer": request_info.consumer,
                         "method": request_info.method,
                         "path": request_info.path,
                         "status_code": request_info.status_code,
@@ -132,6 +141,7 @@ class RequestLogger:
 
 @dataclass(frozen=True)
 class ValidationError:
+    consumer: Optional[str]
     method: str
     path: str
     loc: Tuple[str, ...]
@@ -144,11 +154,14 @@ class ValidationErrorLogger:
         self.error_counts: Counter[ValidationError] = Counter()
         self._lock = threading.Lock()
 
-    def log_validation_errors(self, method: str, path: str, detail: List[Dict[str, Any]]) -> None:
+    def log_validation_errors(
+        self, consumer: Optional[str], method: str, path: str, detail: List[Dict[str, Any]]
+    ) -> None:
         with self._lock:
             for error in detail:
                 try:
                     validation_error = ValidationError(
+                        consumer=consumer,
                         method=method.upper(),
                         path=path,
                         loc=tuple(str(loc) for loc in error["loc"]),
@@ -165,6 +178,7 @@ class ValidationErrorLogger:
             for validation_error, count in self.error_counts.items():
                 data.append(
                     {
+                        "consumer": validation_error.consumer,
                         "method": validation_error.method,
                         "path": validation_error.path,
                         "loc": validation_error.loc,
