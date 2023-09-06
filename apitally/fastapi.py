@@ -70,7 +70,7 @@ class APIKeyAuth(SecurityBase):
                 detail="Permission denied",
             )
         if key_info is not None:
-            request.state.consumer_identifier = f"key:{key_info.key_id}"
+            request.state.key_info = key_info
         return key_info
 
 

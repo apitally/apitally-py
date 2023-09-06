@@ -60,6 +60,7 @@ def app_with_auth(request: FixtureRequest, mocker: MockerFixture) -> Tuple[Starl
 
     @requires("authenticated")
     def baz(request: Request):
+        request.state.consumer_identifier = "baz"
         return JSONResponse(
             {
                 "key_id": int(request.user.identity),
@@ -210,6 +211,7 @@ def test_middleware_validation_error(app: Starlette, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.ValidationErrorLogger.log_validation_errors")
     client = TestClient(app)
 
+    # Validation error as foo must be an integer
     response = client.get("/val?foo=bar")
     assert response.status_code == 422
 
@@ -247,22 +249,27 @@ def test_api_key_auth(app_with_auth: Tuple[Starlette, str], key_registry: KeyReg
     response = client.get("/baz")
     assert response.status_code == 403
 
+    # Invalid auth scheme
+    response = client.get("/foo", headers={"Authorization": "Bearer invalid"})
+    assert response.status_code == 403
+
     # Invalid API key
     response = client.get("/foo", headers=headers_invalid)
     assert response.status_code == 400
 
-    # Valid API key with required scope
+    # Valid API key with required scope, consumer identified by API key
     response = client.get("/foo", headers=headers)
     assert response.status_code == 200
     assert log_request_mock.call_args.kwargs["consumer"] == "key:1"
 
-    # Valid API key, no scope required
+    # Valid API key, no scope required, consumer identifier from request.state object
     response = client.get("/baz", headers=headers)
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["key_id"] == 1
     assert response_data["key_name"] == "Test key"
     assert response_data["key_scopes"] == ["authenticated", "foo"]
+    assert log_request_mock.call_args.kwargs["consumer"] == "baz"
 
     # Valid API key without required scope
     response = client.get("/bar", headers=headers)

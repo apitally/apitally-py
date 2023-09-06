@@ -69,7 +69,7 @@ def _get_api(views: List[DjangoViewInfo]) -> NinjaAPI:
         return next(
             (view.func.__self__.api for view in views if view.is_ninja_path_view and hasattr(view.func, "__self__"))
         )
-    except StopIteration:
+    except StopIteration:  # pragma: no cover
         raise RuntimeError("Could not find NinjaAPI instance")
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from importlib.util import find_spec
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import pytest
 from pytest_mock import MockerFixture
@@ -15,7 +15,13 @@ if TYPE_CHECKING:
 
     from apitally.client.base import KeyRegistry
 
-from apitally.client.base import KeyInfo  # import here to avoid pydantic error
+# Global imports to avoid NameErrors during FastAPI dependency injection
+try:
+    from fastapi import Request
+
+    from apitally.client.base import KeyInfo
+except ImportError:
+    pass
 
 
 CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
@@ -30,8 +36,13 @@ def app(mocker: MockerFixture) -> FastAPI:
 
     mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
 
+    def identify_consumer(request: Request) -> Optional[str]:
+        if consumer := request.query_params.get("consumer"):
+            return consumer
+        return None
+
     app = FastAPI()
-    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV)
+    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV, identify_consumer_func=identify_consumer)
     api_key_auth_custom = APIKeyAuth(custom_header="ApiKey")
 
     @app.get("/foo/")
@@ -43,7 +54,8 @@ def app(mocker: MockerFixture) -> FastAPI:
         return "bar"
 
     @app.get("/baz/", dependencies=[Depends(api_key_auth_custom)])
-    def baz():
+    def baz(request: Request):
+        request.state.consumer_identifier = "baz"
         return "baz"
 
     return app
@@ -79,14 +91,20 @@ def test_api_key_auth(app: FastAPI, key_registry: KeyRegistry, mocker: MockerFix
     response = client.get("/baz", headers={"ApiKey": "invalid"})
     assert response.status_code == 403
 
-    # Valid API key with required scope
+    # Valid API key with required scope, consumer identified by API key
     response = client.get("/foo", headers=headers)
     assert response.status_code == 200
     assert log_request_mock.call_args.kwargs["consumer"] == "key:1"
 
-    # Valid API key, no scope required, custom header
+    # Valid API key with required scope, identify consumer with custom function
+    response = client.get("/foo?consumer=foo", headers=headers)
+    assert response.status_code == 200
+    assert log_request_mock.call_args.kwargs["consumer"] == "foo"
+
+    # Valid API key, no scope required, custom header, consumer identifier from request.state object
     response = client.get("/baz", headers=headers_custom)
     assert response.status_code == 200
+    assert log_request_mock.call_args.kwargs["consumer"] == "baz"
 
     # Valid API key without required scope
     response = client.get("/bar", headers=headers)

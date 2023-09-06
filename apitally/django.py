@@ -119,12 +119,12 @@ class ApitallyMiddleware:
         return next((view for view in self.views if view.pattern == resolver_match.route), None)
 
     def get_consumer(self, request: HttpRequest) -> Optional[str]:
+        if hasattr(request, "consumer_identifier"):
+            return str(request.consumer_identifier)
         if self.config is not None and self.config.identify_consumer_func is not None:
             consumer_identifier = self.config.identify_consumer_func(request)
             if consumer_identifier is not None:
                 return str(consumer_identifier)
-        if hasattr(request, "consumer_identifier"):
-            return str(request.consumer_identifier)
         if hasattr(request, "auth") and isinstance(request.auth, KeyInfo):
             return f"key:{request.auth.key_id}"
         return None

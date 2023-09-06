@@ -34,15 +34,15 @@ def app(module_mocker: MockerFixture) -> Flask:
     app = Flask("test")
     app.wsgi_app = ApitallyMiddleware(app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]
 
-    @app.route("/foo/<bar>/")
+    @app.route("/foo/<bar>")
     def foo_bar(bar: int):
         return f"foo: {bar}"
 
-    @app.route("/bar/", methods=["POST"])
+    @app.route("/bar", methods=["POST"])
     def bar():
         return "bar"
 
-    @app.route("/baz/", methods=["PUT"])
+    @app.route("/baz", methods=["PUT"])
     def baz():
         raise ValueError("baz")
 
@@ -51,7 +51,7 @@ def app(module_mocker: MockerFixture) -> Flask:
 
 @pytest.fixture(scope="module")
 def app_with_auth(module_mocker: MockerFixture) -> Flask:
-    from flask import Flask
+    from flask import Flask, g, request
 
     from apitally.flask import ApitallyMiddleware, require_api_key
 
@@ -63,19 +63,25 @@ def app_with_auth(module_mocker: MockerFixture) -> Flask:
     app = Flask("test")
     app.wsgi_app = ApitallyMiddleware(app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]
 
-    @app.route("/foo/")
+    @app.before_request
+    def identify_consumer():
+        if consumer := request.args.get("consumer"):
+            g.consumer_identifier = consumer
+
+    @app.route("/foo")
     @require_api_key(scopes=["foo"])
     def foo():
         return "foo"
 
-    @app.route("/bar/")
+    @app.route("/bar")
     @require_api_key(custom_header="ApiKey", scopes=["bar"])
     def bar():
         return "bar"
 
-    @app.route("/baz/")
+    @app.route("/baz")
     @require_api_key
     def baz():
+        g.consumer_identifier = "baz"
         return "baz"
 
     return app
@@ -85,16 +91,16 @@ def test_middleware_requests_ok(app: Flask, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
     client = app.test_client()
 
-    response = client.get("/foo/123/")
+    response = client.get("/foo/123")
     assert response.status_code == 200
     mock.assert_called_once()
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "GET"
-    assert mock.call_args.kwargs["path"] == "/foo/<bar>/"
+    assert mock.call_args.kwargs["path"] == "/foo/<bar>"
     assert mock.call_args.kwargs["status_code"] == 200
     assert mock.call_args.kwargs["response_time"] > 0
 
-    response = client.post("/bar/")
+    response = client.post("/bar")
     assert response.status_code == 200
     assert mock.call_count == 2
     assert mock.call_args is not None
@@ -105,12 +111,12 @@ def test_middleware_requests_error(app: Flask, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
     client = app.test_client()
 
-    response = client.put("/baz/")
+    response = client.put("/baz")
     assert response.status_code == 500
     mock.assert_called_once()
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "PUT"
-    assert mock.call_args.kwargs["path"] == "/baz/"
+    assert mock.call_args.kwargs["path"] == "/baz"
     assert mock.call_args.kwargs["status_code"] == 500
     assert mock.call_args.kwargs["response_time"] > 0
 
@@ -119,7 +125,7 @@ def test_middleware_requests_unhandled(app: Flask, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
     client = app.test_client()
 
-    response = client.post("/xxx/")
+    response = client.post("/xxx")
     assert response.status_code == 404
     mock.assert_not_called()
 
@@ -133,35 +139,41 @@ def test_require_api_key(app_with_auth: Flask, key_registry: KeyRegistry, mocker
     log_request_mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
 
     # Unauthenticated
-    response = client.get("/foo/")
+    response = client.get("/foo")
     assert response.status_code == 401
 
-    response = client.get("/baz/")
+    response = client.get("/baz")
     assert response.status_code == 401
 
     # Invalid auth scheme
-    response = client.get("/foo/", headers={"Authorization": "Bearer invalid"})
+    response = client.get("/foo", headers={"Authorization": "Bearer invalid"})
     assert response.status_code == 401
 
     # Invalid API key
-    response = client.get("/foo/", headers={"Authorization": "ApiKey invalid"})
+    response = client.get("/foo", headers={"Authorization": "ApiKey invalid"})
     assert response.status_code == 403
 
     # Invalid API key, custom header
-    response = client.get("/bar/", headers={"ApiKey": "invalid"})
+    response = client.get("/bar", headers={"ApiKey": "invalid"})
     assert response.status_code == 403
 
     # Valid API key with required scope
-    response = client.get("/foo/", headers=headers)
+    response = client.get("/foo", headers=headers)
     assert response.status_code == 200
     assert log_request_mock.call_args.kwargs["consumer"] == "key:1"
 
-    # Valid API key, no scope required
-    response = client.get("/baz/", headers=headers)
+    # Valid API key with required scope, identify consumer with custom function
+    response = client.get("/foo?consumer=foo", headers=headers)
     assert response.status_code == 200
+    assert log_request_mock.call_args.kwargs["consumer"] == "foo"
+
+    # Valid API key, no scope required
+    response = client.get("/baz", headers=headers)
+    assert response.status_code == 200
+    assert log_request_mock.call_args.kwargs["consumer"] == "baz"
 
     # Valid API key without required scope, custom header
-    response = client.get("/bar/", headers=headers_custom)
+    response = client.get("/bar", headers=headers_custom)
     assert response.status_code == 403
 
 

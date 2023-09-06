@@ -4,7 +4,7 @@ import sys
 import time
 from functools import wraps
 from threading import Timer
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 
 import flask
 from flask import Flask, g, make_response, request
@@ -35,12 +35,10 @@ class ApitallyMiddleware:
         sync_interval: float = 60,
         openapi_url: Optional[str] = None,
         filter_unhandled_paths: bool = True,
-        identify_consumer_func: Optional[Callable[[], Optional[str]]] = None,
     ) -> None:
         self.app = app
         self.wsgi_app = app.wsgi_app
         self.filter_unhandled_paths = filter_unhandled_paths
-        self.identify_consumer_func = identify_consumer_func
         self.client = ApitallyClient(
             client_id=client_id, env=env, sync_api_keys=sync_api_keys, sync_interval=sync_interval
         )
@@ -93,10 +91,6 @@ class ApitallyMiddleware:
             return environ["PATH_INFO"], False
 
     def get_consumer(self) -> Optional[str]:
-        if self.identify_consumer_func is not None:
-            consumer_identifier = self.identify_consumer_func()
-            if consumer_identifier is not None:
-                return str(consumer_identifier)
         if "consumer_identifier" in g:
             return str(g.consumer_identifier)
         if "key_info" in g and isinstance(g.key_info, KeyInfo):
