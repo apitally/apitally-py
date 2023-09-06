@@ -28,13 +28,15 @@ CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
 ENV = "default"
 
 
-@pytest.fixture()
-def app(mocker: MockerFixture) -> FastAPI:
+@pytest.fixture(scope="module")
+def app(module_mocker: MockerFixture) -> FastAPI:
     from fastapi import Depends, FastAPI, Security
 
     from apitally.fastapi import APIKeyAuth, ApitallyMiddleware, api_key_auth
 
-    mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
+    module_mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
+    module_mocker.patch("apitally.client.asyncio.ApitallyClient.start_sync_loop")
+    module_mocker.patch("apitally.client.asyncio.ApitallyClient.send_app_info")
 
     def identify_consumer(request: Request) -> Optional[str]:
         if consumer := request.query_params.get("consumer"):
