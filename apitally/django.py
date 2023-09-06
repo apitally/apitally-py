@@ -33,7 +33,7 @@ class ApitallyMiddlewareConfig:
     sync_api_keys: bool
     sync_interval: float
     openapi_url: Optional[str]
-    identify_consumer_func: Optional[Callable[[HttpRequest], Optional[str]]]
+    identify_consumer_callback: Optional[Callable[[HttpRequest], Optional[str]]]
 
 
 class ApitallyMiddleware:
@@ -70,7 +70,7 @@ class ApitallyMiddleware:
         sync_api_keys: bool = False,
         sync_interval: float = 60,
         openapi_url: Optional[str] = None,
-        identify_consumer_func: Optional[str] = None,
+        identify_consumer_callback: Optional[str] = None,
     ) -> None:
         cls.config = ApitallyMiddlewareConfig(
             client_id=client_id,
@@ -79,7 +79,9 @@ class ApitallyMiddleware:
             sync_api_keys=sync_api_keys,
             sync_interval=sync_interval,
             openapi_url=openapi_url,
-            identify_consumer_func=import_string(identify_consumer_func) if identify_consumer_func else None,
+            identify_consumer_callback=import_string(identify_consumer_callback)
+            if identify_consumer_callback
+            else None,
         )
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
@@ -121,8 +123,8 @@ class ApitallyMiddleware:
     def get_consumer(self, request: HttpRequest) -> Optional[str]:
         if hasattr(request, "consumer_identifier"):
             return str(request.consumer_identifier)
-        if self.config is not None and self.config.identify_consumer_func is not None:
-            consumer_identifier = self.config.identify_consumer_func(request)
+        if self.config is not None and self.config.identify_consumer_callback is not None:
+            consumer_identifier = self.config.identify_consumer_callback(request)
             if consumer_identifier is not None:
                 return str(consumer_identifier)
         if hasattr(request, "auth") and isinstance(request.auth, KeyInfo):

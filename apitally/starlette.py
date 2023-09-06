@@ -47,10 +47,10 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         sync_interval: float = 60,
         openapi_url: Optional[str] = "/openapi.json",
         filter_unhandled_paths: bool = True,
-        identify_consumer_func: Optional[Callable[[Request], Optional[str]]] = None,
+        identify_consumer_callback: Optional[Callable[[Request], Optional[str]]] = None,
     ) -> None:
         self.filter_unhandled_paths = filter_unhandled_paths
-        self.identify_consumer_func = identify_consumer_func
+        self.identify_consumer_callback = identify_consumer_callback
         self.client = ApitallyClient(
             client_id=client_id, env=env, sync_api_keys=sync_api_keys, sync_interval=sync_interval
         )
@@ -133,8 +133,8 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
     def get_consumer(self, request: Request) -> Optional[str]:
         if hasattr(request.state, "consumer_identifier"):
             return str(request.state.consumer_identifier)
-        if self.identify_consumer_func is not None:
-            consumer_identifier = self.identify_consumer_func(request)
+        if self.identify_consumer_callback is not None:
+            consumer_identifier = self.identify_consumer_callback(request)
             if consumer_identifier is not None:
                 return str(consumer_identifier)
         if hasattr(request.state, "key_info") and isinstance(key_info := request.state.key_info, KeyInfo):

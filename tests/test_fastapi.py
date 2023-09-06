@@ -44,7 +44,7 @@ def app(module_mocker: MockerFixture) -> FastAPI:
         return None
 
     app = FastAPI()
-    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV, identify_consumer_func=identify_consumer)
+    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV, identify_consumer_callback=identify_consumer)
     api_key_auth_custom = APIKeyAuth(custom_header="ApiKey")
 
     @app.get("/foo/")
