@@ -117,7 +117,7 @@ def require_api_key(func=None, *, scopes: Optional[List[str]] = None, custom_hea
             key_info = ApitallyClient.get_instance().key_registry.get(api_key)
             if key_info is None:
                 return make_response("Invalid API key", 403)
-            if scopes is not None and not key_info.check_scopes(scopes):
+            if scopes is not None and not key_info.has_scopes(scopes):
                 return make_response("Permission denied", 403)
             g.key_info = key_info
             return func(*args, **kwargs)

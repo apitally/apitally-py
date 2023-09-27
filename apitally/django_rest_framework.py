@@ -35,7 +35,7 @@ class HasAPIKey(BasePermission):  # type: ignore[misc]
         key_info = ApitallyClient.get_instance().key_registry.get(api_key)
         if key_info is None:
             return False
-        if self.required_scopes and not key_info.check_scopes(self.required_scopes):
+        if self.required_scopes and not key_info.has_scopes(self.required_scopes):
             return False
         request.auth = key_info
         return True

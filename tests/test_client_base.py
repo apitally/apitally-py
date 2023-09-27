@@ -111,7 +111,7 @@ def test_key_registry():
     assert key.key_id == 1
     assert key.name == "Test key 1"
     assert key.expires_at is not None
-    assert key.check_scopes(["test"])
+    assert key.has_scopes(["test"])
 
     # Key with hash ba05534cd4af03497416ef9db0a149a1234a4ded7d37a8bc3cde43f3ed56484a is expired
     key = keys.get("We6Yr7Z.fzj8t8TuYcTB9uOnpc2P7l4qlysIlT8q")

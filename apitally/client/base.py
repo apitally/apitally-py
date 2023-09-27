@@ -203,7 +203,7 @@ class KeyInfo:
     def is_expired(self) -> bool:
         return self.expires_at is not None and self.expires_at < datetime.now()
 
-    def check_scopes(self, scopes: Union[List[str], str]) -> bool:
+    def has_scopes(self, scopes: Union[List[str], str]) -> bool:
         if isinstance(scopes, str):
             scopes = [scopes]
         if not isinstance(scopes, list):

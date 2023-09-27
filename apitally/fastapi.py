@@ -64,7 +64,7 @@ class APIKeyAuth(SecurityBase):
                 status_code=HTTP_403_FORBIDDEN,
                 detail="Invalid API key",
             )
-        if key_info is not None and self.auto_error and not key_info.check_scopes(security_scopes.scopes):
+        if key_info is not None and self.auto_error and not key_info.has_scopes(security_scopes.scopes):
             raise HTTPException(
                 status_code=HTTP_403_FORBIDDEN,
                 detail="Permission denied",

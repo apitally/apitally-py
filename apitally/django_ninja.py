@@ -54,7 +54,7 @@ class APIKeyAuthBase(APIKeyHeader):
         key_info = ApitallyClient.get_instance().key_registry.get(api_key)
         if key_info is None:
             raise InvalidAPIKey()
-        if not key_info.check_scopes(self.scopes):
+        if not key_info.has_scopes(self.scopes):
             raise PermissionDenied()
         return key_info
 
