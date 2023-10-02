@@ -5,8 +5,11 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       - name: Install and configure Poetry
         uses: snok/install-poetry@v1
         with:
