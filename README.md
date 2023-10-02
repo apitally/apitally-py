@@ -1,7 +1,7 @@
 # Apitally client for Python
 
-[![Tests](https://github.com/apitally/apitally-python/actions/workflows/tests.yaml/badge.svg?event=push)](https://github.com/apitally/apitally-python/actions)
-[![Codecov](https://codecov.io/gh/apitally/apitally-python/branch/main/graph/badge.svg?token=UNLYBY4Y3V)](https://codecov.io/gh/apitally/apitally-python)
+[![Tests](https://github.com/apitally/python-client/actions/workflows/tests.yaml/badge.svg?event=push)](https://github.com/apitally/python-client/actions)
+[![Codecov](https://codecov.io/gh/apitally/python-client/graph/badge.svg?token=UNLYBY4Y3V)](https://codecov.io/gh/apitally/python-client)
 [![PyPI](https://img.shields.io/pypi/v/apitally?logo=pypi&logoColor=white&color=%23006dad)](https://pypi.org/project/apitally/)
 
 Apitally client library for Python.
