@@ -6,10 +6,18 @@ build-backend = "poetry_dynamic_versioning.backend"
 name = "apitally"
 version = "0.0.0"
 description = "Apitally client library for Python"
-authors = ["Simon Gurcke <simon@gurcke.de>"]
-license = "MIT License"
-repository = "https://github.com/apitally/apitally-python"
 readme = "README.md"
+authors = ["Apitally <hello@apitally.io>"]
+license = "MIT License"
+homepage = "https://docs.apitally.io"
+documentation = "https://docs.apitally.io"
+repository = "https://github.com/apitally/python-client"
+classifiers = [
+    "Framework :: FastAPI",
+    "Framework :: Django",
+    "Framework :: Flask",
+    "Intended Audience :: Developers",
+]
 
 [tool.poetry.dependencies]
 backoff = ">=2.0.0"
