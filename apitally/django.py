@@ -4,16 +4,15 @@ import json
 import sys
 import time
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-import django
 from django.conf import settings
 from django.core.exceptions import ViewDoesNotExist
 from django.test import RequestFactory
 from django.urls import URLPattern, URLResolver, get_resolver, resolve
 from django.utils.module_loading import import_string
 
-import apitally
 from apitally.client.base import KeyInfo
 from apitally.client.threading import ApitallyClient
 
@@ -263,20 +262,16 @@ def _extract_views_from_url_patterns(
 def _get_versions(app_version: Optional[str]) -> Dict[str, str]:
     versions = {
         "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "apitally": apitally.__version__,
-        "django": django.__version__,
+        "apitally": version("apitally"),
+        "django": version("django"),
     }
     try:
-        import rest_framework
-
-        versions["django-rest-framework"] = rest_framework.__version__  # type: ignore[attr-defined]
-    except (ImportError, AttributeError):  # pragma: no cover
+        versions["django-rest-framework"] = version("django-rest-framework")
+    except PackageNotFoundError:  # pragma: no cover
         pass
     try:
-        import ninja
-
-        versions["django-ninja"] = ninja.__version__
-    except (ImportError, AttributeError):  # pragma: no cover
+        versions["django-ninja"] = version("django-ninja")
+    except PackageNotFoundError:  # pragma: no cover
         pass
     if app_version:
         versions["app"] = app_version

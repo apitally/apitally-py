@@ -4,9 +4,9 @@ import asyncio
 import json
 import sys
 import time
+from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-import starlette
 from httpx import HTTPStatusError
 from starlette.authentication import (
     AuthCredentials,
@@ -23,7 +23,6 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 from starlette.testclient import TestClient
 from starlette.types import ASGIApp
 
-import apitally
 from apitally.client.asyncio import ApitallyClient
 from apitally.client.base import KeyInfo
 
@@ -230,14 +229,12 @@ def _get_routes(app: ASGIApp) -> List[BaseRoute]:
 def _get_versions(app_version: Optional[str]) -> Dict[str, str]:
     versions = {
         "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "apitally": apitally.__version__,
-        "starlette": starlette.__version__,
+        "apitally": version("apitally"),
+        "starlette": version("starlette"),
     }
     try:
-        import fastapi
-
-        versions["fastapi"] = fastapi.__version__
-    except (ImportError, AttributeError):  # pragma: no cover
+        versions["fastapi"] = version("fastapi")
+    except PackageNotFoundError:  # pragma: no cover
         pass
     if app_version:
         versions["app"] = app_version

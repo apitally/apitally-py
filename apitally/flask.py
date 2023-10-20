@@ -3,15 +3,14 @@ from __future__ import annotations
 import sys
 import time
 from functools import wraps
+from importlib.metadata import version
 from threading import Timer
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 
-import flask
 from flask import Flask, g, make_response, request
 from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
 
-import apitally
 from apitally.client.base import KeyInfo
 from apitally.client.threading import ApitallyClient
 
@@ -160,8 +159,8 @@ def _get_openapi(app: WSGIApplication, openapi_url: str) -> Optional[str]:
 def _get_versions(app_version: Optional[str]) -> Dict[str, str]:
     versions = {
         "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "apitally": apitally.__version__,
-        "flask": flask.__version__,
+        "apitally": version("apitally"),
+        "flask": version("flask"),
     }
     if app_version:
         versions["app"] = app_version
