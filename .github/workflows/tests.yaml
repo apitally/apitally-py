@@ -56,7 +56,7 @@ jobs:
           - starlette
           - fastapi starlette
           - fastapi==0.100.1 starlette
-          - fastapi==0.87.0 starlette
+          - fastapi==0.87.0 starlette anyio==3.*
           - flask
           - flask==2.3.*
           - flask==2.0.3 Werkzeug==2.*
