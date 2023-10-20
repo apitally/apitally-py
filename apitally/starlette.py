@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import time
@@ -54,9 +55,16 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         self.client = ApitallyClient(
             client_id=client_id, env=env, sync_api_keys=sync_api_keys, sync_interval=sync_interval
         )
-        self.client.send_app_info(app_info=_get_app_info(app, app_version, openapi_url))
         self.client.start_sync_loop()
         super().__init__(app)
+
+        # Get and send app info after a short delay to allow app routes to be registered first
+        asyncio.create_task(self.delayed_send_app_info(app_version, openapi_url))
+
+    async def delayed_send_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
+        await asyncio.sleep(1.0)
+        app_info = _get_app_info(self.app, app_version, openapi_url)
+        self.client.send_app_info(app_info=app_info)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         try:
@@ -187,7 +195,7 @@ def _get_app_info(app: ASGIApp, app_version: Optional[str] = None, openapi_url: 
     app_info: Dict[str, Any] = {}
     if openapi_url and (openapi := _get_openapi(app, openapi_url)):
         app_info["openapi"] = openapi
-    elif endpoints := _get_endpoint_info(app):
+    if endpoints := _get_endpoint_info(app):
         app_info["paths"] = [{"path": endpoint.path, "method": endpoint.http_method} for endpoint in endpoints]
     app_info["versions"] = _get_versions(app_version)
     app_info["client"] = "apitally-python"
