@@ -42,12 +42,14 @@ class ApitallyMiddleware:
             client_id=client_id, env=env, sync_api_keys=sync_api_keys, sync_interval=sync_interval
         )
         self.client.start_sync_loop()
-
-        # Get and send app info after a short delay to allow app routes to be registered first
-        timer = Timer(1.0, self.delayed_send_app_info, kwargs={"app_version": app_version, "openapi_url": openapi_url})
-        timer.start()
+        self.delayed_send_app_info(app_version, openapi_url)
 
     def delayed_send_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
+        # Short delay to allow app routes to be registered first
+        timer = Timer(1.0, self._delayed_send_app_info, kwargs={"app_version": app_version, "openapi_url": openapi_url})
+        timer.start()
+
+    def _delayed_send_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         app_info = _get_app_info(self.app, app_version, openapi_url)
         self.client.send_app_info(app_info=app_info)
 

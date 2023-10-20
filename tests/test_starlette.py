@@ -30,7 +30,6 @@ async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlett
     module_mocker.patch("apitally.client.asyncio.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.asyncio.ApitallyClient.send_app_info")
     module_mocker.patch("apitally.starlette.ApitallyMiddleware.delayed_send_app_info")
-    module_mocker.patch("apitally.starlette.asyncio.create_task")
     if request.param == "starlette":
         return get_starlette_app()
     elif request.param == "fastapi":
