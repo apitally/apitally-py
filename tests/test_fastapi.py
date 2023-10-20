@@ -37,6 +37,8 @@ def app(module_mocker: MockerFixture) -> FastAPI:
     module_mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.asyncio.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.asyncio.ApitallyClient.send_app_info")
+    module_mocker.patch("apitally.starlette.ApitallyMiddleware.delayed_send_app_info")
+    module_mocker.patch("apitally.starlette.asyncio.create_task")
 
     def identify_consumer(request: Request) -> Optional[str]:
         if consumer := request.query_params.get("consumer"):
@@ -111,3 +113,11 @@ def test_api_key_auth(app: FastAPI, key_registry: KeyRegistry, mocker: MockerFix
     # Valid API key without required scope
     response = client.get("/bar", headers=headers)
     assert response.status_code == 403
+
+
+def test_get_openapi(app: FastAPI):
+    from apitally.starlette import _get_openapi
+
+    openapi = _get_openapi(app, "/openapi.json")
+    assert openapi is not None
+    assert len(openapi) > 0

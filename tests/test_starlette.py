@@ -29,6 +29,8 @@ async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlett
     module_mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.asyncio.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.asyncio.ApitallyClient.send_app_info")
+    module_mocker.patch("apitally.starlette.ApitallyMiddleware.delayed_send_app_info")
+    module_mocker.patch("apitally.starlette.asyncio.create_task")
     if request.param == "starlette":
         return get_starlette_app()
     elif request.param == "fastapi":
@@ -282,9 +284,6 @@ def test_get_app_info(app: Starlette, mocker: MockerFixture):
     mocker.patch("apitally.starlette.ApitallyClient")
     if app.middleware_stack is None:
         app.middleware_stack = app.build_middleware_stack()
-
-    app_info = _get_app_info(app=app.middleware_stack, app_version=None, openapi_url="/openapi.json")
-    assert ("paths" in app_info) != ("openapi" in app_info)  # only one, not both
 
     app_info = _get_app_info(app=app.middleware_stack, app_version="1.2.3", openapi_url=None)
     assert len(app_info["paths"]) == 5
