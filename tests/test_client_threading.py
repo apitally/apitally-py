@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from typing import TYPE_CHECKING
 
@@ -19,9 +20,24 @@ ENV = "default"
 
 @pytest.fixture(scope="module")
 def client() -> ApitallyClient:
+    from apitally.client.base import ApitallyKeyCacheBase
     from apitally.client.threading import ApitallyClient
 
-    client = ApitallyClient(client_id=CLIENT_ID, env=ENV, sync_api_keys=True)
+    class ApitallyKeyCache(ApitallyKeyCacheBase):
+        cache: dict[str, str] = {}
+
+        def store(self, data: str) -> None:
+            self.cache[self.cache_key] = data
+
+        def retrieve(self) -> str | None:
+            return self.cache.get(self.cache_key)
+
+    client = ApitallyClient(
+        client_id=CLIENT_ID,
+        env=ENV,
+        sync_api_keys=True,
+        key_cache_class=ApitallyKeyCache,
+    )
     client.request_logger.log_request(
         consumer=None,
         method="GET",
@@ -112,3 +128,8 @@ def test_get_keys(client: ApitallyClient, requests_mock: Mocker):
 
     assert len(mock.request_history) == 1
     assert len(client.key_registry.keys) == 1
+
+    assert client.key_cache is not None
+    cache_result = client.key_cache.retrieve()
+    assert cache_result is not None
+    assert json.loads(cache_result)["salt"] == "x"

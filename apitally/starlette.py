@@ -5,7 +5,7 @@ import json
 import sys
 import time
 from importlib.metadata import PackageNotFoundError, version
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type
 
 from httpx import HTTPStatusError
 from starlette.authentication import (
@@ -24,7 +24,7 @@ from starlette.testclient import TestClient
 from starlette.types import ASGIApp
 
 from apitally.client.asyncio import ApitallyClient
-from apitally.client.base import KeyInfo
+from apitally.client.base import ApitallyKeyCacheBase, KeyInfo
 
 
 if TYPE_CHECKING:
@@ -47,10 +47,16 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         openapi_url: Optional[str] = "/openapi.json",
         filter_unhandled_paths: bool = True,
         identify_consumer_callback: Optional[Callable[[Request], Optional[str]]] = None,
+        key_cache_class: Optional[Type[ApitallyKeyCacheBase]] = None,
     ) -> None:
         self.filter_unhandled_paths = filter_unhandled_paths
         self.identify_consumer_callback = identify_consumer_callback
-        self.client = ApitallyClient(client_id=client_id, env=env, sync_api_keys=sync_api_keys)
+        self.client = ApitallyClient(
+            client_id=client_id,
+            env=env,
+            sync_api_keys=sync_api_keys,
+            key_cache_class=key_cache_class,
+        )
         self.client.start_sync_loop()
         self.delayed_send_app_info(app_version, openapi_url)
         super().__init__(app)

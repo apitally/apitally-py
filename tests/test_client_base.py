@@ -1,6 +1,10 @@
 import pytest
 
 
+CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
+ENV = "default"
+
+
 def test_request_logger():
     from apitally.client.base import RequestLogger
 
@@ -123,3 +127,18 @@ def test_key_registry():
 
     api_key_usage = keys.get_and_reset_usage_counts()
     assert api_key_usage == {1: 1}
+
+
+def test_key_cache_base():
+    from apitally.client.base import ApitallyKeyCacheBase
+
+    class ApitallyKeyCache(ApitallyKeyCacheBase):
+        def store(self, data: str) -> None:
+            return
+
+        def retrieve(self) -> str | None:
+            return None
+
+    key_cache = ApitallyKeyCache(client_id=CLIENT_ID, env=ENV)
+    assert CLIENT_ID in key_cache.cache_key
+    assert ENV in key_cache.cache_key
