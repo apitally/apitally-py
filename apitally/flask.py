@@ -5,13 +5,13 @@ import time
 from functools import wraps
 from importlib.metadata import version
 from threading import Timer
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Type
 
 from flask import Flask, g, make_response, request
 from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
 
-from apitally.client.base import KeyInfo
+from apitally.client.base import ApitallyKeyCacheBase, KeyInfo
 from apitally.client.threading import ApitallyClient
 
 
@@ -33,11 +33,17 @@ class ApitallyMiddleware:
         sync_api_keys: bool = False,
         openapi_url: Optional[str] = None,
         filter_unhandled_paths: bool = True,
+        key_cache_class: Optional[Type[ApitallyKeyCacheBase]] = None,
     ) -> None:
         self.app = app
         self.wsgi_app = app.wsgi_app
         self.filter_unhandled_paths = filter_unhandled_paths
-        self.client = ApitallyClient(client_id=client_id, env=env, sync_api_keys=sync_api_keys)
+        self.client = ApitallyClient(
+            client_id=client_id,
+            env=env,
+            sync_api_keys=sync_api_keys,
+            key_cache_class=key_cache_class,
+        )
         self.client.start_sync_loop()
         self.delayed_send_app_info(app_version, openapi_url)
 

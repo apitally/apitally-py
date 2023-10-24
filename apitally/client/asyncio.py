@@ -3,12 +3,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Type
 
 import backoff
 import httpx
 
-from apitally.client.base import ApitallyClientBase, handle_retry_giveup
+from apitally.client.base import (
+    ApitallyClientBase,
+    ApitallyKeyCacheBase,
+    handle_retry_giveup,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -22,8 +26,21 @@ retry = backoff.on_exception(
 
 
 class ApitallyClient(ApitallyClientBase):
-    def __init__(self, client_id: str, env: str, sync_api_keys: bool = False, sync_interval: float = 60) -> None:
-        super().__init__(client_id=client_id, env=env, sync_api_keys=sync_api_keys, sync_interval=sync_interval)
+    def __init__(
+        self,
+        client_id: str,
+        env: str,
+        sync_api_keys: bool = False,
+        sync_interval: float = 60,
+        key_cache_class: Optional[Type[ApitallyKeyCacheBase]] = None,
+    ) -> None:
+        super().__init__(
+            client_id=client_id,
+            env=env,
+            sync_api_keys=sync_api_keys,
+            sync_interval=sync_interval,
+            key_cache_class=key_cache_class,
+        )
         self._stop_sync_loop = False
         self._sync_loop_task: Optional[asyncio.Task[Any]] = None
 

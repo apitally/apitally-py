@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
 import threading
+from abc import ABC, abstractmethod
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -36,7 +38,14 @@ class ApitallyClientBase:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, client_id: str, env: str, sync_api_keys: bool = False, sync_interval: float = 60) -> None:
+    def __init__(
+        self,
+        client_id: str,
+        env: str,
+        sync_api_keys: bool = False,
+        sync_interval: float = 60,
+        key_cache_class: Optional[Type[ApitallyKeyCacheBase]] = None,
+    ) -> None:
         if hasattr(self, "client_id"):
             raise RuntimeError("Apitally client is already initialized")  # pragma: no cover
         try:
@@ -45,8 +54,6 @@ class ApitallyClientBase:
             raise ValueError(f"invalid client_id '{client_id}' (expected hexadecimal UUID format)")
         if re.match(r"^[\w-]{1,32}$", env) is None:
             raise ValueError(f"invalid env '{env}' (expected 1-32 alphanumeric lowercase characters and hyphens only)")
-        if sync_interval < 10:
-            raise ValueError("sync_interval has to be greater or equal to 10 seconds")
 
         self.client_id = client_id
         self.env = env
@@ -56,6 +63,13 @@ class ApitallyClientBase:
         self.request_logger = RequestLogger()
         self.validation_error_logger = ValidationErrorLogger()
         self.key_registry = KeyRegistry()
+        self.key_cache = key_cache_class(client_id=client_id, env=env) if key_cache_class is not None else None
+
+        if self.key_cache is not None and (key_data := self.key_cache.retrieve()):
+            try:
+                self.handle_keys_response(json.loads(key_data), cache=False)
+            except (json.JSONDecodeError, TypeError, KeyError):  # pragma: no cover
+                logger.exception("Failed to load keys from cache")
 
     @classmethod
     def get_instance(cls: Type[TApitallyClient]) -> TApitallyClient:
@@ -87,9 +101,32 @@ class ApitallyClientBase:
             "api_key_usage": api_key_usage,
         }
 
-    def handle_keys_response(self, response_data: Dict[str, Any]) -> None:
+    def handle_keys_response(self, response_data: Dict[str, Any], cache: bool = True) -> None:
         self.key_registry.salt = response_data["salt"]
         self.key_registry.update(response_data["keys"])
+
+        if cache and self.key_cache is not None:
+            self.key_cache.store(json.dumps(response_data, check_circular=False, allow_nan=False))
+
+
+class ApitallyKeyCacheBase(ABC):
+    def __init__(self, client_id: str, env: str) -> None:
+        self.client_id = client_id
+        self.env = env
+
+    @property
+    def cache_key(self) -> str:
+        return f"apitally:keys:{self.client_id}:{self.env}"
+
+    @abstractmethod
+    def store(self, data: str) -> None:
+        """Store the key data in cache as a JSON string."""
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def retrieve(self) -> str | bytes | bytearray | None:
+        """Retrieve the stored key data from the cache as a JSON string."""
+        pass  # pragma: no cover
 
 
 @dataclass(frozen=True)

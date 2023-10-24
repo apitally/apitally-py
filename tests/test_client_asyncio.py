@@ -20,8 +20,21 @@ ENV = "default"
 @pytest.fixture(scope="module")
 async def client(module_mocker: MockerFixture) -> ApitallyClient:
     from apitally.client.asyncio import ApitallyClient
+    from apitally.client.base import ApitallyKeyCacheBase
 
-    client = ApitallyClient(client_id=CLIENT_ID, env=ENV, sync_api_keys=True)
+    class ApitallyKeyCache(ApitallyKeyCacheBase):
+        def store(self, data: str) -> None:
+            pass
+
+        def retrieve(self) -> str | None:
+            return json.dumps({"salt": "y", "keys": {"x": {"key_id": 1, "api_key_id": 1, "expires_in_seconds": None}}})
+
+    client = ApitallyClient(
+        client_id=CLIENT_ID,
+        env=ENV,
+        sync_api_keys=True,
+        key_cache_class=ApitallyKeyCache,
+    )
     client.request_logger.log_request(
         consumer=None,
         method="GET",
@@ -105,6 +118,8 @@ async def test_send_app_info(client: ApitallyClient, httpx_mock: HTTPXMock):
 async def test_get_keys(client: ApitallyClient, httpx_mock: HTTPXMock):
     from apitally.client.base import HUB_BASE_URL, HUB_VERSION
 
+    assert client.key_registry.salt == "y"  # Salt from cache
+
     httpx_mock.add_response(
         json={"salt": "x", "keys": {"x": {"key_id": 1, "api_key_id": 1, "expires_in_seconds": None}}}
     )
@@ -114,3 +129,4 @@ async def test_get_keys(client: ApitallyClient, httpx_mock: HTTPXMock):
     requests = httpx_mock.get_requests(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/keys")
     assert len(requests) == 1
     assert len(client.key_registry.keys) == 1
+    assert client.key_registry.salt == "x"
