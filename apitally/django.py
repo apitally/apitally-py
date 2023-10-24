@@ -30,7 +30,6 @@ class ApitallyMiddlewareConfig:
     env: str
     app_version: Optional[str]
     sync_api_keys: bool
-    sync_interval: float
     openapi_url: Optional[str]
     identify_consumer_callback: Optional[Callable[[HttpRequest], Optional[str]]]
 
@@ -49,7 +48,6 @@ class ApitallyMiddleware:
             client_id=self.config.client_id,
             env=self.config.env,
             sync_api_keys=self.config.sync_api_keys,
-            sync_interval=self.config.sync_interval,
         )
         self.client.start_sync_loop()
         self.client.send_app_info(
@@ -67,7 +65,6 @@ class ApitallyMiddleware:
         env: str = "default",
         app_version: Optional[str] = None,
         sync_api_keys: bool = False,
-        sync_interval: float = 60,
         openapi_url: Optional[str] = None,
         identify_consumer_callback: Optional[str] = None,
     ) -> None:
@@ -76,7 +73,6 @@ class ApitallyMiddleware:
             env=env,
             app_version=app_version,
             sync_api_keys=sync_api_keys,
-            sync_interval=sync_interval,
             openapi_url=openapi_url,
             identify_consumer_callback=import_string(identify_consumer_callback)
             if identify_consumer_callback

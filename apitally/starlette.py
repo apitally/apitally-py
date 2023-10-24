@@ -44,16 +44,13 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         env: str = "default",
         app_version: Optional[str] = None,
         sync_api_keys: bool = False,
-        sync_interval: float = 60,
         openapi_url: Optional[str] = "/openapi.json",
         filter_unhandled_paths: bool = True,
         identify_consumer_callback: Optional[Callable[[Request], Optional[str]]] = None,
     ) -> None:
         self.filter_unhandled_paths = filter_unhandled_paths
         self.identify_consumer_callback = identify_consumer_callback
-        self.client = ApitallyClient(
-            client_id=client_id, env=env, sync_api_keys=sync_api_keys, sync_interval=sync_interval
-        )
+        self.client = ApitallyClient(client_id=client_id, env=env, sync_api_keys=sync_api_keys)
         self.client.start_sync_loop()
         self.delayed_send_app_info(app_version, openapi_url)
         super().__init__(app)

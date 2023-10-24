@@ -31,16 +31,13 @@ class ApitallyMiddleware:
         env: str = "default",
         app_version: Optional[str] = None,
         sync_api_keys: bool = False,
-        sync_interval: float = 60,
         openapi_url: Optional[str] = None,
         filter_unhandled_paths: bool = True,
     ) -> None:
         self.app = app
         self.wsgi_app = app.wsgi_app
         self.filter_unhandled_paths = filter_unhandled_paths
-        self.client = ApitallyClient(
-            client_id=client_id, env=env, sync_api_keys=sync_api_keys, sync_interval=sync_interval
-        )
+        self.client = ApitallyClient(client_id=client_id, env=env, sync_api_keys=sync_api_keys)
         self.client.start_sync_loop()
         self.delayed_send_app_info(app_version, openapi_url)
 
