@@ -200,8 +200,7 @@ def _get_app_info(app: ASGIApp, app_version: Optional[str] = None, openapi_url: 
     if endpoints := _get_endpoint_info(app):
         app_info["paths"] = [{"path": endpoint.path, "method": endpoint.http_method} for endpoint in endpoints]
     app_info["versions"] = _get_versions(app_version)
-    app_info["client"] = "apitally-python"
-    app_info["framework"] = "starlette"
+    app_info["client"] = "python:starlette"
     return app_info
 
 

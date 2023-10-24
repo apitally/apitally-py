@@ -184,4 +184,4 @@ def test_get_app_info(app: Flask):
     assert len(app_info["paths"]) == 3
     assert app_info["versions"]["flask"]
     assert app_info["versions"]["app"] == "1.2.3"
-    assert app_info["framework"] == "flask"
+    assert app_info["client"] == "python:flask"

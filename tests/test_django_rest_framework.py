@@ -150,4 +150,4 @@ def test_get_app_info():
     assert len(app_info["paths"]) == 4
     assert app_info["versions"]["django"]
     assert app_info["versions"]["app"] == "1.2.3"
-    assert app_info["framework"] == "django"
+    assert app_info["client"] == "python:django"

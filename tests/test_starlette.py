@@ -288,4 +288,4 @@ def test_get_app_info(app: Starlette, mocker: MockerFixture):
     assert len(app_info["paths"]) == 5
     assert app_info["versions"]["starlette"]
     assert app_info["versions"]["app"] == "1.2.3"
-    assert app_info["framework"] == "starlette"
+    assert app_info["client"] == "python:starlette"

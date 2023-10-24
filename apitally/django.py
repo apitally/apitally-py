@@ -178,8 +178,7 @@ def _get_app_info(
     if paths := _get_paths(views):
         app_info["paths"] = paths
     app_info["versions"] = _get_versions(app_version)
-    app_info["client"] = "apitally-python"
-    app_info["framework"] = "django"
+    app_info["client"] = "python:django"
     return app_info
 
 

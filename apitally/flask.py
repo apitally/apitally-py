@@ -132,11 +132,10 @@ def _get_app_info(app: Flask, app_version: Optional[str] = None, openapi_url: Op
     app_info: Dict[str, Any] = {}
     if openapi_url and (openapi := _get_openapi(app, openapi_url)):
         app_info["openapi"] = openapi
-    elif paths := _get_paths(app.url_map):
+    if paths := _get_paths(app.url_map):
         app_info["paths"] = paths
     app_info["versions"] = _get_versions(app_version)
-    app_info["client"] = "apitally-python"
-    app_info["framework"] = "flask"
+    app_info["client"] = "python:flask"
     return app_info
 
 
