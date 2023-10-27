@@ -105,7 +105,7 @@ async def test_set_app_info(client: ApitallyClient, httpx_mock: HTTPXMock):
 
     httpx_mock.add_response()
     app_info = {"paths": [], "client_version": "1.0.0", "starlette_version": "0.28.0", "python_version": "3.11.4"}
-    client.set_app_info(app_info=app_info)
+    client.set_app_info(app_info)
     await asyncio.sleep(0.01)
 
     requests = httpx_mock.get_requests(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/info")

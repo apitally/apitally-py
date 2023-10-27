@@ -107,7 +107,7 @@ def test_set_app_info(client: ApitallyClient, requests_mock: Mocker):
 
     mock = requests_mock.register_uri("POST", f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/info")
     app_info = {"paths": [], "client_version": "1.0.0", "starlette_version": "0.28.0", "python_version": "3.11.4"}
-    client.set_app_info(app_info=app_info)
+    client.set_app_info(app_info)
 
     assert len(mock.request_history) == 1
     request_data = mock.request_history[0].json()

@@ -54,7 +54,7 @@ class ApitallyMiddleware:
 
     def _delayed_set_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         app_info = _get_app_info(self.app, app_version, openapi_url)
-        self.client.set_app_info(app_info=app_info)
+        self.client.set_app_info(app_info)
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
         status_code = 200

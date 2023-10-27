@@ -67,7 +67,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
     async def _delayed_set_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         await asyncio.sleep(1.0)  # Short delay to allow app routes to be registered first
         app_info = _get_app_info(self.app, app_version, openapi_url)
-        self.client.set_app_info(app_info=app_info)
+        self.client.set_app_info(app_info)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         try:
