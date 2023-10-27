@@ -58,18 +58,16 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
             key_cache_class=key_cache_class,
         )
         self.client.start_sync_loop()
-        self.delayed_send_app_info(app_version, openapi_url)
+        self.delayed_set_app_info(app_version, openapi_url)
         super().__init__(app)
 
-    def delayed_send_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
-        asyncio.create_task(self._delayed_send_app_info(app_version, openapi_url))
+    def delayed_set_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
+        asyncio.create_task(self._delayed_set_app_info(app_version, openapi_url))
 
-    async def _delayed_send_app_info(
-        self, app_version: Optional[str] = None, openapi_url: Optional[str] = None
-    ) -> None:
+    async def _delayed_set_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         await asyncio.sleep(1.0)  # Short delay to allow app routes to be registered first
         app_info = _get_app_info(self.app, app_version, openapi_url)
-        self.client.send_app_info(app_info=app_info)
+        self.client.set_app_info(app_info)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         try:

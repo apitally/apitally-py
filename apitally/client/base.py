@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import threading
+import time
 from abc import ABC, abstractmethod
 from collections import Counter
 from dataclasses import dataclass, field
@@ -19,12 +20,10 @@ logger = logging.getLogger(__name__)
 
 HUB_BASE_URL = os.getenv("APITALLY_HUB_BASE_URL") or "https://hub.apitally.io"
 HUB_VERSION = "v1"
+REQUEST_TIMEOUT = 10
+MAX_QUEUE_TIME = 3600
 
 TApitallyClient = TypeVar("TApitallyClient", bound="ApitallyClientBase")
-
-
-def handle_retry_giveup(details) -> None:  # pragma: no cover
-    logger.exception("Apitally client failed to sync with hub: {target.__name__}(): {exception}".format(**details))
 
 
 class ApitallyClientBase:
@@ -51,9 +50,9 @@ class ApitallyClientBase:
         try:
             UUID(client_id)
         except ValueError:
-            raise ValueError(f"invalid client_id '{client_id}' (expected hexadecimal UUID format)")
+            raise ValueError(f"invalid client_id '{client_id}' (expecting hexadecimal UUID format)")
         if re.match(r"^[\w-]{1,32}$", env) is None:
-            raise ValueError(f"invalid env '{env}' (expected 1-32 alphanumeric lowercase characters and hyphens only)")
+            raise ValueError(f"invalid env '{env}' (expecting 1-32 alphanumeric lowercase characters and hyphens only)")
 
         self.client_id = client_id
         self.env = env
@@ -64,6 +63,11 @@ class ApitallyClientBase:
         self.validation_error_logger = ValidationErrorLogger()
         self.key_registry = KeyRegistry()
         self.key_cache = key_cache_class(client_id=client_id, env=env) if key_cache_class is not None else None
+
+        self._app_info_payload: Optional[Dict[str, Any]] = None
+        self._app_info_sent = False
+        self._started_at = time.time()
+        self._keys_updated_at: Optional[float] = None
 
         if self.key_cache is not None and (key_data := self.key_cache.retrieve()):
             try:
