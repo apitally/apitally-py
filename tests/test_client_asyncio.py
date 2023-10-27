@@ -81,7 +81,7 @@ async def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
     client.stop_sync_loop()  # Should stop after next iteration
     await asyncio.sleep(0.1)  # Wait for task to finish
     assert send_requests_data_mock.await_count >= 1
-    assert get_keys_mock.await_count >= 2
+    assert get_keys_mock.await_count >= 1
 
 
 async def test_send_requests_data(client: ApitallyClient, httpx_mock: HTTPXMock):
@@ -100,12 +100,12 @@ async def test_send_requests_data(client: ApitallyClient, httpx_mock: HTTPXMock)
     assert request_data["validation_errors"][0]["error_count"] == 1
 
 
-async def test_send_app_info(client: ApitallyClient, httpx_mock: HTTPXMock):
+async def test_set_app_info(client: ApitallyClient, httpx_mock: HTTPXMock):
     from apitally.client.base import HUB_BASE_URL, HUB_VERSION
 
     httpx_mock.add_response()
     app_info = {"paths": [], "client_version": "1.0.0", "starlette_version": "0.28.0", "python_version": "3.11.4"}
-    client.send_app_info(app_info=app_info)
+    client.set_app_info(app_info=app_info)
     await asyncio.sleep(0.01)
 
     requests = httpx_mock.get_requests(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/info")

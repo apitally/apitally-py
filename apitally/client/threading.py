@@ -1,28 +1,31 @@
 from __future__ import annotations
 
 import logging
+import queue
 import sys
 import time
+from functools import partial
 from threading import Event, Thread
-from typing import Any, Callable, Dict, Optional, Type
+from typing import Any, Callable, Dict, Optional, Tuple, Type
 
 import backoff
 import requests
 
 from apitally.client.base import (
+    MAX_QUEUE_TIME,
+    REQUEST_TIMEOUT,
     ApitallyClientBase,
     ApitallyKeyCacheBase,
-    handle_retry_giveup,
 )
 
 
 logger = logging.getLogger(__name__)
-retry = backoff.on_exception(
+retry = partial(
+    backoff.on_exception,
     backoff.expo,
     requests.RequestException,
     max_tries=3,
-    on_giveup=handle_retry_giveup,
-    raise_on_giveup=False,
+    giveup_log_level=logging.WARNING,
 )
 
 
@@ -60,6 +63,7 @@ class ApitallyClient(ApitallyClientBase):
         )
         self._thread: Optional[Thread] = None
         self._stop_sync_loop = Event()
+        self._requests_data_queue: queue.Queue[Tuple[float, Dict[str, Any]]] = queue.Queue()
 
     def start_sync_loop(self) -> None:
         self._stop_sync_loop.clear()
@@ -69,18 +73,19 @@ class ApitallyClient(ApitallyClientBase):
             register_exit(self.stop_sync_loop)
 
     def _run_sync_loop(self) -> None:
-        if self.sync_api_keys:
-            with requests.Session() as session:
-                self.get_keys(session)
+        first_iteration = True
         while not self._stop_sync_loop.is_set():
             try:
-                time.sleep(self.sync_interval)
                 with requests.Session() as session:
-                    self.send_requests_data(session)
                     if self.sync_api_keys:
                         self.get_keys(session)
+                    if not self._app_info_sent and not first_iteration:
+                        self.send_app_info(session)
+                    self.send_requests_data(session)
+                time.sleep(self.sync_interval)
             except Exception as e:  # pragma: no cover
                 logger.exception(e)
+            first_iteration = False
 
     def stop_sync_loop(self) -> None:
         self._stop_sync_loop.set()
@@ -88,38 +93,64 @@ class ApitallyClient(ApitallyClientBase):
             self._thread.join()
             self._thread = None
 
-    def send_app_info(self, app_info: Dict[str, Any]) -> None:
-        payload = self.get_info_payload(app_info)
-        self._send_app_info(payload=payload)
+    def set_app_info(self, app_info: Dict[str, Any]) -> None:
+        self._app_info_sent = False
+        self._app_info_payload = self.get_info_payload(app_info)
+        with requests.Session() as session:
+            self.send_app_info(session)
+
+    def send_app_info(self, session: requests.Session) -> None:
+        if self._app_info_payload is not None:
+            self._send_app_info(session, self._app_info_payload)
 
     def send_requests_data(self, session: requests.Session) -> None:
         payload = self.get_requests_payload()
-        self._send_requests_data(session, payload)
+        self._requests_data_queue.put_nowait((time.time(), payload))
+
+        failed_items = []
+        while not self._requests_data_queue.empty():
+            payload_time, payload = self._requests_data_queue.get_nowait()
+            try:
+                if (time_offset := time.time() - payload_time) <= MAX_QUEUE_TIME:
+                    payload["time_offset"] = time_offset
+                    self._send_requests_data(session, payload)
+                self._requests_data_queue.task_done()
+            except requests.RequestException:
+                failed_items.append((payload_time, payload))
+        for item in failed_items:
+            self._requests_data_queue.put_nowait(item)
 
     def get_keys(self, session: requests.Session) -> None:
         if response_data := self._get_keys(session):  # Response data can be None if backoff gives up
             self.handle_keys_response(response_data)
-        elif self.key_registry.salt is None:
+            self._keys_updated_at = time.time()
+        elif self.key_registry.salt is None:  # pragma: no cover
             logger.error("Initial Apitally API key sync failed")
             # Exit because the application will not be able to authenticate requests
             sys.exit(1)
+        elif (self._keys_updated_at is not None and time.time() - self._keys_updated_at > MAX_QUEUE_TIME) or (
+            self._keys_updated_at is None and time.time() - self._started_at > MAX_QUEUE_TIME
+        ):
+            logger.error("Apitally API key sync has been failing for more than 1 hour")
 
-    @retry
-    def _send_app_info(self, payload: Dict[str, Any]) -> None:
-        response = requests.post(url=f"{self.hub_url}/info", json=payload)
+    @retry(raise_on_giveup=False)
+    def _send_app_info(self, session: requests.Session, payload: Dict[str, Any]) -> None:
+        response = session.post(url=f"{self.hub_url}/info", json=payload, timeout=REQUEST_TIMEOUT)
         if response.status_code == 404 and "Client ID" in response.text:
             self.stop_sync_loop()
             logger.error(f"Invalid Apitally client ID {self.client_id}")
         else:
             response.raise_for_status()
+        self._app_info_sent = True
+        self._app_info_payload = None
 
-    @retry
+    @retry()
     def _send_requests_data(self, session: requests.Session, payload: Dict[str, Any]) -> None:
-        response = session.post(url=f"{self.hub_url}/requests", json=payload)
+        response = session.post(url=f"{self.hub_url}/requests", json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
-    @retry
+    @retry(raise_on_giveup=False)
     def _get_keys(self, session: requests.Session) -> Dict[str, Any]:
-        response = session.get(url=f"{self.hub_url}/keys")
+        response = session.get(url=f"{self.hub_url}/keys", timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         return response.json()

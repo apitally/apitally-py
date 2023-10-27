@@ -52,7 +52,7 @@ class ApitallyMiddleware:
             key_cache_class=self.config.key_cache_class,
         )
         self.client.start_sync_loop()
-        self.client.send_app_info(
+        self.client.set_app_info(
             app_info=_get_app_info(
                 views=self.views,
                 app_version=self.config.app_version,

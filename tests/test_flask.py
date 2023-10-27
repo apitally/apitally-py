@@ -28,8 +28,8 @@ def app(module_mocker: MockerFixture) -> Flask:
 
     module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.threading.ApitallyClient.send_app_info")
-    module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_send_app_info")
+    module_mocker.patch("apitally.client.threading.ApitallyClient.set_app_info")
+    module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_set_app_info")
 
     app = Flask("test")
     app.wsgi_app = ApitallyMiddleware(app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]
@@ -57,8 +57,8 @@ def app_with_auth(module_mocker: MockerFixture) -> Flask:
 
     module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.threading.ApitallyClient.send_app_info")
-    module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_send_app_info")
+    module_mocker.patch("apitally.client.threading.ApitallyClient.set_app_info")
+    module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_set_app_info")
 
     app = Flask("test")
     app.wsgi_app = ApitallyMiddleware(app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]

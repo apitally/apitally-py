@@ -84,7 +84,7 @@ def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
     client.stop_sync_loop()  # Should stop after first iteration
     assert client._thread is None
     assert send_requests_data_mock.call_count >= 1
-    assert get_keys_mock.call_count >= 2
+    assert get_keys_mock.call_count >= 1
 
 
 def test_send_requests_data(client: ApitallyClient, requests_mock: Mocker):
@@ -102,12 +102,12 @@ def test_send_requests_data(client: ApitallyClient, requests_mock: Mocker):
     assert request_data["validation_errors"][0]["error_count"] == 1
 
 
-def test_send_app_info(client: ApitallyClient, requests_mock: Mocker):
+def test_set_app_info(client: ApitallyClient, requests_mock: Mocker):
     from apitally.client.base import HUB_BASE_URL, HUB_VERSION
 
     mock = requests_mock.register_uri("POST", f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/info")
     app_info = {"paths": [], "client_version": "1.0.0", "starlette_version": "0.28.0", "python_version": "3.11.4"}
-    client.send_app_info(app_info=app_info)
+    client.set_app_info(app_info=app_info)
 
     assert len(mock.request_history) == 1
     request_data = mock.request_history[0].json()

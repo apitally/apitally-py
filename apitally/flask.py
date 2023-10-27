@@ -45,16 +45,16 @@ class ApitallyMiddleware:
             key_cache_class=key_cache_class,
         )
         self.client.start_sync_loop()
-        self.delayed_send_app_info(app_version, openapi_url)
+        self.delayed_set_app_info(app_version, openapi_url)
 
-    def delayed_send_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
+    def delayed_set_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         # Short delay to allow app routes to be registered first
-        timer = Timer(1.0, self._delayed_send_app_info, kwargs={"app_version": app_version, "openapi_url": openapi_url})
+        timer = Timer(1.0, self._delayed_set_app_info, kwargs={"app_version": app_version, "openapi_url": openapi_url})
         timer.start()
 
-    def _delayed_send_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
+    def _delayed_set_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         app_info = _get_app_info(self.app, app_version, openapi_url)
-        self.client.send_app_info(app_info=app_info)
+        self.client.set_app_info(app_info=app_info)
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
         status_code = 200
