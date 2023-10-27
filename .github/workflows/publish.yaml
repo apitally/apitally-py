@@ -13,7 +13,7 @@ jobs:
       - name: Install and configure Poetry
         uses: snok/install-poetry@v1
         with:
-          version: "1.5.1"
+          version: "1.6.1"
           virtualenvs-in-project: true
       - name: Install dynamic versioning plugin for Poetry
         run: poetry self add "poetry-dynamic-versioning[plugin]"

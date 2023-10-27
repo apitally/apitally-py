@@ -27,7 +27,7 @@ jobs:
         if: steps.cached-poetry.outputs.cache-hit != 'true'
         uses: snok/install-poetry@v1
         with:
-          version: "1.5.1"
+          version: "1.6.1"
           virtualenvs-in-project: true
       - uses: actions/setup-python@v4
         with:
@@ -51,7 +51,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.8", "3.9", "3.10", "3.11"]
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         deps:
           - starlette
           - fastapi starlette
@@ -79,7 +79,7 @@ jobs:
         if: steps.cached-poetry.outputs.cache-hit != 'true'
         uses: snok/install-poetry@v1
         with:
-          version: "1.5.1"
+          version: "1.6.1"
           virtualenvs-in-project: true
       - name: Build Python package wheel
         run: poetry build -f wheel
