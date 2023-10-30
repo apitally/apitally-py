@@ -8,7 +8,7 @@
 
 <p align="center"><b>Your refreshingly simple REST API companion.</b></p>
 
-<p align="center"><i>Apitally offers API traffic monitoring and integrated API key management that is extremely easy to set up and use with new and existing API projects. No assumptions made about your infrastructure, no extra tools for you to host and maintain.</i></p>
+<p align="center"><i>Apitally offers API traffic monitoring and integrated API key management that is extremely easy to set up and use with new and existing API projects. No assumptions made about your infrastructure, no extra tools for you to host and maintain, no data privacy worries.</i></p>
 
 <p align="center">🔗 <b><a href="https://apitally.io" target="_blank">apitally.io</a></b></p>
 
