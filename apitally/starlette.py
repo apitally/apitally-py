@@ -5,7 +5,17 @@ import json
 import sys
 import time
 from importlib.metadata import PackageNotFoundError, version
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
 from httpx import HTTPStatusError
 from starlette.authentication import (
@@ -59,6 +69,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         )
         self.client.start_sync_loop()
         self.delayed_set_app_info(app_version, openapi_url)
+        _register_shutdown_handler(app, self.client.handle_shutdown)
         super().__init__(app)
 
     def delayed_set_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
@@ -221,12 +232,19 @@ def _get_endpoint_info(app: ASGIApp) -> List[EndpointInfo]:
     return schemas.get_endpoints(routes)
 
 
-def _get_routes(app: ASGIApp) -> List[BaseRoute]:
+def _get_routes(app: Union[ASGIApp, Router]) -> List[BaseRoute]:
     if isinstance(app, Router):
         return app.routes
     elif hasattr(app, "app"):
         return _get_routes(app.app)
     return []  # pragma: no cover
+
+
+def _register_shutdown_handler(app: Union[ASGIApp, Router], shutdown_handler: Callable[[], Any]) -> None:
+    if isinstance(app, Router):
+        app.add_event_handler("shutdown", shutdown_handler)
+    elif hasattr(app, "app"):
+        _register_shutdown_handler(app.app, shutdown_handler)
 
 
 def _get_versions(app_version: Optional[str]) -> Dict[str, str]:

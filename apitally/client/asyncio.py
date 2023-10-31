@@ -74,6 +74,13 @@ class ApitallyClient(ApitallyClientBase):
     def stop_sync_loop(self) -> None:
         self._stop_sync_loop = True
 
+    async def handle_shutdown(self) -> None:
+        if self._sync_loop_task is not None:
+            self._sync_loop_task.cancel()
+        # Send any remaining requests data before exiting
+        async with self.get_http_client() as client:
+            await self.send_requests_data(client)
+
     def set_app_info(self, app_info: Dict[str, Any]) -> None:
         self._app_info_sent = False
         self._app_info_payload = self.get_info_payload(app_info)

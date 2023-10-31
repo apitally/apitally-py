@@ -68,24 +68,31 @@ class ApitallyClient(ApitallyClientBase):
     def start_sync_loop(self) -> None:
         self._stop_sync_loop.clear()
         if self._thread is None or not self._thread.is_alive():
-            self._thread = Thread(target=self._run_sync_loop)
+            self._thread = Thread(target=self._run_sync_loop, daemon=True)
             self._thread.start()
             register_exit(self.stop_sync_loop)
 
     def _run_sync_loop(self) -> None:
-        first_iteration = True
-        while not self._stop_sync_loop.is_set():
-            try:
-                with requests.Session() as session:
-                    if self.sync_api_keys:
-                        self.get_keys(session)
-                    if not self._app_info_sent and not first_iteration:
-                        self.send_app_info(session)
-                    self.send_requests_data(session)
-                time.sleep(self.sync_interval)
-            except Exception as e:  # pragma: no cover
-                logger.exception(e)
-            first_iteration = False
+        try:
+            last_sync_time = 0.0
+            while not self._stop_sync_loop.is_set():
+                try:
+                    now = time.time()
+                    if (now - last_sync_time) > self.sync_interval:
+                        with requests.Session() as session:
+                            if self.sync_api_keys:
+                                self.get_keys(session)
+                            if not self._app_info_sent and last_sync_time > 0:  # not on first sync
+                                self.send_app_info(session)
+                            self.send_requests_data(session)
+                        last_sync_time = now
+                    time.sleep(1)
+                except Exception as e:  # pragma: no cover
+                    logger.exception(e)
+        finally:
+            # Send any remaining requests data before exiting
+            with requests.Session() as session:
+                self.send_requests_data(session)
 
     def stop_sync_loop(self) -> None:
         self._stop_sync_loop.set()
