@@ -31,7 +31,7 @@ fastapi = { version = ">=0.87.0", optional = true }
 flask = { version = ">=2.0.0", optional = true }
 httpx = { version = ">=0.22.0", optional = true }
 requests = { version = ">=2.26.0", optional = true }
-starlette = { version = ">=0.21.0", optional = true }
+starlette = { version = ">=0.21.0,<1.0.0", optional = true }
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.10.1"
