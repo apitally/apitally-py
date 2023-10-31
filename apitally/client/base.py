@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import re
 import threading
@@ -15,8 +14,10 @@ from math import floor
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, cast
 from uuid import UUID, uuid4
 
+from apitally.client.logging import get_logger
 
-logger = logging.getLogger(__name__)
+
+logger = get_logger(__name__)
 
 HUB_BASE_URL = os.getenv("APITALLY_HUB_BASE_URL") or "https://hub.apitally.io"
 HUB_VERSION = "v1"

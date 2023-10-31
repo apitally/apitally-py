@@ -17,14 +17,16 @@ from apitally.client.base import (
     ApitallyClientBase,
     ApitallyKeyCacheBase,
 )
+from apitally.client.logging import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 retry = partial(
     backoff.on_exception,
     backoff.expo,
     requests.RequestException,
     max_tries=3,
+    logger=logger,
     giveup_log_level=logging.WARNING,
 )
 
@@ -132,7 +134,7 @@ class ApitallyClient(ApitallyClientBase):
             self.handle_keys_response(response_data)
             self._keys_updated_at = time.time()
         elif self.key_registry.salt is None:  # pragma: no cover
-            logger.error("Initial Apitally API key sync failed")
+            logger.critical("Initial Apitally API key sync failed")
             # Exit because the application will not be able to authenticate requests
             sys.exit(1)
         elif (self._keys_updated_at is not None and time.time() - self._keys_updated_at > MAX_QUEUE_TIME) or (
@@ -142,6 +144,7 @@ class ApitallyClient(ApitallyClientBase):
 
     @retry(raise_on_giveup=False)
     def _send_app_info(self, session: requests.Session, payload: Dict[str, Any]) -> None:
+        logger.debug("Sending app info")
         response = session.post(url=f"{self.hub_url}/info", json=payload, timeout=REQUEST_TIMEOUT)
         if response.status_code == 404 and "Client ID" in response.text:
             self.stop_sync_loop()
@@ -153,11 +156,13 @@ class ApitallyClient(ApitallyClientBase):
 
     @retry()
     def _send_requests_data(self, session: requests.Session, payload: Dict[str, Any]) -> None:
+        logger.debug("Sending requests data")
         response = session.post(url=f"{self.hub_url}/requests", json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
     @retry(raise_on_giveup=False)
     def _get_keys(self, session: requests.Session) -> Dict[str, Any]:
+        logger.debug("Updating API keys")
         response = session.get(url=f"{self.hub_url}/keys", timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         return response.json()
