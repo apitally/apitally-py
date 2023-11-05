@@ -2,12 +2,12 @@
 
 format:
 	ruff check apitally tests --fix --select I
-	black apitally tests
+	ruff format apitally tests
 
 check:
 	ruff check apitally tests
+	ruff format --diff apitally tests
 	mypy --install-types --non-interactive apitally tests
-	black --check --diff apitally tests
 	poetry check
 
 test:
