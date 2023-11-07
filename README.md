@@ -8,7 +8,7 @@
 
 <p align="center"><b>Your refreshingly simple REST API companion.</b></p>
 
-<p align="center"><i>Apitally offers API traffic monitoring and integrated API key management that is extremely easy to set up and use with new and existing API projects. No assumptions made about your infrastructure, no extra tools for you to host and maintain, no data privacy worries.</i></p>
+<p align="center"><i>Apitally offers busy engineering teams a simple and affordable API monitoring and API key management solution that is easy to set up and use with new and existing API projects.</i></p>
 
 <p align="center">🔗 <b><a href="https://apitally.io" target="_blank">apitally.io</a></b></p>
 
@@ -16,19 +16,27 @@
 
 ---
 
-# Apitally client for Python
+# Apitally client library for Python
 
 [![Tests](https://github.com/apitally/python-client/actions/workflows/tests.yaml/badge.svg?event=push)](https://github.com/apitally/python-client/actions)
 [![Codecov](https://codecov.io/gh/apitally/python-client/graph/badge.svg?token=UNLYBY4Y3V)](https://codecov.io/gh/apitally/python-client)
 [![PyPI](https://img.shields.io/pypi/v/apitally?logo=pypi&logoColor=white&color=%23006dad)](https://pypi.org/project/apitally/)
 
-This client library currently supports the following frameworks:
+This client library for Apitally currently supports the following Python web frameworks:
 
 - [FastAPI](https://docs.apitally.io/frameworks/fastapi)
 - [Starlette](https://docs.apitally.io/frameworks/starlette)
 - [Flask](https://docs.apitally.io/frameworks/flask)
 - [Django Ninja](https://docs.apitally.io/frameworks/django-ninja)
 - [Django REST Framework](https://docs.apitally.io/frameworks/django-rest-framework)
+
+Learn more about Apitally on our 🌎 [website](https://apitally.io) or check out the 📚 [documentation](https://docs.apitally.io).
+
+## Key features
+
+- Middleware for different frameworks to capture metadata about API endpoints, requests and responses (no sensitive data is captured)
+- Non-blocking clients that aggregate and send captured data to Apitally and optionally synchronize API key hashes in 1 minute intervals
+- Functions to easily secure endpoints with API key authentication and permission checks
 
 ## Install
 
@@ -42,9 +50,11 @@ The available extras are: `fastapi`, `starlette`, `flask`, `django_ninja` and `d
 
 ## Usage
 
-Below are basic usage examples for each supported framework. For further instructions and examples, including how to identify consumers and use API key authentication, check out our [documentation](https://docs.apitally.io/).
+Our [setup guides](https://docs.apitally.io/quickstart) include all the details you need to get started.
 
 ### FastAPI
+
+This is an example of how to add the Apitally middleware to a FastAPI application. For further instructions, see our [setup guide for FastAPI](https://docs.apitally.io/frameworks/fastapi).
 
 ```python
 from fastapi import FastAPI
@@ -60,6 +70,8 @@ app.add_middleware(
 
 ### Starlette
 
+This is an example of how to add the Apitally middleware to a Starlette application. For further instructions, see our [setup guide for Starlette](https://docs.apitally.io/frameworks/starlette).
+
 ```python
 from starlette.applications import Starlette
 from apitally.starlette import ApitallyMiddleware
@@ -74,6 +86,8 @@ app.add_middleware(
 
 ### Flask
 
+This is an example of how to add the Apitally middleware to a Flask application. For further instructions, see our [setup guide for Flask](https://docs.apitally.io/frameworks/flask).
+
 ```python
 from flask import Flask
 from apitally.flask import ApitallyMiddleware
@@ -87,6 +101,8 @@ app.wsgi_app = ApitallyMiddleware(
 ```
 
 ### Django Ninja
+
+This is an example of how to add the Apitally middleware to a Django Ninja application. For further instructions, see our [setup guide for Django Ninja](https://docs.apitally.io/frameworks/django-ninja).
 
 In your Django `settings.py` file:
 
@@ -103,6 +119,8 @@ APITALLY_MIDDLEWARE = {
 
 ### Django REST Framework
 
+This is an example of how to add the Apitally middleware to a Django REST Framework application. For further instructions, see our [setup guide for Django REST Framework](https://docs.apitally.io/frameworks/django-rest-framework).
+
 In your Django `settings.py` file:
 
 ```python
@@ -118,7 +136,7 @@ APITALLY_MIDDLEWARE = {
 
 ## Getting help
 
-If you need help please join our [Apitally community on Slack](https://apitally-community.slack.com/) or [create a new discussion](https://github.com/orgs/apitally/discussions/categories/q-a) on GitHub.
+If you need help please [create a new discussion](https://github.com/orgs/apitally/discussions/categories/q-a) on GitHub.
 
 ## License
 
