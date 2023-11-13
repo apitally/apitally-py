@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/apitally/assets/main/logo-vertical-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/apitally/assets/main/logo-vertical-light.png">
-    <img alt="Apitally logo" src="https://raw.githubusercontent.com/apitally/assets/main/logo-vertical-light.png">
+    <source media="(prefers-color-scheme: dark)" srcset="https://assets.apitally.io/logos/logo-vertical-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://assets.apitally.io/logos/logo-vertical-light.png">
+    <img alt="Apitally logo" src="https://assets.apitally.io/logos/logo-vertical-light.png">
   </picture>
 </p>
 
@@ -12,7 +12,7 @@
 
 <p align="center">🔗 <b><a href="https://apitally.io" target="_blank">apitally.io</a></b></p>
 
-![Apitally screenshots](https://raw.githubusercontent.com/apitally/assets/main/overview.png)
+![Apitally screenshots](https://assets.apitally.io/screenshots/overview.png)
 
 ---
 
