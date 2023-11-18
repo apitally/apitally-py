@@ -16,7 +16,7 @@ jobs:
   test-coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Load cached Poetry installation
         id: cached-poetry
         uses: actions/cache@v3
@@ -68,7 +68,7 @@ jobs:
           - django-ninja==0.18.0 django
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Load cached Poetry installation
         id: cached-poetry
         uses: actions/cache@v3
