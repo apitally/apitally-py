@@ -74,7 +74,7 @@ class ApitallyClientBase:
             try:
                 self.handle_keys_response(json.loads(key_data), cache=False)
             except (json.JSONDecodeError, TypeError, KeyError):  # pragma: no cover
-                logger.exception("Failed to load keys from cache")
+                logger.exception("Failed to load API keys from cache")
 
     @classmethod
     def get_instance(cls: Type[TApitallyClient]) -> TApitallyClient:
@@ -285,7 +285,7 @@ class KeyRegistry:
 
     def hash_api_key(self, api_key: str) -> str:
         if self.salt is None:
-            raise RuntimeError("Apitally keys not initialized")
+            raise RuntimeError("Apitally API keys not initialized")
         return scrypt(api_key.encode(), salt=bytes.fromhex(self.salt), n=256, r=4, p=1, dklen=32).hex()
 
     def update(self, keys: Dict[str, Dict[str, Any]]) -> None:
