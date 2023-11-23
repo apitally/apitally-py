@@ -4,8 +4,8 @@ build-backend = "poetry_dynamic_versioning.backend"
 
 [tool.poetry]
 name = "apitally"
-version = "0.0.0"
-description = "Apitally client library for Python"
+version = "1.0.0"
+description = "Simple API monitoring and API key management for REST APIs built with FastAPI, Flask, Django, and Starlette."
 readme = "README.md"
 authors = ["Apitally <hello@apitally.io>"]
 license = "MIT License"
@@ -13,10 +13,14 @@ homepage = "https://docs.apitally.io"
 documentation = "https://docs.apitally.io"
 repository = "https://github.com/apitally/python-client"
 classifiers = [
-    "Framework :: FastAPI",
+    "Development Status :: 5 - Production/Stable",
     "Framework :: Django",
+    "Framework :: FastAPI",
     "Framework :: Flask",
     "Intended Audience :: Developers",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Internet :: WWW/HTTP :: WSGI :: Middleware",
+    "Typing :: Typed",
 ]
 
 [tool.poetry.dependencies]
