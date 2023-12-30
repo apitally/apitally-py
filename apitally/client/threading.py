@@ -80,7 +80,7 @@ class ApitallyClient(ApitallyClientBase):
             while not self._stop_sync_loop.is_set():
                 try:
                     now = time.time()
-                    if (now - last_sync_time) > self.sync_interval:
+                    if (now - last_sync_time) >= self.sync_interval:
                         with requests.Session() as session:
                             if self.sync_api_keys:
                                 self.get_keys(session)

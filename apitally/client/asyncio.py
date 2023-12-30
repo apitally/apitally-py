@@ -61,6 +61,7 @@ class ApitallyClient(ApitallyClientBase):
         first_iteration = True
         while not self._stop_sync_loop:
             try:
+                time_start = time.perf_counter()
                 async with self.get_http_client() as client:
                     tasks = [self.send_requests_data(client)]
                     if self.sync_api_keys:
@@ -68,7 +69,8 @@ class ApitallyClient(ApitallyClientBase):
                     if not self._app_info_sent and not first_iteration:
                         tasks.append(self.send_app_info(client))
                     await asyncio.gather(*tasks)
-                await asyncio.sleep(self.sync_interval)
+                time_elapsed = time.perf_counter() - time_start
+                await asyncio.sleep(self.sync_interval - time_elapsed)
             except Exception as e:  # pragma: no cover
                 logger.exception(e)
             first_iteration = False
