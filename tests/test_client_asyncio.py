@@ -8,17 +8,15 @@ import pytest
 from pytest_httpx import HTTPXMock
 from pytest_mock import MockerFixture
 
+from .constants import CLIENT_ID, ENV
+
 
 if TYPE_CHECKING:
     from apitally.client.asyncio import ApitallyClient
 
 
-CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
-ENV = "default"
-
-
 @pytest.fixture(scope="module")
-async def client(module_mocker: MockerFixture) -> ApitallyClient:
+async def client() -> ApitallyClient:
     from apitally.client.asyncio import ApitallyClient
     from apitally.client.base import ApitallyKeyCacheBase
 

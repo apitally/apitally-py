@@ -49,7 +49,7 @@ def setup(module_mocker: MockerFixture) -> None:
         ],
         APITALLY_MIDDLEWARE={
             "client_id": "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9",
-            "env": "default",
+            "env": "dev",
             "sync_api_keys": True,
             "identify_consumer_callback": "tests.test_django_ninja.identify_consumer",
         },

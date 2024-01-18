@@ -47,7 +47,7 @@ def setup(module_mocker: MockerFixture) -> None:
         ],
         APITALLY_MIDDLEWARE={
             "client_id": "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9",
-            "env": "default",
+            "env": "dev",
         },
     )
     django.setup()

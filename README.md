@@ -74,7 +74,7 @@ app = FastAPI()
 app.add_middleware(
     ApitallyMiddleware,
     client_id="your-client-id",
-    env="default",  # or "dev", "prod" etc. (optional)
+    env="dev",  # or "prod" etc.
 )
 ```
 
@@ -92,7 +92,7 @@ app = Starlette(routes=[...])
 app.add_middleware(
     ApitallyMiddleware,
     client_id="your-client-id",
-    env="default",  # or "dev", "prod" etc. (optional)
+    env="dev",  # or "prod" etc.
 )
 ```
 
@@ -110,7 +110,7 @@ app = Flask(__name__)
 app.wsgi_app = ApitallyMiddleware(
     app,
     client_id="your-client-id",
-    env="default",  # or "dev", "prod" etc. (optional)
+    env="dev",  # or "prod" etc.
 )
 ```
 
@@ -129,7 +129,7 @@ MIDDLEWARE = [
 ]
 APITALLY_MIDDLEWARE = {
     "client_id": "your-client-id",
-    "env": "default",  # or "dev", "prod" etc. (optional)
+    "env": "dev",  # or "prod" etc.
 }
 ```
 
@@ -148,7 +148,7 @@ MIDDLEWARE = [
 ]
 APITALLY_MIDDLEWARE = {
     "client_id": "your-client-id",
-    "env": "default",  # or "dev", "prod" etc. (optional)
+    "env": "dev",  # or "prod" etc.
 }
 ```
 

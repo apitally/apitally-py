@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Optional
 import pytest
 from pytest_mock import MockerFixture
 
+from .constants import CLIENT_ID, ENV
+
 
 if find_spec("fastapi") is None:
     pytest.skip("fastapi is not available", allow_module_level=True)
@@ -22,10 +24,6 @@ try:
     from apitally.client.base import KeyInfo
 except ImportError:
     pass
-
-
-CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
-ENV = "default"
 
 
 @pytest.fixture(scope="module")

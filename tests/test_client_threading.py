@@ -9,13 +9,11 @@ import requests
 from pytest_mock import MockerFixture
 from requests_mock import Mocker
 
+from .constants import CLIENT_ID, ENV
+
 
 if TYPE_CHECKING:
     from apitally.client.threading import ApitallyClient
-
-
-CLIENT_ID = "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9"
-ENV = "default"
 
 
 @pytest.fixture(scope="module")

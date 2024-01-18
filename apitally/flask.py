@@ -28,7 +28,7 @@ class ApitallyMiddleware:
         self,
         app: Flask,
         client_id: str,
-        env: str = "default",
+        env: str = "dev",
         app_version: Optional[str] = None,
         sync_api_keys: bool = False,
         openapi_url: Optional[str] = None,

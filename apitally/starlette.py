@@ -51,7 +51,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         self,
         app: ASGIApp,
         client_id: str,
-        env: str = "default",
+        env: str = "dev",
         app_version: Optional[str] = None,
         sync_api_keys: bool = False,
         openapi_url: Optional[str] = "/openapi.json",
