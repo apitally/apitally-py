@@ -85,7 +85,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
             start_time = time.perf_counter()
             response = await call_next(request)
         except BaseException as e:
-            await self.log_request(
+            await self.add_request(
                 request=request,
                 response=None,
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,
@@ -93,7 +93,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
             )
             raise e from None
         else:
-            await self.log_request(
+            await self.add_request(
                 request=request,
                 response=response,
                 status_code=response.status_code,
@@ -101,18 +101,20 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
             )
         return response
 
-    async def log_request(
+    async def add_request(
         self, request: Request, response: Optional[Response], status_code: int, response_time: float
     ) -> None:
         path_template, is_handled_path = self.get_path_template(request)
         if is_handled_path or not self.filter_unhandled_paths:
             consumer = self.get_consumer(request)
-            self.client.request_logger.log_request(
+            self.client.request_counter.add_request(
                 consumer=consumer,
                 method=request.method,
                 path=path_template,
                 status_code=status_code,
                 response_time=response_time,
+                request_size=request.headers.get("Content-Length"),
+                response_size=response.headers.get("Content-Length") if response is not None else None,
             )
             if (
                 status_code == 422
@@ -122,7 +124,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
                 body = await self.get_response_json(response)
                 if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
                     # Log FastAPI / Pydantic validation errors
-                    self.client.validation_error_logger.log_validation_errors(
+                    self.client.validation_error_counter.add_validation_errors(
                         consumer=consumer,
                         method=request.method,
                         path=path_template,

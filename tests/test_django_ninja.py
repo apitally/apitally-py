@@ -43,9 +43,11 @@ def setup(module_mocker: MockerFixture) -> None:
 
     settings.configure(
         ROOT_URLCONF="tests.django_ninja_urls",
+        ALLOWED_HOSTS=["testserver"],
         SECRET_KEY="secret",
         MIDDLEWARE=[
             "apitally.django_ninja.ApitallyMiddleware",
+            "django.middleware.common.CommonMiddleware",
         ],
         APITALLY_MIDDLEWARE={
             "client_id": "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9",
@@ -65,7 +67,7 @@ def client() -> Client:
 
 
 def test_middleware_requests_ok(client: Client, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
     mocker.patch("apitally.django_ninja.APIKeyAuth.authenticate")
 
     response = client.get("/api/foo/123")
@@ -76,16 +78,18 @@ def test_middleware_requests_ok(client: Client, mocker: MockerFixture):
     assert mock.call_args.kwargs["path"] == "api/foo/<bar>"
     assert mock.call_args.kwargs["status_code"] == 200
     assert mock.call_args.kwargs["response_time"] > 0
+    assert int(mock.call_args.kwargs["response_size"]) > 0
 
-    response = client.post("/api/bar")
+    response = client.post("/api/bar", data={"foo": "bar"})
     assert response.status_code == 200
     assert mock.call_count == 2
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "POST"
+    assert int(mock.call_args.kwargs["request_size"]) > 0
 
 
 def test_middleware_requests_error(client: Client, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
     mocker.patch("apitally.django_ninja.APIKeyAuth.authenticate")
 
     response = client.put("/api/baz")
@@ -99,7 +103,7 @@ def test_middleware_requests_error(client: Client, mocker: MockerFixture):
 
 
 def test_middleware_validation_error(client: Client, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.ValidationErrorLogger.log_validation_errors")
+    mock = mocker.patch("apitally.client.base.ValidationErrorCounter.add_validation_errors")
     mocker.patch("apitally.django_ninja.APIKeyAuth.authenticate")
 
     response = client.get("/api/val?foo=bar")
@@ -115,7 +119,7 @@ def test_middleware_validation_error(client: Client, mocker: MockerFixture):
 def test_api_key_auth(client: Client, key_registry: KeyRegistry, mocker: MockerFixture):
     client_get_instance_mock = mocker.patch("apitally.django_ninja.ApitallyClient.get_instance")
     client_get_instance_mock.return_value.key_registry = key_registry
-    log_request_mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    log_request_mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
 
     # Unauthenticated
     response = client.get("/api/foo/123")

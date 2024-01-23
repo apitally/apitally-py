@@ -3,23 +3,25 @@ import pytest
 from .constants import CLIENT_ID, ENV
 
 
-def test_request_logger():
-    from apitally.client.base import RequestLogger
+def test_request_counter():
+    from apitally.client.base import RequestCounter
 
-    requests = RequestLogger()
-    requests.log_request(
+    requests = RequestCounter()
+    requests.add_request(
         consumer=None,
         method="GET",
         path="/test",
         status_code=200,
         response_time=0.105,
+        response_size="123",
     )
-    requests.log_request(
+    requests.add_request(
         consumer=None,
         method="GET",
         path="/test",
         status_code=200,
         response_time=0.227,
+        response_size="321",
     )
     assert len(requests.request_counts) == 1
 
@@ -32,13 +34,15 @@ def test_request_logger():
     assert data[0]["request_count"] == 2
     assert data[0]["response_times"][100] == 1
     assert data[0]["response_times"][220] == 1
+    assert len(data[0]["request_sizes"]) == 0
+    assert data[0]["response_sizes"][0] == 2
 
 
-def test_validation_error_logger():
-    from apitally.client.base import ValidationErrorLogger
+def test_validation_error_counter():
+    from apitally.client.base import ValidationErrorCounter
 
-    validation_errors = ValidationErrorLogger()
-    validation_errors.log_validation_errors(
+    validation_errors = ValidationErrorCounter()
+    validation_errors.add_validation_errors(
         consumer=None,
         method="GET",
         path="/test",
@@ -55,7 +59,7 @@ def test_validation_error_logger():
             },
         ],
     )
-    validation_errors.log_validation_errors(
+    validation_errors.add_validation_errors(
         consumer=None,
         method="GET",
         path="/test",

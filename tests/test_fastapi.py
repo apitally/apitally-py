@@ -70,7 +70,7 @@ def test_api_key_auth(app: FastAPI, key_registry: KeyRegistry, mocker: MockerFix
     headers_custom = {"ApiKey": "7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     client_get_instance_mock = mocker.patch("apitally.fastapi.ApitallyClient.get_instance")
     client_get_instance_mock.return_value.key_registry = key_registry
-    log_request_mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    log_request_mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
 
     # Unauthenticated
     response = client.get("/foo")

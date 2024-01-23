@@ -152,7 +152,7 @@ def get_fastapi_app() -> Starlette:
 def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
     client = TestClient(app)
 
     response = client.get("/foo/")
@@ -180,7 +180,7 @@ def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
 def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
     client = TestClient(app, raise_server_exceptions=False)
 
     response = client.post("/baz/")
@@ -196,7 +196,7 @@ def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
 def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
     client = TestClient(app)
 
     response = client.post("/xxx/")
@@ -207,7 +207,7 @@ def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
 def test_middleware_validation_error(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mock = mocker.patch("apitally.client.base.ValidationErrorLogger.log_validation_errors")
+    mock = mocker.patch("apitally.client.base.ValidationErrorCounter.add_validation_errors")
     client = TestClient(app)
 
     # Validation error as foo must be an integer
@@ -239,7 +239,7 @@ def test_api_key_auth(app_with_auth: Tuple[Starlette, str], key_registry: KeyReg
     )
     client_get_instance_mock = mocker.patch("apitally.starlette.ApitallyClient.get_instance")
     client_get_instance_mock.return_value.key_registry = key_registry
-    log_request_mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    log_request_mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
 
     # Unauthenticated
     response = client.get("/foo")

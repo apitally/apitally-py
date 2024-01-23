@@ -36,28 +36,28 @@ def client() -> ApitallyClient:
         sync_api_keys=True,
         key_cache_class=ApitallyKeyCache,
     )
-    client.request_logger.log_request(
+    client.request_counter.add_request(
         consumer=None,
         method="GET",
         path="/test",
         status_code=200,
         response_time=0.105,
     )
-    client.request_logger.log_request(
+    client.request_counter.add_request(
         consumer=None,
         method="GET",
         path="/test",
         status_code=200,
         response_time=0.227,
     )
-    client.request_logger.log_request(
+    client.request_counter.add_request(
         consumer=None,
         method="GET",
         path="/test",
         status_code=422,
         response_time=0.02,
     )
-    client.validation_error_logger.log_validation_errors(
+    client.validation_error_counter.add_validation_errors(
         consumer=None,
         method="GET",
         path="/test",
