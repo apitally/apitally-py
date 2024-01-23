@@ -13,6 +13,7 @@ def test_request_counter():
         path="/test",
         status_code=200,
         response_time=0.105,
+        request_size=None,
         response_size="123",
     )
     requests.add_request(
@@ -21,13 +22,23 @@ def test_request_counter():
         path="/test",
         status_code=200,
         response_time=0.227,
+        request_size=None,
         response_size="321",
     )
-    assert len(requests.request_counts) == 1
+    requests.add_request(
+        consumer=None,
+        method="POST",
+        path="/test",
+        status_code=204,
+        response_time=0.1,
+        request_size="123",
+        response_size=None,
+    )
+    assert len(requests.request_counts) == 2
 
     data = requests.get_and_reset_requests()
     assert len(requests.request_counts) == 0
-    assert len(data) == 1
+    assert len(data) == 2
     assert data[0]["method"] == "GET"
     assert data[0]["path"] == "/test"
     assert data[0]["status_code"] == 200
@@ -36,6 +47,8 @@ def test_request_counter():
     assert data[0]["response_times"][220] == 1
     assert len(data[0]["request_sizes"]) == 0
     assert data[0]["response_sizes"][0] == 2
+    assert data[1]["method"] == "POST"
+    assert data[1]["request_sizes"][0] == 1
 
 
 def test_validation_error_counter():
