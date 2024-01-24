@@ -43,11 +43,15 @@ def test_request_counter():
     assert data[0]["path"] == "/test"
     assert data[0]["status_code"] == 200
     assert data[0]["request_count"] == 2
+    assert data[0]["request_size_sum"] == 0
+    assert data[0]["response_size_sum"] > 0
     assert data[0]["response_times"][100] == 1
     assert data[0]["response_times"][220] == 1
     assert len(data[0]["request_sizes"]) == 0
     assert data[0]["response_sizes"][0] == 2
     assert data[1]["method"] == "POST"
+    assert data[1]["request_size_sum"] > 0
+    assert data[1]["response_size_sum"] == 0
     assert data[1]["request_sizes"][0] == 1
 
 
