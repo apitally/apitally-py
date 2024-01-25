@@ -8,6 +8,7 @@ from threading import Timer
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Type
 
 from flask import Flask, g, make_response, request
+from werkzeug.datastructures import Headers
 from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
 
@@ -58,31 +59,38 @@ class ApitallyMiddleware:
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
         status_code = 200
+        response_headers = Headers([])
 
-        def catching_start_response(status: str, headers, exc_info=None):
-            nonlocal status_code
+        def catching_start_response(status: str, headers: List[Tuple[str, str]], exc_info=None):
+            nonlocal status_code, response_headers
             status_code = int(status.split(" ")[0])
+            response_headers = Headers(headers)
             return start_response(status, headers, exc_info)
 
         start_time = time.perf_counter()
         with self.app.app_context():
             response = self.wsgi_app(environ, catching_start_response)
-            self.log_request(
+            self.add_request(
                 environ=environ,
                 status_code=status_code,
                 response_time=time.perf_counter() - start_time,
+                response_headers=response_headers,
             )
         return response
 
-    def log_request(self, environ: WSGIEnvironment, status_code: int, response_time: float) -> None:
+    def add_request(
+        self, environ: WSGIEnvironment, status_code: int, response_time: float, response_headers: Headers
+    ) -> None:
         rule, is_handled_path = self.get_rule(environ)
         if is_handled_path or not self.filter_unhandled_paths:
-            self.client.request_logger.log_request(
+            self.client.request_counter.add_request(
                 consumer=self.get_consumer(),
                 method=environ["REQUEST_METHOD"],
                 path=rule,
                 status_code=status_code,
                 response_time=response_time,
+                request_size=environ.get("CONTENT_LENGTH"),
+                response_size=response_headers.get("Content-Length", type=int),
             )
 
     def get_rule(self, environ: WSGIEnvironment) -> Tuple[str, bool]:

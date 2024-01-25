@@ -89,12 +89,16 @@ class ApitallyMiddleware:
         response = self.get_response(request)
         if request.method is not None and view is not None and view.is_api_view:
             consumer = self.get_consumer(request)
-            self.client.request_logger.log_request(
+            self.client.request_counter.add_request(
                 consumer=consumer,
                 method=request.method,
                 path=view.pattern,
                 status_code=response.status_code,
                 response_time=time.perf_counter() - start_time,
+                request_size=request.headers.get("Content-Length"),
+                response_size=response.headers.get("Content-Length")  # type: ignore[attr-defined]
+                if response.has_header("Content-Length")
+                else (len(response.content) if not response.streaming else None),
             )
             if (
                 response.status_code == 422
@@ -105,7 +109,7 @@ class ApitallyMiddleware:
                     body = json.loads(response.content)
                     if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
                         # Log Django Ninja / Pydantic validation errors
-                        self.client.validation_error_logger.log_validation_errors(
+                        self.client.validation_error_counter.add_validation_errors(
                             consumer=consumer,
                             method=request.method,
                             path=view.pattern,

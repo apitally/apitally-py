@@ -39,6 +39,7 @@ def setup(module_mocker: MockerFixture) -> None:
         SECRET_KEY="secret",
         MIDDLEWARE=[
             "apitally.django_rest_framework.ApitallyMiddleware",
+            "django.middleware.common.CommonMiddleware",
         ],
         INSTALLED_APPS=[
             "django.contrib.auth",
@@ -61,7 +62,7 @@ def client() -> APIClient:
 
 
 def test_middleware_requests_ok(client: APIClient, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
     mocker.patch("apitally.django_rest_framework.HasAPIKey.has_permission", return_value=True)
 
     response = client.get("/foo/123/")
@@ -72,16 +73,18 @@ def test_middleware_requests_ok(client: APIClient, mocker: MockerFixture):
     assert mock.call_args.kwargs["path"] == "foo/<int:bar>/"
     assert mock.call_args.kwargs["status_code"] == 200
     assert mock.call_args.kwargs["response_time"] > 0
+    assert int(mock.call_args.kwargs["response_size"]) > 0
 
-    response = client.post("/bar/")
+    response = client.post("/bar/", data={"foo": "bar"})
     assert response.status_code == 200
     assert mock.call_count == 2
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "POST"
+    assert int(mock.call_args.kwargs["request_size"]) > 0
 
 
 def test_middleware_requests_error(client: APIClient, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
     mocker.patch("apitally.django_rest_framework.HasAPIKey.has_permission", return_value=True)
 
     response = client.put("/baz/")
@@ -97,7 +100,7 @@ def test_middleware_requests_error(client: APIClient, mocker: MockerFixture):
 def test_api_key_auth(client: APIClient, key_registry: KeyRegistry, mocker: MockerFixture):
     client_get_instance_mock = mocker.patch("apitally.django_rest_framework.ApitallyClient.get_instance")
     client_get_instance_mock.return_value.key_registry = key_registry
-    log_request_mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    log_request_mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
 
     # Unauthenticated
     response = client.get("/foo/123/")

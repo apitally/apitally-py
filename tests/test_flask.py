@@ -86,7 +86,7 @@ def app_with_auth(module_mocker: MockerFixture) -> Flask:
 
 
 def test_middleware_requests_ok(app: Flask, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
     client = app.test_client()
 
     response = client.get("/foo/123")
@@ -97,6 +97,7 @@ def test_middleware_requests_ok(app: Flask, mocker: MockerFixture):
     assert mock.call_args.kwargs["path"] == "/foo/<bar>"
     assert mock.call_args.kwargs["status_code"] == 200
     assert mock.call_args.kwargs["response_time"] > 0
+    assert mock.call_args.kwargs["response_size"] > 0
 
     response = client.post("/bar")
     assert response.status_code == 200
@@ -106,7 +107,7 @@ def test_middleware_requests_ok(app: Flask, mocker: MockerFixture):
 
 
 def test_middleware_requests_error(app: Flask, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
     client = app.test_client()
 
     response = client.put("/baz")
@@ -120,7 +121,7 @@ def test_middleware_requests_error(app: Flask, mocker: MockerFixture):
 
 
 def test_middleware_requests_unhandled(app: Flask, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
     client = app.test_client()
 
     response = client.post("/xxx")
@@ -134,7 +135,7 @@ def test_require_api_key(app_with_auth: Flask, key_registry: KeyRegistry, mocker
     headers_custom = {"ApiKey": "7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
     client_get_instance_mock = mocker.patch("apitally.flask.ApitallyClient.get_instance")
     client_get_instance_mock.return_value.key_registry = key_registry
-    log_request_mock = mocker.patch("apitally.client.base.RequestLogger.log_request")
+    log_request_mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
 
     # Unauthenticated
     response = client.get("/foo")

@@ -60,8 +60,8 @@ class ApitallyClientBase:
         self.sync_api_keys = sync_api_keys
         self.sync_interval = sync_interval
         self.instance_uuid = str(uuid4())
-        self.request_logger = RequestLogger()
-        self.validation_error_logger = ValidationErrorLogger()
+        self.request_counter = RequestCounter()
+        self.validation_error_counter = ValidationErrorCounter()
         self.key_registry = KeyRegistry()
         self.key_cache = key_cache_class(client_id=client_id, env=env) if key_cache_class is not None else None
 
@@ -95,8 +95,8 @@ class ApitallyClientBase:
         return payload
 
     def get_requests_payload(self) -> Dict[str, Any]:
-        requests = self.request_logger.get_and_reset_requests()
-        validation_errors = self.validation_error_logger.get_and_reset_validation_errors()
+        requests = self.request_counter.get_and_reset_requests()
+        validation_errors = self.validation_error_counter.get_and_reset_validation_errors()
         api_key_usage = self.key_registry.get_and_reset_usage_counts() if self.sync_api_keys else {}
         return {
             "instance_uuid": self.instance_uuid,
@@ -142,14 +142,25 @@ class RequestInfo:
     status_code: int
 
 
-class RequestLogger:
+class RequestCounter:
     def __init__(self) -> None:
         self.request_counts: Counter[RequestInfo] = Counter()
+        self.request_size_sums: Counter[RequestInfo] = Counter()
+        self.response_size_sums: Counter[RequestInfo] = Counter()
         self.response_times: Dict[RequestInfo, Counter[int]] = {}
+        self.request_sizes: Dict[RequestInfo, Counter[int]] = {}
+        self.response_sizes: Dict[RequestInfo, Counter[int]] = {}
         self._lock = threading.Lock()
 
-    def log_request(
-        self, consumer: Optional[str], method: str, path: str, status_code: int, response_time: float
+    def add_request(
+        self,
+        consumer: Optional[str],
+        method: str,
+        path: str,
+        status_code: int,
+        response_time: float,
+        request_size: str | int | None = None,
+        response_size: str | int | None = None,
     ) -> None:
         request_info = RequestInfo(
             consumer=consumer,
@@ -161,6 +172,16 @@ class RequestLogger:
         with self._lock:
             self.request_counts[request_info] += 1
             self.response_times.setdefault(request_info, Counter())[response_time_ms_bin] += 1
+            if request_size is not None:
+                request_size = int(request_size)
+                request_size_kb_bin = request_size // 1000  # In KB, rounded down to nearest 1KB
+                self.request_size_sums[request_info] += request_size
+                self.request_sizes.setdefault(request_info, Counter())[request_size_kb_bin] += 1
+            if response_size is not None:
+                response_size = int(response_size)
+                response_size_kb_bin = response_size // 1000  # In KB, rounded down to nearest 1KB
+                self.response_size_sums[request_info] += response_size
+                self.response_sizes.setdefault(request_info, Counter())[response_size_kb_bin] += 1
 
     def get_and_reset_requests(self) -> List[Dict[str, Any]]:
         data: List[Dict[str, Any]] = []
@@ -173,11 +194,19 @@ class RequestLogger:
                         "path": request_info.path,
                         "status_code": request_info.status_code,
                         "request_count": count,
+                        "request_size_sum": self.request_size_sums.get(request_info, 0),
+                        "response_size_sum": self.response_size_sums.get(request_info, 0),
                         "response_times": self.response_times.get(request_info) or Counter(),
+                        "request_sizes": self.request_sizes.get(request_info) or Counter(),
+                        "response_sizes": self.response_sizes.get(request_info) or Counter(),
                     }
                 )
             self.request_counts.clear()
+            self.request_size_sums.clear()
+            self.response_size_sums.clear()
             self.response_times.clear()
+            self.request_sizes.clear()
+            self.response_sizes.clear()
         return data
 
 
@@ -191,12 +220,12 @@ class ValidationError:
     type: str
 
 
-class ValidationErrorLogger:
+class ValidationErrorCounter:
     def __init__(self) -> None:
         self.error_counts: Counter[ValidationError] = Counter()
         self._lock = threading.Lock()
 
-    def log_validation_errors(
+    def add_validation_errors(
         self, consumer: Optional[str], method: str, path: str, detail: List[Dict[str, Any]]
     ) -> None:
         with self._lock:
