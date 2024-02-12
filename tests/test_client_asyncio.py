@@ -72,7 +72,7 @@ async def client() -> ApitallyClient:
 async def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
     send_requests_data_mock = mocker.patch("apitally.client.asyncio.ApitallyClient.send_requests_data")
     get_keys_mock = mocker.patch("apitally.client.asyncio.ApitallyClient.get_keys")
-    mocker.patch.object(client, "sync_interval", 0.05)
+    mocker.patch("apitally.client.base.INITIAL_SYNC_INTERVAL", 0.05)
 
     client.start_sync_loop()
     await asyncio.sleep(0.2)  # Ensure loop starts

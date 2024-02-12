@@ -36,14 +36,12 @@ class ApitallyClient(ApitallyClientBase):
         client_id: str,
         env: str,
         sync_api_keys: bool = False,
-        sync_interval: float = 60,
         key_cache_class: Optional[Type[ApitallyKeyCacheBase]] = None,
     ) -> None:
         super().__init__(
             client_id=client_id,
             env=env,
             sync_api_keys=sync_api_keys,
-            sync_interval=sync_interval,
             key_cache_class=key_cache_class,
         )
         self._stop_sync_loop = False
