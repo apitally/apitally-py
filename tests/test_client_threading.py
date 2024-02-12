@@ -75,7 +75,11 @@ def client() -> ApitallyClient:
 def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
     send_requests_data_mock = mocker.patch("apitally.client.threading.ApitallyClient.send_requests_data")
     get_keys_mock = mocker.patch("apitally.client.threading.ApitallyClient.get_keys")
-    mocker.patch.object(client, "sync_interval", 0.05)
+    mocker.patch(
+        "apitally.client.threading.ApitallyClient.sync_interval",
+        new_callable=mocker.PropertyMock,
+        return_value=0.05,
+    )
 
     client.start_sync_loop()
     time.sleep(0.02)  # Ensure loop enters first iteration

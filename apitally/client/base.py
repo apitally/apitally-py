@@ -23,6 +23,9 @@ HUB_BASE_URL = os.getenv("APITALLY_HUB_BASE_URL") or "https://hub.apitally.io"
 HUB_VERSION = "v1"
 REQUEST_TIMEOUT = 10
 MAX_QUEUE_TIME = 3600
+SYNC_INTERVAL = 60
+INITIAL_SYNC_INTERVAL = 10
+INITIAL_SYNC_INTERVAL_DURATION = 3600
 
 TApitallyClient = TypeVar("TApitallyClient", bound="ApitallyClientBase")
 
@@ -43,7 +46,6 @@ class ApitallyClientBase:
         client_id: str,
         env: str,
         sync_api_keys: bool = False,
-        sync_interval: float = 60,
         key_cache_class: Optional[Type[ApitallyKeyCacheBase]] = None,
     ) -> None:
         if hasattr(self, "client_id"):
@@ -58,7 +60,6 @@ class ApitallyClientBase:
         self.client_id = client_id
         self.env = env
         self.sync_api_keys = sync_api_keys
-        self.sync_interval = sync_interval
         self.instance_uuid = str(uuid4())
         self.request_counter = RequestCounter()
         self.validation_error_counter = ValidationErrorCounter()
@@ -81,6 +82,12 @@ class ApitallyClientBase:
         if cls._instance is None:
             raise RuntimeError("Apitally client not initialized")  # pragma: no cover
         return cast(TApitallyClient, cls._instance)
+
+    @property
+    def sync_interval(self) -> float:
+        return (
+            SYNC_INTERVAL if time.time() - self._started_at > INITIAL_SYNC_INTERVAL_DURATION else INITIAL_SYNC_INTERVAL
+        )
 
     @property
     def hub_url(self) -> str:
