@@ -115,7 +115,8 @@ APITALLY_MIDDLEWARE = {
 
 If you need help please
 [create a new discussion](https://github.com/orgs/apitally/discussions/categories/q-a)
-on GitHub.
+on GitHub or
+[join our Slack workspace](https://join.slack.com/t/apitally-community/shared_invite/zt-2b3xxqhdu-9RMq2HyZbR79wtzNLoGHrg).
 
 ## License
 
