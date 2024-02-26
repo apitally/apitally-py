@@ -38,7 +38,8 @@ the 📚 [documentation](https://docs.apitally.io).
 
 - Middleware for different frameworks to capture metadata about API endpoints,
   requests and responses (no sensitive data is captured)
-- Non-blocking clients that aggregate and send captured data to Apitally
+- Non-blocking clients that aggregate and send captured data to Apitally in
+  regular intervals
 
 ## Install
 
