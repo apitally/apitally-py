@@ -5,11 +5,11 @@ build-backend = "poetry_dynamic_versioning.backend"
 [tool.poetry]
 name = "apitally"
 version = "1.0.0"
-description = "Simple API monitoring and API key management for REST APIs built with FastAPI, Flask, Django, and Starlette."
+description = "API monitoring for REST APIs built with FastAPI, Flask, Django, and Starlette."
 readme = "README.md"
 authors = ["Apitally <hello@apitally.io>"]
 license = "MIT License"
-homepage = "https://docs.apitally.io"
+homepage = "https://apitally.io"
 documentation = "https://docs.apitally.io"
 repository = "https://github.com/apitally/python-client"
 classifiers = [
@@ -64,8 +64,9 @@ types-six = "*"
 types-ujson = "*"
 
 [tool.poetry.extras]
-django_rest_framework = ["django", "djangorestframework", "requests"]
+django = ["django", "requests"]
 django_ninja = ["django", "django-ninja", "requests"]
+django_rest_framework = ["django", "djangorestframework", "requests"]
 fastapi = ["fastapi", "starlette", "httpx"]
 flask = ["flask", "requests"]
 starlette = ["starlette", "httpx"]

@@ -2,21 +2,15 @@ from __future__ import annotations
 
 import logging
 import queue
-import sys
 import time
 from functools import partial
 from threading import Event, Thread
-from typing import Any, Callable, Dict, Optional, Tuple, Type
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import backoff
 import requests
 
-from apitally.client.base import (
-    MAX_QUEUE_TIME,
-    REQUEST_TIMEOUT,
-    ApitallyClientBase,
-    ApitallyKeyCacheBase,
-)
+from apitally.client.base import MAX_QUEUE_TIME, REQUEST_TIMEOUT, ApitallyClientBase
 from apitally.client.logging import get_logger
 
 
@@ -48,19 +42,8 @@ except NameError:
 
 
 class ApitallyClient(ApitallyClientBase):
-    def __init__(
-        self,
-        client_id: str,
-        env: str,
-        sync_api_keys: bool = False,
-        key_cache_class: Optional[Type[ApitallyKeyCacheBase]] = None,
-    ) -> None:
-        super().__init__(
-            client_id=client_id,
-            env=env,
-            sync_api_keys=sync_api_keys,
-            key_cache_class=key_cache_class,
-        )
+    def __init__(self, client_id: str, env: str) -> None:
+        super().__init__(client_id=client_id, env=env)
         self._thread: Optional[Thread] = None
         self._stop_sync_loop = Event()
         self._requests_data_queue: queue.Queue[Tuple[float, Dict[str, Any]]] = queue.Queue()
@@ -80,8 +63,6 @@ class ApitallyClient(ApitallyClientBase):
                     now = time.time()
                     if (now - last_sync_time) >= self.sync_interval:
                         with requests.Session() as session:
-                            if self.sync_api_keys:
-                                self.get_keys(session)
                             if not self._app_info_sent and last_sync_time > 0:  # not on first sync
                                 self.send_app_info(session)
                             self.send_requests_data(session)
@@ -127,19 +108,6 @@ class ApitallyClient(ApitallyClientBase):
         for item in failed_items:
             self._requests_data_queue.put_nowait(item)
 
-    def get_keys(self, session: requests.Session) -> None:
-        if response_data := self._get_keys(session):  # Response data can be None if backoff gives up
-            self.handle_keys_response(response_data)
-            self._keys_updated_at = time.time()
-        elif self.key_registry.salt is None:  # pragma: no cover
-            logger.critical("Initial Apitally API key sync failed")
-            # Exit because the application will not be able to authenticate requests
-            sys.exit(1)
-        elif (self._keys_updated_at is not None and time.time() - self._keys_updated_at > MAX_QUEUE_TIME) or (
-            self._keys_updated_at is None and time.time() - self._started_at > MAX_QUEUE_TIME
-        ):
-            logger.error("Apitally API key sync has been failing for more than 1 hour")
-
     @retry(raise_on_giveup=False)
     def _send_app_info(self, session: requests.Session, payload: Dict[str, Any]) -> None:
         logger.debug("Sending app info")
@@ -157,10 +125,3 @@ class ApitallyClient(ApitallyClientBase):
         logger.debug("Sending requests data")
         response = session.post(url=f"{self.hub_url}/requests", json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
-
-    @retry(raise_on_giveup=False)
-    def _get_keys(self, session: requests.Session) -> Dict[str, Any]:
-        logger.debug("Updating API keys")
-        response = session.get(url=f"{self.hub_url}/keys", timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        return response.json()

@@ -2,17 +2,15 @@ from __future__ import annotations
 
 import sys
 import time
-from functools import wraps
 from importlib.metadata import version
 from threading import Timer
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 
-from flask import Flask, g, make_response, request
+from flask import Flask, g
 from werkzeug.datastructures import Headers
 from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
 
-from apitally.client.base import ApitallyKeyCacheBase, KeyInfo
 from apitally.client.threading import ApitallyClient
 
 
@@ -21,7 +19,7 @@ if TYPE_CHECKING:
     from werkzeug.routing.map import Map
 
 
-__all__ = ["ApitallyMiddleware", "require_api_key"]
+__all__ = ["ApitallyMiddleware"]
 
 
 class ApitallyMiddleware:
@@ -31,20 +29,13 @@ class ApitallyMiddleware:
         client_id: str,
         env: str = "dev",
         app_version: Optional[str] = None,
-        sync_api_keys: bool = False,
         openapi_url: Optional[str] = None,
         filter_unhandled_paths: bool = True,
-        key_cache_class: Optional[Type[ApitallyKeyCacheBase]] = None,
     ) -> None:
         self.app = app
         self.wsgi_app = app.wsgi_app
         self.filter_unhandled_paths = filter_unhandled_paths
-        self.client = ApitallyClient(
-            client_id=client_id,
-            env=env,
-            sync_api_keys=sync_api_keys,
-            key_cache_class=key_cache_class,
-        )
+        self.client = ApitallyClient(client_id=client_id, env=env)
         self.client.start_sync_loop()
         self.delayed_set_app_info(app_version, openapi_url)
 
@@ -103,40 +94,7 @@ class ApitallyMiddleware:
             return environ["PATH_INFO"], False
 
     def get_consumer(self) -> Optional[str]:
-        if "consumer_identifier" in g:
-            return str(g.consumer_identifier)
-        if "key_info" in g and isinstance(g.key_info, KeyInfo):
-            return f"key:{g.key_info.key_id}"
-        return None
-
-
-def require_api_key(func=None, *, scopes: Optional[List[str]] = None, custom_header: Optional[str] = None):
-    def decorator(func):
-        @wraps(func)
-        def wrapped_func(*args, **kwargs):
-            api_key: Optional[str]
-            if custom_header is None:
-                authorization = request.headers.get("Authorization")
-                if authorization is None:
-                    return make_response("Not authenticated", 401, {"WWW-Authenticate": "ApiKey"})
-                scheme, _, api_key = authorization.partition(" ")
-                if scheme.lower() != "apikey":
-                    return make_response("Unsupported authentication scheme", 401, {"WWW-Authenticate": "ApiKey"})
-            else:
-                api_key = request.headers.get(custom_header)
-                if api_key is None:
-                    return make_response("Missing API key", 403)
-            key_info = ApitallyClient.get_instance().key_registry.get(api_key)
-            if key_info is None:
-                return make_response("Invalid API key", 403)
-            if scopes is not None and not key_info.has_scopes(scopes):
-                return make_response("Permission denied", 403)
-            g.key_info = key_info
-            return func(*args, **kwargs)
-
-        return wrapped_func
-
-    return decorator if func is None else decorator(func)
+        return str(g.consumer_identifier) if "consumer_identifier" in g else None
 
 
 def _get_app_info(app: Flask, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> Dict[str, Any]:

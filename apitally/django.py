@@ -5,7 +5,7 @@ import sys
 import time
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from django.conf import settings
 from django.core.exceptions import ViewDoesNotExist
@@ -13,7 +13,6 @@ from django.test import RequestFactory
 from django.urls import URLPattern, URLResolver, get_resolver, resolve
 from django.utils.module_loading import import_string
 
-from apitally.client.base import ApitallyKeyCacheBase, KeyInfo
 from apitally.client.threading import ApitallyClient
 
 
@@ -29,10 +28,8 @@ class ApitallyMiddlewareConfig:
     client_id: str
     env: str
     app_version: Optional[str]
-    sync_api_keys: bool
     openapi_url: Optional[str]
     identify_consumer_callback: Optional[Callable[[HttpRequest], Optional[str]]]
-    key_cache_class: Optional[Type[ApitallyKeyCacheBase]]
 
 
 class ApitallyMiddleware:
@@ -45,12 +42,7 @@ class ApitallyMiddleware:
             self.configure(**config)
             assert self.config is not None
         self.views = _extract_views_from_url_patterns(get_resolver().url_patterns)
-        self.client = ApitallyClient(
-            client_id=self.config.client_id,
-            env=self.config.env,
-            sync_api_keys=self.config.sync_api_keys,
-            key_cache_class=self.config.key_cache_class,
-        )
+        self.client = ApitallyClient(client_id=self.config.client_id, env=self.config.env)
         self.client.start_sync_loop()
         self.client.set_app_info(
             app_info=_get_app_info(
@@ -66,21 +58,17 @@ class ApitallyMiddleware:
         client_id: str,
         env: str = "dev",
         app_version: Optional[str] = None,
-        sync_api_keys: bool = False,
         openapi_url: Optional[str] = None,
         identify_consumer_callback: Optional[str] = None,
-        key_cache_class: Optional[Type[ApitallyKeyCacheBase]] = None,
     ) -> None:
         cls.config = ApitallyMiddlewareConfig(
             client_id=client_id,
             env=env,
             app_version=app_version,
-            sync_api_keys=sync_api_keys,
             openapi_url=openapi_url,
             identify_consumer_callback=import_string(identify_consumer_callback)
             if identify_consumer_callback
             else None,
-            key_cache_class=key_cache_class,
         )
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
@@ -130,8 +118,6 @@ class ApitallyMiddleware:
             consumer_identifier = self.config.identify_consumer_callback(request)
             if consumer_identifier is not None:
                 return str(consumer_identifier)
-        if hasattr(request, "auth") and isinstance(request.auth, KeyInfo):
-            return f"key:{request.auth.key_id}"
         return None
 
 

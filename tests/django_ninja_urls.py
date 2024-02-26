@@ -2,32 +2,26 @@ from django.http import HttpRequest
 from django.urls import path
 from ninja import NinjaAPI
 
-from apitally.django_ninja import APIKeyAuth, APIKeyAuthBase
-
-
-class CustomAPIKeyAuth(APIKeyAuthBase):
-    param_name = "ApiKey"
-
 
 api = NinjaAPI()
 
 
-@api.get("/foo", auth=CustomAPIKeyAuth())
+@api.get("/foo")
 def foo(request: HttpRequest) -> str:
     return "foo"
 
 
-@api.get("/foo/{bar}", auth=APIKeyAuth(scopes=["foo"]))
+@api.get("/foo/{bar}")
 def foo_bar(request: HttpRequest, bar: int) -> str:
     return f"foo: {bar}"
 
 
-@api.post("/bar", auth=APIKeyAuth(scopes=["bar"]))
+@api.post("/bar")
 def bar(request: HttpRequest) -> str:
     return "bar"
 
 
-@api.put("/baz", auth=APIKeyAuth())
+@api.put("/baz")
 def baz(request: HttpRequest) -> str:
     request.consumer_identifier = "baz"  # type: ignore[attr-defined]
     raise ValueError("baz")

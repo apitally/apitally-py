@@ -15,8 +15,6 @@ if TYPE_CHECKING:
     from django.http import HttpRequest
     from django.test import Client
 
-    from apitally.client.base import KeyRegistry
-
 
 def identify_consumer(request: HttpRequest) -> Optional[str]:
     if consumer := request.GET.get("consumer"):
@@ -52,7 +50,6 @@ def setup(module_mocker: MockerFixture) -> None:
         APITALLY_MIDDLEWARE={
             "client_id": "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9",
             "env": "dev",
-            "sync_api_keys": True,
             "identify_consumer_callback": "tests.test_django_ninja.identify_consumer",
         },
     )
@@ -68,7 +65,6 @@ def client() -> Client:
 
 def test_middleware_requests_ok(client: Client, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
-    mocker.patch("apitally.django_ninja.APIKeyAuth.authenticate")
 
     response = client.get("/api/foo/123")
     assert response.status_code == 200
@@ -90,7 +86,6 @@ def test_middleware_requests_ok(client: Client, mocker: MockerFixture):
 
 def test_middleware_requests_error(client: Client, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
-    mocker.patch("apitally.django_ninja.APIKeyAuth.authenticate")
 
     response = client.put("/api/baz")
     assert response.status_code == 500
@@ -104,7 +99,6 @@ def test_middleware_requests_error(client: Client, mocker: MockerFixture):
 
 def test_middleware_validation_error(client: Client, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.ValidationErrorCounter.add_validation_errors")
-    mocker.patch("apitally.django_ninja.APIKeyAuth.authenticate")
 
     response = client.get("/api/val?foo=bar")
     assert response.status_code == 422
@@ -114,56 +108,6 @@ def test_middleware_validation_error(client: Client, mocker: MockerFixture):
     assert mock.call_args.kwargs["path"] == "api/val"
     assert len(mock.call_args.kwargs["detail"]) == 1
     assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
-
-
-def test_api_key_auth(client: Client, key_registry: KeyRegistry, mocker: MockerFixture):
-    client_get_instance_mock = mocker.patch("apitally.django_ninja.ApitallyClient.get_instance")
-    client_get_instance_mock.return_value.key_registry = key_registry
-    log_request_mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
-
-    # Unauthenticated
-    response = client.get("/api/foo/123")
-    assert response.status_code == 401
-
-    # Invalid auth scheme
-    headers = {"HTTP_AUTHORIZATION": "Bearer invalid"}
-    response = client.get("/api/foo/123", **headers)  # type: ignore[arg-type]
-    assert response.status_code == 401
-
-    # Invalid API key
-    headers = {"HTTP_AUTHORIZATION": "ApiKey invalid"}
-    response = client.get("/api/foo/123", **headers)  # type: ignore[arg-type]
-    assert response.status_code == 403
-
-    # Invalid API key, custom header
-    headers = {"HTTP_APIKEY": "invalid"}
-    response = client.get("/api/foo", **headers)  # type: ignore[arg-type]
-    assert response.status_code == 403
-
-    # Valid API key, no scope required, custom header, consumer identified by API key
-    headers = {"HTTP_APIKEY": "7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
-    response = client.get("/api/foo", **headers)  # type: ignore[arg-type]
-    assert response.status_code == 200
-    assert log_request_mock.call_args.kwargs["consumer"] == "key:1"
-
-    # Valid API key with required scope
-    headers = {"HTTP_AUTHORIZATION": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
-    response = client.get("/api/foo/123", **headers)  # type: ignore[arg-type]
-    assert response.status_code == 200
-
-    # Valid API key with required scope, consumer identified by custom function
-    response = client.get("/api/foo/123?consumer=foo", **headers)  # type: ignore[arg-type]
-    assert response.status_code == 200
-    assert log_request_mock.call_args.kwargs["consumer"] == "foo"
-
-    # Valid API key without required scope
-    response = client.post("/api/bar", **headers)  # type: ignore[arg-type]
-    assert response.status_code == 403
-
-    # Valid API key, consumer identifier from request object
-    response = client.put("/api/baz", **headers)  # type: ignore[arg-type]
-    assert response.status_code == 500
-    assert log_request_mock.call_args.kwargs["consumer"] == "baz"
 
 
 def test_get_app_info(mocker: MockerFixture):

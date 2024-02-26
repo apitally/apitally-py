@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-import json
 import os
 import re
 import threading
 import time
-from abc import ABC, abstractmethod
 from collections import Counter
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from hashlib import scrypt
+from dataclasses import dataclass
 from math import floor
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, cast
 from uuid import UUID, uuid4
 
 from apitally.client.logging import get_logger
@@ -41,13 +37,7 @@ class ApitallyClientBase:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(
-        self,
-        client_id: str,
-        env: str,
-        sync_api_keys: bool = False,
-        key_cache_class: Optional[Type[ApitallyKeyCacheBase]] = None,
-    ) -> None:
+    def __init__(self, client_id: str, env: str) -> None:
         if hasattr(self, "client_id"):
             raise RuntimeError("Apitally client is already initialized")  # pragma: no cover
         try:
@@ -59,23 +49,13 @@ class ApitallyClientBase:
 
         self.client_id = client_id
         self.env = env
-        self.sync_api_keys = sync_api_keys
         self.instance_uuid = str(uuid4())
         self.request_counter = RequestCounter()
         self.validation_error_counter = ValidationErrorCounter()
-        self.key_registry = KeyRegistry()
-        self.key_cache = key_cache_class(client_id=client_id, env=env) if key_cache_class is not None else None
 
         self._app_info_payload: Optional[Dict[str, Any]] = None
         self._app_info_sent = False
         self._started_at = time.time()
-        self._keys_updated_at: Optional[float] = None
-
-        if self.key_cache is not None and (key_data := self.key_cache.retrieve()):
-            try:
-                self.handle_keys_response(json.loads(key_data), cache=False)
-            except (json.JSONDecodeError, TypeError, KeyError):  # pragma: no cover
-                logger.exception("Failed to load API keys from cache")
 
     @classmethod
     def get_instance(cls: Type[TApitallyClient]) -> TApitallyClient:
@@ -104,41 +84,12 @@ class ApitallyClientBase:
     def get_requests_payload(self) -> Dict[str, Any]:
         requests = self.request_counter.get_and_reset_requests()
         validation_errors = self.validation_error_counter.get_and_reset_validation_errors()
-        api_key_usage = self.key_registry.get_and_reset_usage_counts() if self.sync_api_keys else {}
         return {
             "instance_uuid": self.instance_uuid,
             "message_uuid": str(uuid4()),
             "requests": requests,
             "validation_errors": validation_errors,
-            "api_key_usage": api_key_usage,
         }
-
-    def handle_keys_response(self, response_data: Dict[str, Any], cache: bool = True) -> None:
-        self.key_registry.salt = response_data["salt"]
-        self.key_registry.update(response_data["keys"])
-
-        if cache and self.key_cache is not None:
-            self.key_cache.store(json.dumps(response_data, check_circular=False, allow_nan=False))
-
-
-class ApitallyKeyCacheBase(ABC):
-    def __init__(self, client_id: str, env: str) -> None:
-        self.client_id = client_id
-        self.env = env
-
-    @property
-    def cache_key(self) -> str:
-        return f"apitally:keys:{self.client_id}:{self.env}"
-
-    @abstractmethod
-    def store(self, data: str) -> None:
-        """Store the key data in cache as a JSON string."""
-        pass  # pragma: no cover
-
-    @abstractmethod
-    def retrieve(self) -> str | bytes | bytearray | None:
-        """Retrieve the stored key data from the cache as a JSON string."""
-        pass  # pragma: no cover
 
 
 @dataclass(frozen=True)
@@ -266,70 +217,4 @@ class ValidationErrorCounter:
                     }
                 )
             self.error_counts.clear()
-        return data
-
-
-@dataclass(frozen=True)
-class KeyInfo:
-    key_id: int
-    api_key_id: int
-    name: str = ""
-    scopes: List[str] = field(default_factory=list)
-    expires_at: Optional[datetime] = None
-
-    @property
-    def is_expired(self) -> bool:
-        return self.expires_at is not None and self.expires_at < datetime.now()
-
-    def has_scopes(self, scopes: Union[List[str], str]) -> bool:
-        if isinstance(scopes, str):
-            scopes = [scopes]
-        if not isinstance(scopes, list):
-            raise ValueError("scopes must be a string or a list of strings")
-        return all(scope in self.scopes for scope in scopes)
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> KeyInfo:
-        return cls(
-            key_id=data["key_id"],
-            api_key_id=data["api_key_id"],
-            name=data.get("name", ""),
-            scopes=data.get("scopes", []),
-            expires_at=(
-                datetime.now() + timedelta(seconds=data["expires_in_seconds"])
-                if data["expires_in_seconds"] is not None
-                else None
-            ),
-        )
-
-
-class KeyRegistry:
-    def __init__(self) -> None:
-        self.salt: Optional[str] = None
-        self.keys: Dict[str, KeyInfo] = {}
-        self.usage_counts: Counter[int] = Counter()
-        self._lock = threading.Lock()
-
-    def get(self, api_key: str) -> Optional[KeyInfo]:
-        hash = self.hash_api_key(api_key.strip())
-        with self._lock:
-            key = self.keys.get(hash)
-            if key is None or key.is_expired:
-                return None
-            self.usage_counts[key.api_key_id] += 1
-        return key
-
-    def hash_api_key(self, api_key: str) -> str:
-        if self.salt is None:
-            raise RuntimeError("Apitally API keys not initialized")
-        return scrypt(api_key.encode(), salt=bytes.fromhex(self.salt), n=256, r=4, p=1, dklen=32).hex()
-
-    def update(self, keys: Dict[str, Dict[str, Any]]) -> None:
-        with self._lock:
-            self.keys = {hash: KeyInfo.from_dict(data) for hash, data in keys.items()}
-
-    def get_and_reset_usage_counts(self) -> Dict[int, int]:
-        with self._lock:
-            data = dict(self.usage_counts)
-            self.usage_counts.clear()
         return data

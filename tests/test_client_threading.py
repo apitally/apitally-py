@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import time
 from typing import TYPE_CHECKING
 
@@ -18,24 +17,9 @@ if TYPE_CHECKING:
 
 @pytest.fixture(scope="module")
 def client() -> ApitallyClient:
-    from apitally.client.base import ApitallyKeyCacheBase
     from apitally.client.threading import ApitallyClient
 
-    class ApitallyKeyCache(ApitallyKeyCacheBase):
-        cache: dict[str, str] = {}
-
-        def store(self, data: str) -> None:
-            self.cache[self.cache_key] = data
-
-        def retrieve(self) -> str | None:
-            return self.cache.get(self.cache_key)
-
-    client = ApitallyClient(
-        client_id=CLIENT_ID,
-        env=ENV,
-        sync_api_keys=True,
-        key_cache_class=ApitallyKeyCache,
-    )
+    client = ApitallyClient(client_id=CLIENT_ID, env=ENV)
     client.request_counter.add_request(
         consumer=None,
         method="GET",
@@ -74,7 +58,6 @@ def client() -> ApitallyClient:
 
 def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
     send_requests_data_mock = mocker.patch("apitally.client.threading.ApitallyClient.send_requests_data")
-    get_keys_mock = mocker.patch("apitally.client.threading.ApitallyClient.get_keys")
     mocker.patch("apitally.client.base.INITIAL_SYNC_INTERVAL", 0.05)
 
     client.start_sync_loop()
@@ -82,7 +65,6 @@ def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
     client.stop_sync_loop()  # Should stop after first iteration
     assert client._thread is None
     assert send_requests_data_mock.call_count >= 1
-    assert get_keys_mock.call_count >= 1
 
 
 def test_send_requests_data(client: ApitallyClient, requests_mock: Mocker):
@@ -111,23 +93,3 @@ def test_set_app_info(client: ApitallyClient, requests_mock: Mocker):
     request_data = mock.request_history[0].json()
     assert request_data["paths"] == []
     assert request_data["client_version"] == "1.0.0"
-
-
-def test_get_keys(client: ApitallyClient, requests_mock: Mocker):
-    from apitally.client.base import HUB_BASE_URL, HUB_VERSION
-
-    mock = requests_mock.register_uri(
-        "GET",
-        f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/keys",
-        json={"salt": "x", "keys": {"x": {"key_id": 1, "api_key_id": 1, "expires_in_seconds": None}}},
-    )
-    with requests.Session() as session:
-        client.get_keys(session)
-
-    assert len(mock.request_history) == 1
-    assert len(client.key_registry.keys) == 1
-
-    assert client.key_cache is not None
-    cache_result = client.key_cache.retrieve()
-    assert cache_result is not None
-    assert json.loads(cache_result)["salt"] == "x"

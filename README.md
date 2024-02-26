@@ -6,9 +6,9 @@
   </picture>
 </p>
 
-<p align="center"><b>Your refreshingly simple REST API companion.</b></p>
+<p align="center"><b>API monitoring made easy.</b></p>
 
-<p align="center"><i>Apitally is a simple and affordable API monitoring and API key management solution with a focus on data privacy. It is easy to set up and use for new and existing API projects using Python or Node.js.</i></p>
+<p align="center"><i>Apitally is a simple and affordable API monitoring solution with a focus on data privacy. It is easy to set up and use for new and existing API projects using Python or Node.js.</i></p>
 
 <p align="center">🔗 <b><a href="https://apitally.io" target="_blank">apitally.io</a></b></p>
 
@@ -38,10 +38,8 @@ the 📚 [documentation](https://docs.apitally.io).
 
 - Middleware for different frameworks to capture metadata about API endpoints,
   requests and responses (no sensitive data is captured)
-- Non-blocking clients that aggregate and send captured data to Apitally and
-  optionally synchronize API key hashes in 1 minute intervals
-- Functions to easily secure endpoints with API key authentication and
-  permission checks
+- Non-blocking clients that aggregate and send captured data to Apitally in
+  regular intervals
 
 ## Install
 
@@ -52,8 +50,7 @@ example:
 pip install apitally[fastapi]
 ```
 
-The available extras are: `fastapi`, `starlette`, `flask`, `django_ninja` and
-`django_rest_framework`.
+The available extras are: `fastapi`, `starlette`, `flask` and `django`.
 
 ## Usage
 
@@ -71,24 +68,6 @@ from fastapi import FastAPI
 from apitally.fastapi import ApitallyMiddleware
 
 app = FastAPI()
-app.add_middleware(
-    ApitallyMiddleware,
-    client_id="your-client-id",
-    env="dev",  # or "prod" etc.
-)
-```
-
-### Starlette
-
-This is an example of how to add the Apitally middleware to a Starlette
-application. For further instructions, see our
-[setup guide for Starlette](https://docs.apitally.io/frameworks/starlette).
-
-```python
-from starlette.applications import Starlette
-from apitally.starlette import ApitallyMiddleware
-
-app = Starlette(routes=[...])
 app.add_middleware(
     ApitallyMiddleware,
     client_id="your-client-id",
@@ -114,36 +93,17 @@ app.wsgi_app = ApitallyMiddleware(
 )
 ```
 
-### Django Ninja
+### Django
 
-This is an example of how to add the Apitally middleware to a Django Ninja
-application. For further instructions, see our
-[setup guide for Django Ninja](https://docs.apitally.io/frameworks/django-ninja).
-
-In your Django `settings.py` file:
-
-```python
-MIDDLEWARE = [
-    "apitally.django_ninja.ApitallyMiddleware",
-    # Other middleware ...
-]
-APITALLY_MIDDLEWARE = {
-    "client_id": "your-client-id",
-    "env": "dev",  # or "prod" etc.
-}
-```
-
-### Django REST Framework
-
-This is an example of how to add the Apitally middleware to a Django REST
-Framework application. For further instructions, see our
-[setup guide for Django REST Framework](https://docs.apitally.io/frameworks/django-rest-framework).
+This is an example of how to add the Apitally middleware to a Django Ninja or
+Django REST Framework application. For further instructions, see our
+[setup guide for Django](https://docs.apitally.io/frameworks/django).
 
 In your Django `settings.py` file:
 
 ```python
 MIDDLEWARE = [
-    "apitally.django_rest_framework.ApitallyMiddleware",
+    "apitally.django.ApitallyMiddleware",
     # Other middleware ...
 ]
 APITALLY_MIDDLEWARE = {
@@ -156,7 +116,8 @@ APITALLY_MIDDLEWARE = {
 
 If you need help please
 [create a new discussion](https://github.com/orgs/apitally/discussions/categories/q-a)
-on GitHub.
+on GitHub or
+[join our Slack workspace](https://join.slack.com/t/apitally-community/shared_invite/zt-2b3xxqhdu-9RMq2HyZbR79wtzNLoGHrg).
 
 ## License
 
