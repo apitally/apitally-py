@@ -2,20 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 import time
 from functools import partial
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, Optional, Tuple
 
 import backoff
 import httpx
 
-from apitally.client.base import (
-    MAX_QUEUE_TIME,
-    REQUEST_TIMEOUT,
-    ApitallyClientBase,
-    ApitallyKeyCacheBase,
-)
+from apitally.client.base import MAX_QUEUE_TIME, REQUEST_TIMEOUT, ApitallyClientBase
 from apitally.client.logging import get_logger
 
 
@@ -31,19 +25,8 @@ retry = partial(
 
 
 class ApitallyClient(ApitallyClientBase):
-    def __init__(
-        self,
-        client_id: str,
-        env: str,
-        sync_api_keys: bool = False,
-        key_cache_class: Optional[Type[ApitallyKeyCacheBase]] = None,
-    ) -> None:
-        super().__init__(
-            client_id=client_id,
-            env=env,
-            sync_api_keys=sync_api_keys,
-            key_cache_class=key_cache_class,
-        )
+    def __init__(self, client_id: str, env: str) -> None:
+        super().__init__(client_id=client_id, env=env)
         self._stop_sync_loop = False
         self._sync_loop_task: Optional[asyncio.Task[Any]] = None
         self._requests_data_queue: asyncio.Queue[Tuple[float, Dict[str, Any]]] = asyncio.Queue()
@@ -62,8 +45,6 @@ class ApitallyClient(ApitallyClientBase):
                 time_start = time.perf_counter()
                 async with self.get_http_client() as client:
                     tasks = [self.send_requests_data(client)]
-                    if self.sync_api_keys:
-                        tasks.append(self.get_keys(client))
                     if not self._app_info_sent and not first_iteration:
                         tasks.append(self.send_app_info(client))
                     await asyncio.gather(*tasks)
@@ -113,19 +94,6 @@ class ApitallyClient(ApitallyClientBase):
         for item in failed_items:
             self._requests_data_queue.put_nowait(item)
 
-    async def get_keys(self, client: httpx.AsyncClient) -> None:
-        if response_data := await self._get_keys(client):  # Response data can be None if backoff gives up
-            self.handle_keys_response(response_data)
-            self._keys_updated_at = time.time()
-        elif self.key_registry.salt is None:  # pragma: no cover
-            logger.critical("Initial Apitally API key sync failed")
-            # Exit because the application will not be able to authenticate requests
-            sys.exit(1)
-        elif (self._keys_updated_at is not None and time.time() - self._keys_updated_at > MAX_QUEUE_TIME) or (
-            self._keys_updated_at is None and time.time() - self._started_at > MAX_QUEUE_TIME
-        ):
-            logger.error("Apitally API key sync has been failing for more than 1 hour")
-
     @retry(raise_on_giveup=False)
     async def _send_app_info(self, client: httpx.AsyncClient, payload: Dict[str, Any]) -> None:
         logger.debug("Sending app info")
@@ -143,10 +111,3 @@ class ApitallyClient(ApitallyClientBase):
         logger.debug("Sending requests data")
         response = await client.post(url="/requests", json=payload)
         response.raise_for_status()
-
-    @retry(raise_on_giveup=False)
-    async def _get_keys(self, client: httpx.AsyncClient) -> Dict[str, Any]:
-        logger.debug("Updating API keys")
-        response = await client.get(url="/keys")
-        response.raise_for_status()
-        return response.json()

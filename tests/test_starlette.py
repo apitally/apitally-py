@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from importlib.util import find_spec
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING
 
 import pytest
 from pytest import FixtureRequest
@@ -15,8 +15,6 @@ if find_spec("starlette") is None:
 
 if TYPE_CHECKING:
     from starlette.applications import Starlette
-
-    from apitally.client.base import KeyRegistry
 
 
 @pytest.fixture(
@@ -33,54 +31,6 @@ async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlett
     elif request.param == "fastapi":
         return get_fastapi_app()
     raise NotImplementedError
-
-
-@pytest.fixture(params=["Authorization", "ApiKey"])
-def app_with_auth(request: FixtureRequest, mocker: MockerFixture) -> Tuple[Starlette, str]:
-    from starlette.applications import Starlette
-    from starlette.authentication import requires
-    from starlette.middleware.authentication import AuthenticationMiddleware
-    from starlette.requests import Request
-    from starlette.responses import JSONResponse, PlainTextResponse
-    from starlette.routing import Route
-
-    from apitally.starlette import APIKeyAuth, ApitallyMiddleware
-
-    mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
-
-    @requires(["authenticated", "foo"])
-    def foo(request: Request):
-        assert request.user.is_authenticated
-        return PlainTextResponse("foo")
-
-    @requires(["authenticated", "bar"])
-    def bar(request: Request):
-        return PlainTextResponse("bar")
-
-    @requires("authenticated")
-    def baz(request: Request):
-        request.state.consumer_identifier = "baz"
-        return JSONResponse(
-            {
-                "key_id": int(request.user.identity),
-                "key_name": request.user.display_name,
-                "key_scopes": request.auth.scopes,
-            }
-        )
-
-    routes = [
-        Route("/foo/", foo),
-        Route("/bar/", bar),
-        Route("/baz/", baz),
-    ]
-    api_key_header = request.param
-    app = Starlette(routes=routes)
-    app.add_middleware(
-        AuthenticationMiddleware,
-        backend=APIKeyAuth() if api_key_header == "Authorization" else APIKeyAuth(custom_header=api_key_header),
-    )
-    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV)
-    return (app, api_key_header)
 
 
 def get_starlette_app() -> Starlette:
@@ -222,57 +172,6 @@ def test_middleware_validation_error(app: Starlette, mocker: MockerFixture):
         assert mock.call_args.kwargs["path"] == "/val/"
         assert len(mock.call_args.kwargs["detail"]) == 1
         assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
-
-
-def test_api_key_auth(app_with_auth: Tuple[Starlette, str], key_registry: KeyRegistry, mocker: MockerFixture):
-    from starlette.testclient import TestClient
-
-    app, api_key_header = app_with_auth
-    client = TestClient(app)
-    headers = (
-        {"Authorization": "ApiKey 7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
-        if api_key_header == "Authorization"
-        else {api_key_header: "7ll40FB.DuHxzQQuGQU4xgvYvTpmnii7K365j9VI"}
-    )
-    headers_invalid = (
-        {"Authorization": "ApiKey invalid"} if api_key_header == "Authorization" else {api_key_header: "invalid"}
-    )
-    client_get_instance_mock = mocker.patch("apitally.starlette.ApitallyClient.get_instance")
-    client_get_instance_mock.return_value.key_registry = key_registry
-    log_request_mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
-
-    # Unauthenticated
-    response = client.get("/foo")
-    assert response.status_code == 403
-
-    response = client.get("/baz")
-    assert response.status_code == 403
-
-    # Invalid auth scheme
-    response = client.get("/foo", headers={"Authorization": "Bearer invalid"})
-    assert response.status_code == 403
-
-    # Invalid API key
-    response = client.get("/foo", headers=headers_invalid)
-    assert response.status_code == 400
-
-    # Valid API key with required scope, consumer identified by API key
-    response = client.get("/foo", headers=headers)
-    assert response.status_code == 200
-    assert log_request_mock.call_args.kwargs["consumer"] == "key:1"
-
-    # Valid API key, no scope required, consumer identifier from request.state object
-    response = client.get("/baz", headers=headers)
-    assert response.status_code == 200
-    response_data = response.json()
-    assert response_data["key_id"] == 1
-    assert response_data["key_name"] == "Test key"
-    assert response_data["key_scopes"] == ["authenticated", "foo"]
-    assert log_request_mock.call_args.kwargs["consumer"] == "baz"
-
-    # Valid API key without required scope
-    response = client.get("/bar", headers=headers)
-    assert response.status_code == 403
 
 
 def test_get_app_info(app: Starlette, mocker: MockerFixture):

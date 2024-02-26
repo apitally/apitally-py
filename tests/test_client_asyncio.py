@@ -18,21 +18,8 @@ if TYPE_CHECKING:
 @pytest.fixture(scope="module")
 async def client() -> ApitallyClient:
     from apitally.client.asyncio import ApitallyClient
-    from apitally.client.base import ApitallyKeyCacheBase
 
-    class ApitallyKeyCache(ApitallyKeyCacheBase):
-        def store(self, data: str) -> None:
-            pass
-
-        def retrieve(self) -> str | None:
-            return json.dumps({"salt": "y", "keys": {"x": {"key_id": 1, "api_key_id": 1, "expires_in_seconds": None}}})
-
-    client = ApitallyClient(
-        client_id=CLIENT_ID,
-        env=ENV,
-        sync_api_keys=True,
-        key_cache_class=ApitallyKeyCache,
-    )
+    client = ApitallyClient(client_id=CLIENT_ID, env=ENV)
     client.request_counter.add_request(
         consumer=None,
         method="GET",
@@ -71,7 +58,6 @@ async def client() -> ApitallyClient:
 
 async def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
     send_requests_data_mock = mocker.patch("apitally.client.asyncio.ApitallyClient.send_requests_data")
-    get_keys_mock = mocker.patch("apitally.client.asyncio.ApitallyClient.get_keys")
     mocker.patch("apitally.client.base.INITIAL_SYNC_INTERVAL", 0.05)
 
     client.start_sync_loop()
@@ -79,7 +65,6 @@ async def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
     client.stop_sync_loop()  # Should stop after next iteration
     await asyncio.sleep(0.1)  # Wait for task to finish
     assert send_requests_data_mock.await_count >= 1
-    assert get_keys_mock.await_count >= 1
 
 
 async def test_send_requests_data(client: ApitallyClient, httpx_mock: HTTPXMock):
@@ -111,20 +96,3 @@ async def test_set_app_info(client: ApitallyClient, httpx_mock: HTTPXMock):
     request_data = json.loads(requests[0].content)
     assert request_data["paths"] == []
     assert request_data["client_version"] == "1.0.0"
-
-
-async def test_get_keys(client: ApitallyClient, httpx_mock: HTTPXMock):
-    from apitally.client.base import HUB_BASE_URL, HUB_VERSION
-
-    assert client.key_registry.salt == "y"  # Salt from cache
-
-    httpx_mock.add_response(
-        json={"salt": "x", "keys": {"x": {"key_id": 1, "api_key_id": 1, "expires_in_seconds": None}}}
-    )
-    async with client.get_http_client() as http_client:
-        await client.get_keys(http_client)
-
-    requests = httpx_mock.get_requests(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/keys")
-    assert len(requests) == 1
-    assert len(client.key_registry.keys) == 1
-    assert client.key_registry.salt == "x"

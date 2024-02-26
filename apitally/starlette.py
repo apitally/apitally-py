@@ -5,28 +5,11 @@ import json
 import sys
 import time
 from importlib.metadata import PackageNotFoundError, version
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 from httpx import HTTPStatusError
-from starlette.authentication import (
-    AuthCredentials,
-    AuthenticationBackend,
-    AuthenticationError,
-    BaseUser,
-)
 from starlette.concurrency import iterate_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import HTTPConnection
 from starlette.routing import BaseRoute, Match, Router
 from starlette.schemas import EndpointInfo, SchemaGenerator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
@@ -34,7 +17,6 @@ from starlette.testclient import TestClient
 from starlette.types import ASGIApp
 
 from apitally.client.asyncio import ApitallyClient
-from apitally.client.base import ApitallyKeyCacheBase, KeyInfo
 
 
 if TYPE_CHECKING:
@@ -43,7 +25,7 @@ if TYPE_CHECKING:
     from starlette.responses import Response
 
 
-__all__ = ["ApitallyMiddleware", "APIKeyAuth"]
+__all__ = ["ApitallyMiddleware"]
 
 
 class ApitallyMiddleware(BaseHTTPMiddleware):
@@ -53,20 +35,13 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         client_id: str,
         env: str = "dev",
         app_version: Optional[str] = None,
-        sync_api_keys: bool = False,
         openapi_url: Optional[str] = "/openapi.json",
         filter_unhandled_paths: bool = True,
         identify_consumer_callback: Optional[Callable[[Request], Optional[str]]] = None,
-        key_cache_class: Optional[Type[ApitallyKeyCacheBase]] = None,
     ) -> None:
         self.filter_unhandled_paths = filter_unhandled_paths
         self.identify_consumer_callback = identify_consumer_callback
-        self.client = ApitallyClient(
-            client_id=client_id,
-            env=env,
-            sync_api_keys=sync_api_keys,
-            key_cache_class=key_cache_class,
-        )
+        self.client = ApitallyClient(client_id=client_id, env=env)
         self.client.start_sync_loop()
         self.delayed_set_app_info(app_version, openapi_url)
         _register_shutdown_handler(app, self.client.handle_shutdown)
@@ -161,50 +136,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
             consumer_identifier = self.identify_consumer_callback(request)
             if consumer_identifier is not None:
                 return str(consumer_identifier)
-        if hasattr(request.state, "key_info") and isinstance(key_info := request.state.key_info, KeyInfo):
-            return f"key:{key_info.key_id}"
-        if "user" in request.scope and isinstance(user := request.scope["user"], APIKeyUser):
-            return f"key:{user.key_info.key_id}"
         return None
-
-
-class APIKeyAuth(AuthenticationBackend):
-    def __init__(self, custom_header: Optional[str] = None) -> None:
-        self.custom_header = custom_header
-
-    async def authenticate(self, conn: HTTPConnection) -> Optional[Tuple[AuthCredentials, BaseUser]]:
-        if self.custom_header is None:
-            if "Authorization" not in conn.headers:
-                return None
-            auth = conn.headers["Authorization"]
-            scheme, _, api_key = auth.partition(" ")
-            if scheme.lower() != "apikey":
-                return None
-        elif self.custom_header not in conn.headers:
-            return None
-        else:
-            api_key = conn.headers[self.custom_header]
-        key_info = ApitallyClient.get_instance().key_registry.get(api_key)
-        if key_info is None:
-            raise AuthenticationError("Invalid API key")
-        return AuthCredentials(["authenticated"] + key_info.scopes), APIKeyUser(key_info)
-
-
-class APIKeyUser(BaseUser):
-    def __init__(self, key_info: KeyInfo) -> None:
-        self.key_info = key_info
-
-    @property
-    def is_authenticated(self) -> bool:
-        return True
-
-    @property
-    def display_name(self) -> str:
-        return self.key_info.name
-
-    @property
-    def identity(self) -> str:
-        return str(self.key_info.key_id)
 
 
 def _get_app_info(app: ASGIApp, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> Dict[str, Any]:
