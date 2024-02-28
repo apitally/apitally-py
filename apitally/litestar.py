@@ -33,7 +33,6 @@ class ApitallyPlugin(InitPluginProtocol):
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
         app_config.on_startup.append(self.on_startup)
         app_config.middleware.append(self.middleware_factory)
-        app_config.after_request
         return app_config
 
     def on_startup(self, app: Litestar) -> None:
