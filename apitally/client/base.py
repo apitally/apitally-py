@@ -194,8 +194,8 @@ class ValidationErrorCounter:
                         method=method.upper(),
                         path=path,
                         loc=tuple(str(loc) for loc in error["loc"]),
-                        type=error["type"],
                         msg=error["msg"],
+                        type=error["type"],
                     )
                     self.error_counts[validation_error] += 1
                 except (KeyError, TypeError):  # pragma: no cover
