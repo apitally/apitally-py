@@ -4,11 +4,11 @@ import json
 import sys
 import time
 from importlib.metadata import version
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
-from litestar import Litestar, Request
-from litestar.app import DEFAULT_OPENAPI_CONFIG
+from litestar.app import DEFAULT_OPENAPI_CONFIG, Litestar
 from litestar.config.app import AppConfig
+from litestar.connection import Request
 from litestar.datastructures import Headers
 from litestar.enums import ScopeType
 from litestar.plugins import InitPluginProtocol
@@ -26,9 +26,11 @@ class ApitallyPlugin(InitPluginProtocol):
         client_id: str,
         env: str = "dev",
         app_version: Optional[str] = None,
+        identify_consumer_callback: Optional[Callable[[Request], Optional[str]]] = None,
     ) -> None:
         self.client: ApitallyClient = ApitallyClient(client_id=client_id, env=env)
         self.app_version = app_version
+        self.identify_consumer_callback = identify_consumer_callback
 
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
         app_config.on_startup.append(self.on_startup)
@@ -67,7 +69,7 @@ class ApitallyPlugin(InitPluginProtocol):
                     await send(message)
 
                 await app(scope, receive, send_wrapper)
-                await self.add_request(
+                self.add_request(
                     request=request,
                     response_status=response_status,
                     response_time=response_time,
@@ -75,11 +77,11 @@ class ApitallyPlugin(InitPluginProtocol):
                     response_body=response_body,
                 )
             else:
-                await app(scope, receive, send)
+                await app(scope, receive, send)  # pragma: no cover
 
         return middleware
 
-    async def add_request(
+    def add_request(
         self,
         request: Request,
         response_status: int,
@@ -87,6 +89,8 @@ class ApitallyPlugin(InitPluginProtocol):
         response_headers: Headers,
         response_body: bytes,
     ) -> None:
+        if not request.route_handler.paths:
+            return  # pragma: no cover
         consumer = self.get_consumer(request)
         path = list(request.route_handler.paths)[0]
         self.client.request_counter.add_request(
@@ -98,27 +102,42 @@ class ApitallyPlugin(InitPluginProtocol):
             request_size=request.headers.get("Content-Length"),
             response_size=response_headers.get("Content-Length"),
         )
-        if response_status == 400 and response_body and response_headers.get("Content-Type") == "application/json":
-            parsed_body = json.loads(response_body)
-            if isinstance(parsed_body, dict) and "extra" in parsed_body and isinstance(parsed_body["extra"], list):
-                self.client.validation_error_counter.add_validation_errors(
-                    consumer=consumer,
-                    method=request.method,
-                    path=path,
-                    detail=[
-                        {
-                            "loc": [error.get("source", "body")] + error["key"].split("."),
-                            "msg": error["message"],
-                            "type": "",
-                        }
-                        for error in parsed_body["extra"]
-                        if "key" in error and "message" in error
-                    ],
-                )
+        if response_status == 400 and response_body and len(response_body) < 4096:
+            try:
+                parsed_body = json.loads(response_body)
+            except json.JSONDecodeError:  # pragma: no cover
+                pass
+            else:
+                if (
+                    isinstance(parsed_body, dict)
+                    and "detail" in parsed_body
+                    and isinstance(parsed_body["detail"], str)
+                    and "validation" in parsed_body["detail"].lower()
+                    and "extra" in parsed_body
+                    and isinstance(parsed_body["extra"], list)
+                ):
+                    self.client.validation_error_counter.add_validation_errors(
+                        consumer=consumer,
+                        method=request.method,
+                        path=path,
+                        detail=[
+                            {
+                                "loc": [error.get("source", "body")] + error["key"].split("."),
+                                "msg": error["message"],
+                                "type": "",
+                            }
+                            for error in parsed_body["extra"]
+                            if "key" in error and "message" in error
+                        ],
+                    )
 
     def get_consumer(self, request: Request) -> Optional[str]:
         if hasattr(request.state, "consumer_identifier"):
             return str(request.state.consumer_identifier)
+        if self.identify_consumer_callback is not None:
+            consumer_identifier = self.identify_consumer_callback(request)
+            if consumer_identifier is not None:
+                return str(consumer_identifier)
         return None
 
 
