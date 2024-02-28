@@ -66,6 +66,9 @@ jobs:
           - django-ninja django
           - django-ninja==0.22.* django
           - django-ninja==0.18.0 django
+          - litestar
+          - litestar==2.6.1
+          - litestar==2.0.1
 
     steps:
       - uses: actions/checkout@v4
