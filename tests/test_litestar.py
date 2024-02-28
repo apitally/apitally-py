@@ -33,7 +33,8 @@ async def app(module_mocker: MockerFixture) -> Litestar:
         return "foo"
 
     @get("/foo/{bar:str}")
-    async def foo_bar(bar: str) -> str:
+    async def foo_bar(request: Request, bar: str) -> str:
+        request.state.consumer_identifier = "test2"
         return f"foo: {bar}"
 
     @post("/bar")
@@ -49,7 +50,7 @@ async def app(module_mocker: MockerFixture) -> Litestar:
         return "val"
 
     def identify_consumer(request: Request) -> Optional[str]:
-        return "test"
+        return "test1" if "/foo" in request.route_handler.paths else None
 
     plugin = ApitallyPlugin(
         client_id=CLIENT_ID,
@@ -74,7 +75,7 @@ def test_middleware_requests_ok(app: Litestar, mocker: MockerFixture):
     assert response.status_code == 200
     mock.assert_called_once()
     assert mock.call_args is not None
-    assert mock.call_args.kwargs["consumer"] == "test"
+    assert mock.call_args.kwargs["consumer"] == "test1"
     assert mock.call_args.kwargs["method"] == "GET"
     assert mock.call_args.kwargs["path"] == "/foo"
     assert mock.call_args.kwargs["status_code"] == 200
@@ -84,6 +85,7 @@ def test_middleware_requests_ok(app: Litestar, mocker: MockerFixture):
     assert response.status_code == 200
     assert mock.call_count == 2
     assert mock.call_args is not None
+    assert mock.call_args.kwargs["consumer"] == "test2"
     assert mock.call_args.kwargs["path"] == "/foo/{bar:str}"
 
     response = client.post("/bar")
