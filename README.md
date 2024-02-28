@@ -30,6 +30,7 @@ frameworks:
 - [Flask](https://docs.apitally.io/frameworks/flask)
 - [Django Ninja](https://docs.apitally.io/frameworks/django-ninja)
 - [Django REST Framework](https://docs.apitally.io/frameworks/django-rest-framework)
+- [Litestar](https://docs.apitally.io/frameworks/litestar)
 
 Learn more about Apitally on our 🌎 [website](https://apitally.io) or check out
 the 📚 [documentation](https://docs.apitally.io).
@@ -50,7 +51,8 @@ example:
 pip install apitally[fastapi]
 ```
 
-The available extras are: `fastapi`, `starlette`, `flask` and `django`.
+The available extras are: `fastapi`, `starlette`, `flask`, `django` and
+`litestar`.
 
 ## Usage
 
@@ -110,6 +112,27 @@ APITALLY_MIDDLEWARE = {
     "client_id": "your-client-id",
     "env": "dev",  # or "prod" etc.
 }
+```
+
+### Litestar
+
+This is an example of how to add the Apitally plugin to a Litestar application.
+For further instructions, see our
+[setup guide for Litestar](https://docs.apitally.io/frameworks/litestar).
+
+```python
+from litestar import Litestar
+from apitally.litestar import ApitallyPlugin
+
+app = Litestar(
+    route_handlers=[...],
+    plugins=[
+        ApitallyPlugin(
+            client_id="your-client-id",
+            env="dev",  # or "prod" etc.
+        ),
+    ]
+)
 ```
 
 ## Getting help
