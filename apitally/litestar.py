@@ -49,11 +49,11 @@ class ApitallyPlugin(InitPluginProtocol):
         async def middleware(scope: Scope, receive: Receive, send: Send) -> None:
             if scope["type"] == "http" and scope["method"] != "OPTIONS":
                 request = Request(scope)
-                start_time = time.perf_counter()
                 response_status = 0
                 response_time = 0.0
                 response_headers = Headers()
                 response_body = b""
+                start_time = time.perf_counter()
 
                 async def send_wrapper(message: Message) -> None:
                     nonlocal response_time, response_status, response_headers, response_body
