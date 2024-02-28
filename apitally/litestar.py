@@ -2,7 +2,7 @@ import json
 import sys
 import time
 from importlib.metadata import version
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional
 
 from litestar.app import DEFAULT_OPENAPI_CONFIG, Litestar
 from litestar.config.app import AppConfig
@@ -143,7 +143,7 @@ def _get_openapi(app: Litestar) -> str:
     return json.dumps(schema)
 
 
-def _get_paths(app: Litestar) -> list[dict[str, str]]:
+def _get_paths(app: Litestar) -> List[Dict[str, str]]:
     openapi_config = app.openapi_config or DEFAULT_OPENAPI_CONFIG
     schema_path = openapi_config.openapi_controller.path
     return [
