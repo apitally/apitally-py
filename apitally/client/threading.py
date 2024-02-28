@@ -112,7 +112,7 @@ class ApitallyClient(ApitallyClientBase):
     def _send_app_info(self, session: requests.Session, payload: Dict[str, Any]) -> None:
         logger.debug("Sending app info")
         response = session.post(url=f"{self.hub_url}/info", json=payload, timeout=REQUEST_TIMEOUT)
-        if response.status_code == 404 and "Client ID" in response.text:
+        if response.status_code == 404:
             self.stop_sync_loop()
             logger.error(f"Invalid Apitally client ID {self.client_id}")
         else:
