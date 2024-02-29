@@ -24,11 +24,14 @@ class ApitallyPlugin(InitPluginProtocol):
         client_id: str,
         env: str = "dev",
         app_version: Optional[str] = None,
+        filter_openapi_paths: bool = True,
         identify_consumer_callback: Optional[Callable[[Request], Optional[str]]] = None,
     ) -> None:
         self.client: ApitallyClient = ApitallyClient(client_id=client_id, env=env)
         self.app_version = app_version
+        self.filter_openapi_paths = filter_openapi_paths
         self.identify_consumer_callback = identify_consumer_callback
+        self.openapi_path: Optional[str] = None
 
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
         app_config.on_startup.append(self.on_startup)
@@ -36,9 +39,12 @@ class ApitallyPlugin(InitPluginProtocol):
         return app_config
 
     def on_startup(self, app: Litestar) -> None:
+        openapi_config = app.openapi_config or DEFAULT_OPENAPI_CONFIG
+        self.openapi_path = openapi_config.openapi_controller.path
+
         app_info = {
             "openapi": _get_openapi(app),
-            "paths": _get_paths(app),
+            "paths": [route for route in _get_routes(app) if not self.filter_path(route["path"])],
             "versions": _get_versions(self.app_version),
             "client": "python:litestar",
         }
@@ -88,8 +94,10 @@ class ApitallyPlugin(InitPluginProtocol):
     ) -> None:
         if not request.route_handler.paths:
             return  # pragma: no cover
-        consumer = self.get_consumer(request)
         path = list(request.route_handler.paths)[0]
+        if self.filter_path(path):
+            return
+        consumer = self.get_consumer(request)
         self.client.request_counter.add_request(
             consumer=consumer,
             method=request.method,
@@ -137,23 +145,23 @@ class ApitallyPlugin(InitPluginProtocol):
                 return str(consumer_identifier)
         return None
 
+    def filter_path(self, path: str) -> bool:
+        if self.filter_openapi_paths and self.openapi_path:
+            return path == self.openapi_path or path.startswith(self.openapi_path + "/")
+        return False
+
 
 def _get_openapi(app: Litestar) -> str:
     schema = app.openapi_schema.to_schema()
     return json.dumps(schema)
 
 
-def _get_paths(app: Litestar) -> List[Dict[str, str]]:
-    openapi_config = app.openapi_config or DEFAULT_OPENAPI_CONFIG
-    schema_path = openapi_config.openapi_controller.path
+def _get_routes(app: Litestar) -> List[Dict[str, str]]:
     return [
-        {"method": method.upper(), "path": route.path}
+        {"method": method, "path": route.path}
         for route in app.routes
         for method in route.methods
-        if route.scope_type == ScopeType.HTTP
-        and method.upper() != "OPTIONS"
-        and route.path != schema_path
-        and not route.path.startswith(schema_path + "/")
+        if route.scope_type == ScopeType.HTTP and method != "OPTIONS"
     ]
 
 
