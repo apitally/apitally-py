@@ -14,6 +14,7 @@ if find_spec("litestar") is None:
 
 if TYPE_CHECKING:
     from litestar.app import Litestar
+    from litestar.testing import TestClient
 
 
 @pytest.fixture(scope="module")
@@ -65,11 +66,17 @@ async def app(module_mocker: MockerFixture) -> Litestar:
     return app
 
 
-def test_middleware_requests_ok(app: Litestar, mocker: MockerFixture):
+@pytest.fixture(scope="module")
+async def client(app: Litestar) -> TestClient:
+    from asgi_lifespan import LifespanManager
     from litestar.testing import TestClient
 
+    async with LifespanManager(app):  # type: ignore[arg-type]
+        return TestClient(app)
+
+
+def test_middleware_requests_ok(client: TestClient, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
-    client = TestClient(app)
 
     response = client.get("/foo/")
     assert response.status_code == 200
@@ -94,23 +101,21 @@ def test_middleware_requests_ok(app: Litestar, mocker: MockerFixture):
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "POST"
 
+    response = client.get("/schema/openapi.json")
+    assert response.status_code == 200
+    assert mock.call_count == 3  # OpenAPI paths are filtered out
 
-def test_middleware_requests_unhandled(app: Litestar, mocker: MockerFixture):
-    from litestar.testing import TestClient
 
+def test_middleware_requests_unhandled(client: TestClient, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
-    client = TestClient(app)
 
     response = client.post("/xxx")
     assert response.status_code == 404
     mock.assert_not_called()
 
 
-def test_middleware_requests_error(app: Litestar, mocker: MockerFixture):
-    from litestar.testing import TestClient
-
+def test_middleware_requests_error(client: TestClient, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
-    client = TestClient(app, raise_server_exceptions=False)
 
     response = client.post("/baz")
     assert response.status_code == 500
@@ -122,11 +127,8 @@ def test_middleware_requests_error(app: Litestar, mocker: MockerFixture):
     assert mock.call_args.kwargs["response_time"] > 0
 
 
-def test_middleware_validation_error(app: Litestar, mocker: MockerFixture):
-    from litestar.testing import TestClient
-
+def test_middleware_validation_error(client: TestClient, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.ValidationErrorCounter.add_validation_errors")
-    client = TestClient(app)
 
     # Validation error as foo must be an integer
     response = client.get("/val?foo=bar")

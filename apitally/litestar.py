@@ -10,6 +10,7 @@ from litestar.config.app import AppConfig
 from litestar.connection import Request
 from litestar.datastructures import Headers
 from litestar.enums import ScopeType
+from litestar.handlers import HTTPRouteHandler
 from litestar.plugins import InitPluginProtocol
 from litestar.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -93,10 +94,10 @@ class ApitallyPlugin(InitPluginProtocol):
         response_headers: Headers,
         response_body: bytes,
     ) -> None:
-        if not request.route_handler.paths:
+        if response_status < 100 or not request.route_handler.paths:
             return  # pragma: no cover
-        path = list(request.route_handler.paths)[0]
-        if self.filter_path(path):
+        path = self.get_path(request)
+        if path is None or self.filter_path(path):
             return
         consumer = self.get_consumer(request)
         self.client.request_counter.add_request(
@@ -134,6 +135,22 @@ class ApitallyPlugin(InitPluginProtocol):
                         ],
                     )
 
+    def get_path(self, request: Request) -> Optional[str]:
+        path: List[str] = []
+        for layer in request.route_handler.ownership_layers:
+            if isinstance(layer, HTTPRouteHandler):
+                if len(layer.paths) == 0:
+                    return None  # pragma: no cover
+                path.append(list(layer.paths)[0].lstrip("/"))
+            else:
+                path.append(layer.path.lstrip("/"))
+        return "/" + "/".join(filter(None, path))
+
+    def filter_path(self, path: str) -> bool:
+        if self.filter_openapi_paths and self.openapi_path:
+            return path == self.openapi_path or path.startswith(self.openapi_path + "/")
+        return False  # pragma: no cover
+
     def get_consumer(self, request: Request) -> Optional[str]:
         if hasattr(request.state, "consumer_identifier"):
             return str(request.state.consumer_identifier)
@@ -142,11 +159,6 @@ class ApitallyPlugin(InitPluginProtocol):
             if consumer_identifier is not None:
                 return str(consumer_identifier)
         return None
-
-    def filter_path(self, path: str) -> bool:
-        if self.filter_openapi_paths and self.openapi_path:
-            return path == self.openapi_path or path.startswith(self.openapi_path + "/")
-        return False
 
 
 def _get_openapi(app: Litestar) -> str:
