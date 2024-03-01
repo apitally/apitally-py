@@ -1,3 +1,4 @@
+import contextlib
 import json
 import sys
 import time
@@ -108,11 +109,8 @@ class ApitallyPlugin(InitPluginProtocol):
             response_size=response_headers.get("Content-Length"),
         )
         if response_status == 400 and response_body and len(response_body) < 4096:
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 parsed_body = json.loads(response_body)
-            except json.JSONDecodeError:  # pragma: no cover
-                pass
-            else:
                 if (
                     isinstance(parsed_body, dict)
                     and "detail" in parsed_body
