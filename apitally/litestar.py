@@ -28,7 +28,7 @@ class ApitallyPlugin(InitPluginProtocol):
         filter_openapi_paths: bool = True,
         identify_consumer_callback: Optional[Callable[[Request], Optional[str]]] = None,
     ) -> None:
-        self.client: ApitallyClient = ApitallyClient(client_id=client_id, env=env)
+        self.client = ApitallyClient(client_id=client_id, env=env)
         self.app_version = app_version
         self.filter_openapi_paths = filter_openapi_paths
         self.identify_consumer_callback = identify_consumer_callback

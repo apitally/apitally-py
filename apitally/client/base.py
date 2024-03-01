@@ -4,6 +4,7 @@ import os
 import re
 import threading
 import time
+from abc import ABC
 from collections import Counter
 from dataclasses import dataclass
 from math import floor
@@ -26,16 +27,16 @@ INITIAL_SYNC_INTERVAL_DURATION = 3600
 TApitallyClient = TypeVar("TApitallyClient", bound="ApitallyClientBase")
 
 
-class ApitallyClientBase:
+class ApitallyClientBase(ABC):
     _instance: Optional[ApitallyClientBase] = None
     _lock = threading.Lock()
 
-    def __new__(cls, *args, **kwargs) -> ApitallyClientBase:
+    def __new__(cls: Type[TApitallyClient], *args, **kwargs) -> TApitallyClient:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-        return cls._instance
+        return cast(TApitallyClient, cls._instance)
 
     def __init__(self, client_id: str, env: str) -> None:
         if hasattr(self, "client_id"):
