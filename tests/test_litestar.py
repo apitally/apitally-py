@@ -68,11 +68,10 @@ async def app(module_mocker: MockerFixture) -> Litestar:
 
 @pytest.fixture(scope="module")
 async def client(app: Litestar) -> TestClient:
-    from asgi_lifespan import LifespanManager
     from litestar.testing import TestClient
 
-    async with LifespanManager(app):  # type: ignore[arg-type]
-        return TestClient(app)
+    with TestClient(app) as client:
+        return client
 
 
 def test_middleware_requests_ok(client: TestClient, mocker: MockerFixture):
