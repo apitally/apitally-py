@@ -87,7 +87,7 @@ class ApitallyMiddleware:
                 status_code=response.status_code,
                 response_time=time.perf_counter() - start_time,
                 request_size=request.headers.get("Content-Length"),
-                response_size=response.headers.get("Content-Length")  # type: ignore[attr-defined]
+                response_size=response["Content-Length"]
                 if response.has_header("Content-Length")
                 else (len(response.content) if not response.streaming else None),
             )
