@@ -63,6 +63,7 @@ jobs:
           - djangorestframework django
           - djangorestframework django==4.2.*
           - djangorestframework==3.12.* django==3.2.*
+          - djangorestframework==3.10.* django==2.2.*
           - django-ninja django
           - django-ninja==0.22.* django
           - django-ninja==0.18.0 django
