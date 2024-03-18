@@ -28,9 +28,9 @@ backoff = ">=2.0.0"
 python = ">=3.8,<4.0"
 
 # Optional dependencies, included in extras
-django = { version = ">=4.0", optional = true }
+django = { version = ">=2.2", optional = true }
 django-ninja = { version = ">=0.18.0", optional = true }
-djangorestframework = { version = ">=3.12.0", optional = true }
+djangorestframework = { version = ">=3.0.0", optional = true }
 fastapi = { version = ">=0.87.0", optional = true }
 flask = { version = ">=2.0.0", optional = true }
 httpx = { version = ">=0.22.0", optional = true }

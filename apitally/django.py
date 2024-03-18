@@ -114,7 +114,7 @@ class ApitallyMiddleware:
         try:
             resolver_match = resolve(request.path_info)
             return self.view_lookup.get(resolver_match.route)
-        except Resolver404:
+        except Resolver404:  # pragma: no cover
             return None
 
     def get_consumer(self, request: HttpRequest) -> Optional[str]:
