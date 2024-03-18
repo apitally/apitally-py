@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from django.conf import settings
 from django.core.exceptions import ViewDoesNotExist
 from django.test import RequestFactory
-from django.urls import URLPattern, URLResolver, get_resolver, resolve
+from django.urls import Resolver404, URLPattern, URLResolver, get_resolver, resolve
 from django.utils.module_loading import import_string
 
 from apitally.client.threading import ApitallyClient
@@ -41,12 +41,15 @@ class ApitallyMiddleware:
             config = getattr(settings, "APITALLY_MIDDLEWARE", {})
             self.configure(**config)
             assert self.config is not None
-        self.views = _extract_views_from_url_patterns(get_resolver().url_patterns)
+        views = _extract_views_from_url_patterns(get_resolver().url_patterns)
+        self.view_lookup = {
+            view.pattern: view for view in reversed(_extract_views_from_url_patterns(get_resolver().url_patterns))
+        }
         self.client = ApitallyClient(client_id=self.config.client_id, env=self.config.env)
         self.client.start_sync_loop()
         self.client.set_app_info(
             app_info=_get_app_info(
-                views=self.views,
+                views=views,
                 app_version=self.config.app_version,
                 openapi_url=self.config.openapi_url,
             )
@@ -108,8 +111,11 @@ class ApitallyMiddleware:
         return response
 
     def get_view(self, request: HttpRequest) -> Optional[DjangoViewInfo]:
-        resolver_match = resolve(request.path_info)
-        return next((view for view in self.views if view.pattern == resolver_match.route), None)
+        try:
+            resolver_match = resolve(request.path_info)
+            return self.view_lookup.get(resolver_match.route)
+        except Resolver404:
+            return None
 
     def get_consumer(self, request: HttpRequest) -> Optional[str]:
         if hasattr(request, "consumer_identifier"):
@@ -255,7 +261,7 @@ def _get_versions(app_version: Optional[str]) -> Dict[str, str]:
         "django": version("django"),
     }
     try:
-        versions["django-rest-framework"] = version("django-rest-framework")
+        versions["djangorestframework"] = version("djangorestframework")
     except PackageNotFoundError:  # pragma: no cover
         pass
     try:
