@@ -2443,4 +2443,4 @@ starlette = ["httpx", "starlette"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<4.0"
-content-hash = "68a58ff2381d6ecc9efa11a3a6b561021b5051bd3f642ea9addf88d7563ec391"
+content-hash = "cdf7fa20ad6a3fd43c4a96b9db5d21261d94382d8f6bb4a569f78d233e12eb45"
