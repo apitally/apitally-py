@@ -171,8 +171,7 @@ def _get_app_info(
     app_info: Dict[str, Any] = {}
     if openapi := _get_openapi(views, openapi_url):
         app_info["openapi"] = openapi
-    if paths := _get_paths(views):
-        app_info["paths"] = paths
+    app_info["paths"] = _get_paths(views)
     app_info["versions"] = _get_versions(app_version)
     app_info["client"] = "python:django"
     return app_info

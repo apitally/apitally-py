@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from importlib.util import find_spec
 from typing import TYPE_CHECKING
 
@@ -14,22 +15,22 @@ if TYPE_CHECKING:
     from rest_framework.test import APIClient
 
 
+@pytest.fixture(scope="module")
+def reset_modules() -> None:
+    for module in list(sys.modules):
+        if module.startswith("django.") or module.startswith("rest_framework.") or module.startswith("apitally."):
+            del sys.modules[module]
+
+
 @pytest.fixture(scope="module", autouse=True)
-def setup(module_mocker: MockerFixture) -> None:
+def setup(reset_modules, module_mocker: MockerFixture) -> None:
     import django
-    from django.apps.registry import apps
     from django.conf import settings
-    from django.utils.functional import empty
 
     module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.threading.ApitallyClient.set_app_info")
     module_mocker.patch("apitally.django.ApitallyMiddleware.config", None)
-
-    settings._wrapped = empty
-    apps.app_configs.clear()
-    apps.loading = False
-    apps.ready = False
 
     settings.configure(
         ROOT_URLCONF="tests.django_rest_framework_urls",
@@ -53,9 +54,12 @@ def setup(module_mocker: MockerFixture) -> None:
 
 
 @pytest.fixture(scope="module")
-def client() -> APIClient:
+def client(module_mocker: MockerFixture) -> APIClient:
+    import django
     from rest_framework.test import APIClient
 
+    if django.VERSION[0] < 3:
+        module_mocker.patch("django.test.client.Client.store_exc_info")  # Simulate raise_request_exception=False
     return APIClient(raise_request_exception=False)
 
 
