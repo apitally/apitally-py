@@ -1,8 +1,6 @@
 import contextlib
 import json
-import sys
 import time
-from importlib.metadata import version
 from typing import Callable, Dict, List, Optional
 
 from litestar.app import DEFAULT_OPENAPI_CONFIG, Litestar
@@ -15,6 +13,7 @@ from litestar.plugins import InitPluginProtocol
 from litestar.types import ASGIApp, Message, Receive, Scope, Send
 
 from apitally.client.asyncio import ApitallyClient
+from apitally.common import get_versions
 
 
 __all__ = ["ApitallyPlugin"]
@@ -48,7 +47,7 @@ class ApitallyPlugin(InitPluginProtocol):
         app_info = {
             "openapi": _get_openapi(app),
             "paths": [route for route in _get_routes(app) if not self.filter_path(route["path"])],
-            "versions": _get_versions(self.app_version),
+            "versions": get_versions("litestar", app_version=self.app_version),
             "client": "python:litestar",
         }
         self.client.set_app_info(app_info)
@@ -174,14 +173,3 @@ def _get_routes(app: Litestar) -> List[Dict[str, str]]:
         for method in route.methods
         if route.scope_type == ScopeType.HTTP and method != "OPTIONS"
     ]
-
-
-def _get_versions(app_version: Optional[str]) -> Dict[str, str]:
-    versions = {
-        "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "apitally": version("apitally"),
-        "litestar": version("litestar"),
-    }
-    if app_version:
-        versions["app"] = app_version
-    return versions

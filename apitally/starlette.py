@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 import time
-from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 from httpx import HTTPStatusError
@@ -17,6 +15,7 @@ from starlette.testclient import TestClient
 from starlette.types import ASGIApp
 
 from apitally.client.asyncio import ApitallyClient
+from apitally.common import get_versions
 
 
 if TYPE_CHECKING:
@@ -145,7 +144,7 @@ def _get_app_info(app: ASGIApp, app_version: Optional[str] = None, openapi_url: 
         app_info["openapi"] = openapi
     if endpoints := _get_endpoint_info(app):
         app_info["paths"] = [{"path": endpoint.path, "method": endpoint.http_method} for endpoint in endpoints]
-    app_info["versions"] = _get_versions(app_version)
+    app_info["versions"] = get_versions("fastapi", "starlette", app_version=app_version)
     app_info["client"] = "python:starlette"
     return app_info
 
@@ -179,18 +178,3 @@ def _register_shutdown_handler(app: Union[ASGIApp, Router], shutdown_handler: Ca
         app.add_event_handler("shutdown", shutdown_handler)
     elif hasattr(app, "app"):
         _register_shutdown_handler(app.app, shutdown_handler)
-
-
-def _get_versions(app_version: Optional[str]) -> Dict[str, str]:
-    versions = {
-        "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "apitally": version("apitally"),
-        "starlette": version("starlette"),
-    }
-    try:
-        versions["fastapi"] = version("fastapi")
-    except PackageNotFoundError:  # pragma: no cover
-        pass
-    if app_version:
-        versions["app"] = app_version
-    return versions
