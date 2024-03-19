@@ -3,7 +3,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Dict, Optional
 
 
-def get_versions(*packages, app_version: Optional[str]) -> Dict[str, str]:
+def get_versions(*packages, app_version: Optional[str] = None) -> Dict[str, str]:
     versions = _get_common_package_versions()
     for package in packages:
         versions[package] = _get_package_version(package)
