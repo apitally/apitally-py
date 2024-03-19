@@ -5,7 +5,7 @@ build-backend = "poetry_dynamic_versioning.backend"
 [tool.poetry]
 name = "apitally"
 version = "1.0.0"
-description = "API monitoring for REST APIs built with FastAPI, Flask, Django, and Starlette."
+description = "API monitoring for REST APIs built with FastAPI, Flask, Django, Starlette and Litestar."
 readme = "README.md"
 authors = ["Apitally <hello@apitally.io>"]
 license = "MIT License"
