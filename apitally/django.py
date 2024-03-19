@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import json
-import sys
 import time
 from dataclasses import dataclass
-from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from django.conf import settings
@@ -14,6 +12,7 @@ from django.urls import Resolver404, URLPattern, URLResolver, get_resolver, reso
 from django.utils.module_loading import import_string
 
 from apitally.client.threading import ApitallyClient
+from apitally.common import get_versions
 
 
 if TYPE_CHECKING:
@@ -172,7 +171,7 @@ def _get_app_info(
     if openapi := _get_openapi(views, openapi_url):
         app_info["openapi"] = openapi
     app_info["paths"] = _get_paths(views)
-    app_info["versions"] = _get_versions(app_version)
+    app_info["versions"] = get_versions("django", "djangorestframework", "django-ninja", app_version=app_version)
     app_info["client"] = "python:django"
     return app_info
 
@@ -251,22 +250,3 @@ def _extract_views_from_url_patterns(
                 )
             )
     return views
-
-
-def _get_versions(app_version: Optional[str]) -> Dict[str, str]:
-    versions = {
-        "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "apitally": version("apitally"),
-        "django": version("django"),
-    }
-    try:
-        versions["djangorestframework"] = version("djangorestframework")
-    except PackageNotFoundError:  # pragma: no cover
-        pass
-    try:
-        versions["django-ninja"] = version("django-ninja")
-    except PackageNotFoundError:  # pragma: no cover
-        pass
-    if app_version:
-        versions["app"] = app_version
-    return versions

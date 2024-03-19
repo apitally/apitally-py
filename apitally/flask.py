@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import sys
 import time
-from importlib.metadata import version
 from threading import Timer
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 
@@ -12,6 +10,7 @@ from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
 
 from apitally.client.threading import ApitallyClient
+from apitally.common import get_versions
 
 
 if TYPE_CHECKING:
@@ -103,7 +102,7 @@ def _get_app_info(app: Flask, app_version: Optional[str] = None, openapi_url: Op
         app_info["openapi"] = openapi
     if paths := _get_paths(app.url_map):
         app_info["paths"] = paths
-    app_info["versions"] = _get_versions(app_version)
+    app_info["versions"] = get_versions("flask", app_version=app_version)
     app_info["client"] = "python:flask"
     return app_info
 
@@ -124,14 +123,3 @@ def _get_openapi(app: WSGIApplication, openapi_url: str) -> Optional[str]:
     if response.status_code != 200:
         return None
     return response.get_data(as_text=True)
-
-
-def _get_versions(app_version: Optional[str]) -> Dict[str, str]:
-    versions = {
-        "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "apitally": version("apitally"),
-        "flask": version("flask"),
-    }
-    if app_version:
-        versions["app"] = app_version
-    return versions
