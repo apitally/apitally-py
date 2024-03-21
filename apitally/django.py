@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import contextlib
 import json
+import re
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from importlib import import_module
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
 
 from django.conf import settings
-from django.core.exceptions import ViewDoesNotExist
-from django.test import RequestFactory
 from django.urls import Resolver404, URLPattern, URLResolver, get_resolver, resolve
 from django.utils.module_loading import import_string
 
@@ -17,6 +18,7 @@ from apitally.common import get_versions
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
+    from ninja import NinjaAPI
 
 
 __all__ = ["ApitallyMiddleware"]
@@ -27,7 +29,6 @@ class ApitallyMiddlewareConfig:
     client_id: str
     env: str
     app_version: Optional[str]
-    openapi_url: Optional[str]
     identify_consumer_callback: Optional[Callable[[HttpRequest], Optional[str]]]
 
 
@@ -36,23 +37,21 @@ class ApitallyMiddleware:
 
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response
+        self.ninja_available = _check_import("ninja")
+        self.drf_endpoint_enumerator = None
+        if _check_import("rest_framework"):
+            from rest_framework.schemas.generators import EndpointEnumerator
+
+            self.drf_endpoint_enumerator = EndpointEnumerator()
+
         if self.config is None:
             config = getattr(settings, "APITALLY_MIDDLEWARE", {})
             self.configure(**config)
             assert self.config is not None
-        views = _extract_views_from_url_patterns(get_resolver().url_patterns)
-        self.view_lookup = {
-            view.pattern: view for view in reversed(_extract_views_from_url_patterns(get_resolver().url_patterns))
-        }
+
         self.client = ApitallyClient(client_id=self.config.client_id, env=self.config.env)
         self.client.start_sync_loop()
-        self.client.set_app_info(
-            app_info=_get_app_info(
-                views=views,
-                app_version=self.config.app_version,
-                openapi_url=self.config.openapi_url,
-            )
-        )
+        self.client.set_app_info(app_info=_get_app_info(app_version=self.config.app_version))
 
     @classmethod
     def configure(
@@ -60,29 +59,27 @@ class ApitallyMiddleware:
         client_id: str,
         env: str = "dev",
         app_version: Optional[str] = None,
-        openapi_url: Optional[str] = None,
         identify_consumer_callback: Optional[str] = None,
     ) -> None:
         cls.config = ApitallyMiddlewareConfig(
             client_id=client_id,
             env=env,
             app_version=app_version,
-            openapi_url=openapi_url,
             identify_consumer_callback=import_string(identify_consumer_callback)
             if identify_consumer_callback
             else None,
         )
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
-        view = self.get_view(request)
+        path = self.get_path(request)
         start_time = time.perf_counter()
         response = self.get_response(request)
-        if request.method is not None and view is not None and view.is_api_view:
+        if request.method is not None and path is not None:
             consumer = self.get_consumer(request)
             self.client.request_counter.add_request(
                 consumer=consumer,
                 method=request.method,
-                path=view.pattern,
+                path=path,
                 status_code=response.status_code,
                 response_time=time.perf_counter() - start_time,
                 request_size=request.headers.get("Content-Length"),
@@ -102,19 +99,32 @@ class ApitallyMiddleware:
                         self.client.validation_error_counter.add_validation_errors(
                             consumer=consumer,
                             method=request.method,
-                            path=view.pattern,
+                            path=path,
                             detail=body["detail"],
                         )
                 except json.JSONDecodeError:  # pragma: no cover
                     pass
         return response
 
-    def get_view(self, request: HttpRequest) -> Optional[DjangoViewInfo]:
+    def get_path(self, request: HttpRequest) -> Optional[str]:
         try:
             resolver_match = resolve(request.path_info)
-            return self.view_lookup.get(resolver_match.route)
-        except Resolver404:  # pragma: no cover
+        except Resolver404:
             return None
+
+        if self.drf_endpoint_enumerator is not None:
+            from rest_framework.schemas.generators import is_api_view
+
+            if is_api_view(resolver_match.func):
+                return self.drf_endpoint_enumerator.get_path_from_regex(resolver_match.route)
+
+        if self.ninja_available:
+            from ninja.operation import PathView
+
+            if hasattr(resolver_match.func, "__self__") and isinstance(resolver_match.func.__self__, PathView):
+                path = "/" + resolver_match.route.lstrip("/")
+                return re.sub(r"<(?:[^:]+:)?([^>:]+)>", r"{\1}", path)
+        return None
 
     def get_consumer(self, request: HttpRequest) -> Optional[str]:
         if hasattr(request, "consumer_identifier"):
@@ -126,127 +136,116 @@ class ApitallyMiddleware:
         return None
 
 
-@dataclass
-class DjangoViewInfo:
-    func: Callable
-    pattern: str
-    name: Optional[str] = None
-
-    @property
-    def is_api_view(self) -> bool:
-        return self.is_rest_framework_api_view or self.is_ninja_path_view
-
-    @property
-    def is_rest_framework_api_view(self) -> bool:
-        try:
-            from rest_framework.views import APIView
-
-            return hasattr(self.func, "view_class") and issubclass(self.func.view_class, APIView)
-        except ImportError:  # pragma: no cover
-            return False
-
-    @property
-    def is_ninja_path_view(self) -> bool:
-        try:
-            from ninja.operation import PathView
-
-            return hasattr(self.func, "__self__") and isinstance(self.func.__self__, PathView)
-        except ImportError:  # pragma: no cover
-            return False
-
-    @property
-    def allowed_methods(self) -> List[str]:
-        if hasattr(self.func, "view_class"):
-            return [method.upper() for method in self.func.view_class().allowed_methods]
-        if self.is_ninja_path_view:
-            assert hasattr(self.func, "__self__")
-            return [method.upper() for operation in self.func.__self__.operations for method in operation.methods]
-        return []  # pragma: no cover
-
-
-def _get_app_info(
-    views: List[DjangoViewInfo], app_version: Optional[str] = None, openapi_url: Optional[str] = None
-) -> Dict[str, Any]:
+def _get_app_info(app_version: Optional[str] = None) -> Dict[str, Any]:
     app_info: Dict[str, Any] = {}
-    if openapi := _get_openapi(views, openapi_url):
+    if openapi := _get_openapi():
         app_info["openapi"] = openapi
-    app_info["paths"] = _get_paths(views)
+    app_info["paths"] = _get_paths()
     app_info["versions"] = get_versions("django", "djangorestframework", "django-ninja", app_version=app_version)
     app_info["client"] = "python:django"
     return app_info
 
 
-def _get_paths(views: List[DjangoViewInfo]) -> List[Dict[str, str]]:
+def _get_openapi() -> Optional[str]:
+    ninja_schema = None
+    drf_schema = None
+    with contextlib.suppress(ImportError):
+        drf_schema = _get_drf_schema()
+    with contextlib.suppress(ImportError):
+        ninja_schema = _get_ninja_schema()
+    if drf_schema is not None and ninja_schema is None:
+        return json.dumps(drf_schema)
+    elif drf_schema is None and ninja_schema is not None:
+        return json.dumps(ninja_schema)
+    return None
+
+
+def _get_paths() -> List[Dict[str, str]]:
+    paths = []
+    with contextlib.suppress(ImportError):
+        paths.extend(_get_drf_paths())
+    with contextlib.suppress(ImportError):
+        paths.extend(_get_ninja_paths())
+    return paths
+
+
+def _get_drf_paths() -> List[Dict[str, str]]:
+    from rest_framework.schemas.generators import EndpointEnumerator
+
+    enumerator = EndpointEnumerator()
     return [
-        {"method": method, "path": view.pattern}
-        for view in views
-        if view.is_api_view
-        for method in view.allowed_methods
+        {
+            "method": method.upper(),
+            "path": path,
+        }
+        for path, method, _ in enumerator.get_api_endpoints()
         if method not in ["HEAD", "OPTIONS"]
     ]
 
 
-def _get_openapi(views: List[DjangoViewInfo], openapi_url: Optional[str] = None) -> Optional[str]:
-    openapi_views = [
-        view
-        for view in views
-        if (openapi_url is not None and view.pattern == openapi_url.removeprefix("/"))
-        or (openapi_url is None and view.pattern.endswith("openapi.json") and "<" not in view.pattern)
-    ]
-    if len(openapi_views) == 1:
-        rf = RequestFactory()
-        request = rf.get(openapi_views[0].pattern)
-        response = openapi_views[0].func(request)
-        if response.status_code == 200:
-            return response.content.decode()
+def _get_drf_schema() -> Optional[Dict[str, Any]]:
+    from rest_framework.schemas.openapi import SchemaGenerator
+
+    generator = SchemaGenerator()
+    schema = generator.get_schema()
+    if schema is not None and len(schema["paths"]) > 0:
+        return schema  # type: ignore[return-value]
     return None
 
 
-def _extract_views_from_url_patterns(
-    url_patterns: List[Any], base: str = "", namespace: Optional[str] = None
-) -> List[DjangoViewInfo]:
-    # Copied and adapted from django-extensions.
-    # See https://github.com/django-extensions/django-extensions/blob/dd794f1b239d657f62d40f2c3178200978328ed7/django_extensions/management/commands/show_urls.py#L190C34-L190C34
-    views = []
+def _get_ninja_paths() -> List[Dict[str, str]]:
+    endpoints = []
+    for api in _get_ninja_api_instances():
+        schema = api.get_openapi_schema()
+        for path, operations in schema["paths"].items():
+            for method, operation in operations.items():
+                if method not in ["HEAD", "OPTIONS"]:
+                    endpoints.append(
+                        {
+                            "method": method,
+                            "path": path,
+                            "summary": operation.get("summary"),
+                            "description": operation.get("description"),
+                        }
+                    )
+    return endpoints
+
+
+def _get_ninja_schema() -> Optional[Dict[str, Any]]:
+    apis = _get_ninja_api_instances()
+    if len(apis) == 1:
+        api = list(_get_ninja_api_instances())[0]
+        schema = api.get_openapi_schema()
+        if len(schema["paths"]) > 0:
+            return schema
+    return None
+
+
+def _get_ninja_api_instances(url_patterns: Optional[List[Any]] = None) -> Set[NinjaAPI]:
+    from ninja import NinjaAPI
+
+    if url_patterns is None:
+        url_patterns = get_resolver().url_patterns
+    apis: Set[NinjaAPI] = set()
     for p in url_patterns:
-        if isinstance(p, URLPattern):
-            try:
-                if not p.name:
-                    name = p.name
-                elif namespace:
-                    name = f"{namespace}:{p.name}"
-                else:
-                    name = p.name
-                views.append(DjangoViewInfo(func=p.callback, pattern=base + str(p.pattern), name=name))
-            except ViewDoesNotExist:
-                continue
-        elif isinstance(p, URLResolver):
-            try:
-                patterns = p.url_patterns
-            except ImportError:
-                continue
-            views.extend(
-                _extract_views_from_url_patterns(
-                    patterns,
-                    base + str(p.pattern),
-                    namespace=f"{namespace}:{p.namespace}" if namespace and p.namespace else p.namespace or namespace,
-                )
-            )
-        elif hasattr(p, "_get_callback"):
-            try:
-                views.append(DjangoViewInfo(func=p._get_callback(), pattern=base + str(p.pattern), name=p.name))
-            except ViewDoesNotExist:
-                continue
-        elif hasattr(p, "url_patterns"):
-            try:
-                patterns = p.url_patterns
-            except ImportError:
-                continue
-            views.extend(
-                _extract_views_from_url_patterns(
-                    patterns,
-                    base + str(p.pattern),
-                    namespace=namespace,
-                )
-            )
-    return views
+        if isinstance(p, URLResolver):
+            if p.app_name != "ninja":
+                apis.update(_get_ninja_api_instances(p.url_patterns))
+            else:
+                for pattern in p.url_patterns:
+                    if isinstance(pattern, URLPattern) and pattern.lookup_str.startswith("ninja."):
+                        callback_keywords = getattr(pattern.callback, "keywords", {})
+                        if isinstance(callback_keywords, dict):
+                            api = callback_keywords.get("api")
+                            if isinstance(api, NinjaAPI):
+                                apis.add(api)
+                                break
+    return apis
+
+
+def _check_import(name: str) -> bool:
+    try:
+        import_module(name)
+        return True
+    except ImportError:
+        return False

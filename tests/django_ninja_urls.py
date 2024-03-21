@@ -6,7 +6,7 @@ from ninja import NinjaAPI
 api = NinjaAPI()
 
 
-@api.get("/foo")
+@api.get("/foo", summary="Foo", description="Foo")
 def foo(request: HttpRequest) -> str:
     return "foo"
 

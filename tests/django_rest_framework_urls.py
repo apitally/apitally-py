@@ -6,6 +6,8 @@ from rest_framework.views import APIView
 
 
 class FooView(APIView):
+    """Foo"""
+
     def get(self, request: Request) -> Response:
         return Response("foo")
 
