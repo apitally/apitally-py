@@ -92,7 +92,7 @@ class ApitallyMiddleware:
                 and (content_type := response.get("Content-Type")) is not None
                 and content_type.startswith("application/json")
             ):
-                try:
+                with contextlib.suppress(json.JSONDecodeError):
                     body = json.loads(response.content)
                     if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
                         # Log Django Ninja / Pydantic validation errors
@@ -102,8 +102,6 @@ class ApitallyMiddleware:
                             path=path,
                             detail=body["detail"],
                         )
-                except json.JSONDecodeError:  # pragma: no cover
-                    pass
         return response
 
     def get_path(self, request: HttpRequest) -> Optional[str]:
@@ -111,13 +109,11 @@ class ApitallyMiddleware:
             resolver_match = resolve(request.path_info)
         except Resolver404:
             return None
-
         if self.drf_endpoint_enumerator is not None:
             from rest_framework.schemas.generators import is_api_view
 
             if is_api_view(resolver_match.func):
                 return self.drf_endpoint_enumerator.get_path_from_regex(resolver_match.route)
-
         if self.ninja_available:
             from ninja.operation import PathView
 
@@ -147,15 +143,15 @@ def _get_app_info(app_version: Optional[str] = None) -> Dict[str, Any]:
 
 
 def _get_openapi() -> Optional[str]:
-    ninja_schema = None
     drf_schema = None
+    ninja_schema = None
     with contextlib.suppress(ImportError):
         drf_schema = _get_drf_schema()
     with contextlib.suppress(ImportError):
         ninja_schema = _get_ninja_schema()
     if drf_schema is not None and ninja_schema is None:
         return json.dumps(drf_schema)
-    elif drf_schema is None and ninja_schema is not None:
+    elif ninja_schema is not None and drf_schema is None:
         return json.dumps(ninja_schema)
     return None
 
@@ -186,10 +182,11 @@ def _get_drf_paths() -> List[Dict[str, str]]:
 def _get_drf_schema() -> Optional[Dict[str, Any]]:
     from rest_framework.schemas.openapi import SchemaGenerator
 
-    generator = SchemaGenerator()
-    schema = generator.get_schema()
-    if schema is not None and len(schema["paths"]) > 0:
-        return schema  # type: ignore[return-value]
+    with contextlib.suppress(AssertionError):  # uritemplate must be installed for OpenAPI schema support
+        generator = SchemaGenerator()
+        schema = generator.get_schema()
+        if schema is not None and len(schema["paths"]) > 0:
+            return schema  # type: ignore[return-value]
     return None
 
 
@@ -212,9 +209,8 @@ def _get_ninja_paths() -> List[Dict[str, str]]:
 
 
 def _get_ninja_schema() -> Optional[Dict[str, Any]]:
-    apis = _get_ninja_api_instances()
-    if len(apis) == 1:
-        api = list(_get_ninja_api_instances())[0]
+    if len(apis := _get_ninja_api_instances()) == 1:
+        api = list(apis)[0]
         schema = api.get_openapi_schema()
         if len(schema["paths"]) > 0:
             return schema
