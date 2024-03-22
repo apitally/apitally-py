@@ -2443,7 +2443,6 @@ docs = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "rst.link
 testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "pytest (>=6)", "pytest-black (>=0.3.7)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=2.2)", "pytest-ignore-flaky", "pytest-mypy (>=0.9.1)", "pytest-ruff"]
 
 [extras]
-django = ["django", "requests"]
 django-ninja = ["django", "django-ninja", "requests"]
 django-rest-framework = ["django", "djangorestframework", "inflection", "requests", "uritemplate"]
 fastapi = ["fastapi", "httpx", "starlette"]
@@ -2454,4 +2453,4 @@ starlette = ["httpx", "starlette"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<4.0"
-content-hash = "518ba9b96de6560e7f40006e2c2553c7ce7ac72236a2a2c560408e7e1fe0a669"
+content-hash = "265fcc36bcee1c5eb03584e161a61730f6f37686d0da654fea233ebaf5f905c2"
