@@ -88,6 +88,14 @@ def test_middleware_requests_ok(client: Client, mocker: MockerFixture):
     assert int(mock.call_args.kwargs["request_size"]) > 0
 
 
+def test_middleware_requests_404(client: Client, mocker: MockerFixture):
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
+
+    response = client.get("/api/none")
+    assert response.status_code == 404
+    mock.assert_not_called()
+
+
 def test_middleware_requests_error(client: Client, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
 
@@ -117,7 +125,7 @@ def test_middleware_validation_error(client: Client, mocker: MockerFixture):
 def test_get_app_info():
     from apitally.django import _get_app_info
 
-    app_info = _get_app_info(app_version="1.2.3")
+    app_info = _get_app_info(app_version="1.2.3", urlconfs=[None])
     openapi = json.loads(app_info["openapi"])
     assert len(app_info["paths"]) == 5
     assert len(openapi["paths"]) == 5
@@ -142,7 +150,7 @@ def test_get_ninja_api_instances():
 def test_get_ninja_api_endpoints():
     from apitally.django import _get_ninja_paths
 
-    endpoints = _get_ninja_paths()
+    endpoints = _get_ninja_paths([None])
     assert len(endpoints) == 5
     assert all(len(e["summary"]) > 0 for e in endpoints)
     assert any(e["description"] is not None and len(e["description"]) > 0 for e in endpoints)
