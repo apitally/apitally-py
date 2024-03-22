@@ -75,7 +75,7 @@ def test_middleware_requests_ok(client: Client, mocker: MockerFixture):
     mock.assert_called_once()
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "GET"
-    assert mock.call_args.kwargs["path"] == "api/foo/<bar>"
+    assert mock.call_args.kwargs["path"] == "/api/foo/{bar}"
     assert mock.call_args.kwargs["status_code"] == 200
     assert mock.call_args.kwargs["response_time"] > 0
     assert int(mock.call_args.kwargs["response_size"]) > 0
@@ -88,6 +88,14 @@ def test_middleware_requests_ok(client: Client, mocker: MockerFixture):
     assert int(mock.call_args.kwargs["request_size"]) > 0
 
 
+def test_middleware_requests_404(client: Client, mocker: MockerFixture):
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
+
+    response = client.get("/api/none")
+    assert response.status_code == 404
+    mock.assert_not_called()
+
+
 def test_middleware_requests_error(client: Client, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
 
@@ -96,7 +104,7 @@ def test_middleware_requests_error(client: Client, mocker: MockerFixture):
     mock.assert_called_once()
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "PUT"
-    assert mock.call_args.kwargs["path"] == "api/baz"
+    assert mock.call_args.kwargs["path"] == "/api/baz"
     assert mock.call_args.kwargs["status_code"] == 500
     assert mock.call_args.kwargs["response_time"] > 0
 
@@ -109,22 +117,47 @@ def test_middleware_validation_error(client: Client, mocker: MockerFixture):
     mock.assert_called_once()
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "GET"
-    assert mock.call_args.kwargs["path"] == "api/val"
+    assert mock.call_args.kwargs["path"] == "/api/val"
     assert len(mock.call_args.kwargs["detail"]) == 1
     assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
 
 
-def test_get_app_info(mocker: MockerFixture):
-    from django.urls import get_resolver
+def test_get_app_info():
+    from apitally.django import _get_app_info
 
-    from apitally.django import _extract_views_from_url_patterns, _get_app_info
-
-    views = _extract_views_from_url_patterns(get_resolver().url_patterns)
-
-    app_info = _get_app_info(views=views)
+    app_info = _get_app_info(app_version="1.2.3", urlconfs=[None])
     openapi = json.loads(app_info["openapi"])
-    assert len(app_info["paths"]) == len(openapi["paths"])
+    assert len(app_info["paths"]) == 5
+    assert len(openapi["paths"]) == 5
 
-    app_info = _get_app_info(views=views, app_version="1.2.3", openapi_url="/api/openapi.json")
-    assert "openapi" in app_info
+    assert app_info["versions"]["django"]
+    assert app_info["versions"]["django-ninja"]
     assert app_info["versions"]["app"] == "1.2.3"
+    assert app_info["client"] == "python:django"
+
+
+def test_get_ninja_api_instances():
+    from ninja import NinjaAPI
+
+    from apitally.django import _get_ninja_api_instances
+
+    apis = _get_ninja_api_instances()
+    assert len(apis) == 1
+    api = list(apis)[0]
+    assert isinstance(api, NinjaAPI)
+
+
+def test_get_ninja_api_endpoints():
+    from apitally.django import _get_ninja_paths
+
+    endpoints = _get_ninja_paths([None])
+    assert len(endpoints) == 5
+    assert all(len(e["summary"]) > 0 for e in endpoints)
+    assert any(e["description"] is not None and len(e["description"]) > 0 for e in endpoints)
+
+
+def test_check_import():
+    from apitally.django import _check_import
+
+    assert _check_import("ninja") is True
+    assert _check_import("nonexistentpackage") is False

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from importlib.util import find_spec
 from typing import TYPE_CHECKING
@@ -71,7 +72,7 @@ def test_middleware_requests_ok(client: APIClient, mocker: MockerFixture):
     mock.assert_called_once()
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "GET"
-    assert mock.call_args.kwargs["path"] == "foo/<int:bar>/"
+    assert mock.call_args.kwargs["path"] == "/foo/{bar}/"
     assert mock.call_args.kwargs["status_code"] == 200
     assert mock.call_args.kwargs["response_time"] > 0
     assert int(mock.call_args.kwargs["response_size"]) > 0
@@ -84,6 +85,14 @@ def test_middleware_requests_ok(client: APIClient, mocker: MockerFixture):
     assert int(mock.call_args.kwargs["request_size"]) > 0
 
 
+def test_middleware_requests_404(client: APIClient, mocker: MockerFixture):
+    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
+
+    response = client.get("/api/none")
+    assert response.status_code == 404
+    mock.assert_not_called()
+
+
 def test_middleware_requests_error(client: APIClient, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
 
@@ -92,19 +101,30 @@ def test_middleware_requests_error(client: APIClient, mocker: MockerFixture):
     mock.assert_called_once()
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "PUT"
-    assert mock.call_args.kwargs["path"] == "baz/"
+    assert mock.call_args.kwargs["path"] == "/baz/"
     assert mock.call_args.kwargs["status_code"] == 500
     assert mock.call_args.kwargs["response_time"] > 0
 
 
 def test_get_app_info():
-    from django.urls import get_resolver
+    from apitally.django import _get_app_info
 
-    from apitally.django import _extract_views_from_url_patterns, _get_app_info
-
-    views = _extract_views_from_url_patterns(get_resolver().url_patterns)
-    app_info = _get_app_info(views=views, app_version="1.2.3")
+    app_info = _get_app_info(app_version="1.2.3", urlconfs=[None])
+    openapi = json.loads(app_info["openapi"])
     assert len(app_info["paths"]) == 4
+    assert len(openapi["paths"]) == 4
+
     assert app_info["versions"]["django"]
+    assert app_info["versions"]["djangorestframework"]
     assert app_info["versions"]["app"] == "1.2.3"
     assert app_info["client"] == "python:django"
+
+
+def test_get_drf_api_endpoints():
+    from apitally.django import _get_drf_paths
+
+    endpoints = _get_drf_paths([None])
+    assert len(endpoints) == 4
+    assert endpoints[0]["method"] == "GET"
+    assert endpoints[0]["path"] == "/foo/"
+    assert endpoints[1]["path"] == "/foo/{bar}/"

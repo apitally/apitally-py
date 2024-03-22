@@ -60,17 +60,16 @@ jobs:
           - flask
           - flask==2.3.*
           - flask==2.0.3 Werkzeug==2.*
-          - djangorestframework django
-          - djangorestframework django==4.2.*
-          - djangorestframework==3.12.* django==3.2.*
-          - djangorestframework==3.10.* django==2.2.*
+          - djangorestframework django uritemplate inflection
+          - djangorestframework django==4.2.* uritemplate inflection
+          - djangorestframework==3.12.* django==3.2.* uritemplate
+          - djangorestframework==3.10.* django==2.2.* uritemplate
           - django-ninja django
           - django-ninja==0.22.* django
           - django-ninja==0.18.0 django
           - litestar
           - litestar==2.6.1
           - litestar==2.0.1
-
     steps:
       - uses: actions/checkout@v4
       - name: Load cached Poetry installation
