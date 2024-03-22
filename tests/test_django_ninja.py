@@ -154,3 +154,10 @@ def test_get_ninja_api_endpoints():
     assert len(endpoints) == 5
     assert all(len(e["summary"]) > 0 for e in endpoints)
     assert any(e["description"] is not None and len(e["description"]) > 0 for e in endpoints)
+
+
+def test_check_import():
+    from apitally.django import _check_import
+
+    assert _check_import("ninja") is True
+    assert _check_import("nonexistentpackage") is False

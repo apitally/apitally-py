@@ -99,7 +99,7 @@ class ApitallyMiddleware:
                     if response.has_header("Content-Length")
                     else (len(response.content) if not response.streaming else None),
                 )
-            except Exception:
+            except Exception:  # pragma: no cover
                 logger.exception("Failed to log request metadata")
             if (
                 response.status_code == 422
@@ -117,7 +117,7 @@ class ApitallyMiddleware:
                                 path=path,
                                 detail=body["detail"],
                             )
-                except Exception:
+                except Exception:  # pragma: no cover
                     logger.exception("Failed to log validation errors")
         return response
 
@@ -135,7 +135,7 @@ class ApitallyMiddleware:
                     if hasattr(match.func, "__self__") and isinstance(match.func.__self__, PathView):
                         path = "/" + match.route.lstrip("/")
                         return re.sub(r"<(?:[^:]+:)?([^>:]+)>", r"{\1}", path)
-            except Exception:
+            except Exception:  # pragma: no cover
                 logger.exception("Failed to get path for request")
         return None
 
@@ -147,7 +147,7 @@ class ApitallyMiddleware:
                 consumer_identifier = self.config.identify_consumer_callback(request)
                 if consumer_identifier is not None:
                     return str(consumer_identifier)
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Failed to get consumer identifier for request")
         return None
 
@@ -156,12 +156,12 @@ def _get_app_info(app_version: Optional[str], urlconfs: List[Optional[str]]) -> 
     app_info: Dict[str, Any] = {}
     try:
         app_info["paths"] = _get_paths(urlconfs)
-    except Exception:
+    except Exception:  # pragma: no cover
         app_info["paths"] = []
         logger.exception("Failed to get paths")
     try:
         app_info["openapi"] = _get_openapi(urlconfs)
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.exception("Failed to get OpenAPI schema")
     app_info["versions"] = get_versions("django", "djangorestframework", "django-ninja", app_version=app_version)
     app_info["client"] = "python:django"
@@ -179,7 +179,7 @@ def _get_openapi(urlconfs: List[Optional[str]]) -> Optional[str]:
         return json.dumps(drf_schema)
     elif ninja_schema is not None and drf_schema is None:
         return json.dumps(ninja_schema)
-    return None
+    return None  # pragma: no cover
 
 
 def _get_paths(urlconfs: List[Optional[str]]) -> List[Dict[str, str]]:
