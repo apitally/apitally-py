@@ -60,8 +60,8 @@ jobs:
           - flask
           - flask==2.3.*
           - flask==2.0.3 Werkzeug==2.*
-          - djangorestframework django uritemplate
-          - djangorestframework django==4.2.* uritemplate
+          - djangorestframework django uritemplate inflection
+          - djangorestframework django==4.2.* uritemplate inflection
           - djangorestframework==3.12.* django==3.2.* uritemplate
           - djangorestframework==3.10.* django==2.2.* uritemplate
           - django-ninja django
