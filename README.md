@@ -8,7 +8,7 @@
 
 <p align="center"><b>API monitoring made easy.</b></p>
 
-<p align="center"><i>Apitally is a simple and affordable API monitoring solution with a focus on data privacy. It is easy to set up and use for new and existing API projects using Python or Node.js.</i></p>
+<p align="center"><i>Apitally is a simple and affordable API monitoring tool with a focus on data privacy.<br>It is super easy to use for API projects in Python or Node.js and never collects sensitive data.</i></p>
 
 <p align="center">🔗 <b><a href="https://apitally.io" target="_blank">apitally.io</a></b></p>
 
@@ -51,8 +51,8 @@ example:
 pip install apitally[fastapi]
 ```
 
-The available extras are: `fastapi`, `starlette`, `flask`, `django` and
-`litestar`.
+The available extras are: `fastapi`, `flask`, `django_rest_framework`,
+`django_ninja`, `starlette` and `litestar`.
 
 ## Usage
 
