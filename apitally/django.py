@@ -12,6 +12,7 @@ from django.conf import settings
 from django.urls import Resolver404, URLPattern, URLResolver, get_resolver, resolve
 from django.utils.module_loading import import_string
 
+from apitally.client.logging import get_logger
 from apitally.client.threading import ApitallyClient
 from apitally.common import get_versions
 
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
 
 
 __all__ = ["ApitallyMiddleware"]
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -75,33 +77,39 @@ class ApitallyMiddleware:
         start_time = time.perf_counter()
         response = self.get_response(request)
         if request.method is not None and path is not None:
-            consumer = self.get_consumer(request)
-            self.client.request_counter.add_request(
-                consumer=consumer,
-                method=request.method,
-                path=path,
-                status_code=response.status_code,
-                response_time=time.perf_counter() - start_time,
-                request_size=request.headers.get("Content-Length"),
-                response_size=response["Content-Length"]
-                if response.has_header("Content-Length")
-                else (len(response.content) if not response.streaming else None),
-            )
+            try:
+                consumer = self.get_consumer(request)
+                self.client.request_counter.add_request(
+                    consumer=consumer,
+                    method=request.method,
+                    path=path,
+                    status_code=response.status_code,
+                    response_time=time.perf_counter() - start_time,
+                    request_size=request.headers.get("Content-Length"),
+                    response_size=response["Content-Length"]
+                    if response.has_header("Content-Length")
+                    else (len(response.content) if not response.streaming else None),
+                )
+            except Exception:
+                logger.exception("Failed to log request metadata")
             if (
                 response.status_code == 422
                 and (content_type := response.get("Content-Type")) is not None
                 and content_type.startswith("application/json")
             ):
-                with contextlib.suppress(json.JSONDecodeError):
-                    body = json.loads(response.content)
-                    if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
-                        # Log Django Ninja / Pydantic validation errors
-                        self.client.validation_error_counter.add_validation_errors(
-                            consumer=consumer,
-                            method=request.method,
-                            path=path,
-                            detail=body["detail"],
-                        )
+                try:
+                    with contextlib.suppress(json.JSONDecodeError):
+                        body = json.loads(response.content)
+                        if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
+                            # Log Django Ninja / Pydantic validation errors
+                            self.client.validation_error_counter.add_validation_errors(
+                                consumer=consumer,
+                                method=request.method,
+                                path=path,
+                                detail=body["detail"],
+                            )
+                except Exception:
+                    logger.exception("Failed to log validation errors")
         return response
 
     def get_path(self, request: HttpRequest) -> Optional[str]:
@@ -109,34 +117,46 @@ class ApitallyMiddleware:
             resolver_match = resolve(request.path_info)
         except Resolver404:
             return None
-        if self.drf_endpoint_enumerator is not None:
-            from rest_framework.schemas.generators import is_api_view
+        try:
+            if self.drf_endpoint_enumerator is not None:
+                from rest_framework.schemas.generators import is_api_view
 
-            if is_api_view(resolver_match.func):
-                return self.drf_endpoint_enumerator.get_path_from_regex(resolver_match.route)
-        if self.ninja_available:
-            from ninja.operation import PathView
+                if is_api_view(resolver_match.func):
+                    return self.drf_endpoint_enumerator.get_path_from_regex(resolver_match.route)
+            if self.ninja_available:
+                from ninja.operation import PathView
 
-            if hasattr(resolver_match.func, "__self__") and isinstance(resolver_match.func.__self__, PathView):
-                path = "/" + resolver_match.route.lstrip("/")
-                return re.sub(r"<(?:[^:]+:)?([^>:]+)>", r"{\1}", path)
+                if hasattr(resolver_match.func, "__self__") and isinstance(resolver_match.func.__self__, PathView):
+                    path = "/" + resolver_match.route.lstrip("/")
+                    return re.sub(r"<(?:[^:]+:)?([^>:]+)>", r"{\1}", path)
+        except Exception:
+            logger.exception("Failed to get path for request")
         return None
 
     def get_consumer(self, request: HttpRequest) -> Optional[str]:
-        if hasattr(request, "consumer_identifier"):
-            return str(request.consumer_identifier)
-        if self.config is not None and self.config.identify_consumer_callback is not None:
-            consumer_identifier = self.config.identify_consumer_callback(request)
-            if consumer_identifier is not None:
-                return str(consumer_identifier)
+        try:
+            if hasattr(request, "consumer_identifier"):
+                return str(request.consumer_identifier)
+            if self.config is not None and self.config.identify_consumer_callback is not None:
+                consumer_identifier = self.config.identify_consumer_callback(request)
+                if consumer_identifier is not None:
+                    return str(consumer_identifier)
+        except Exception:
+            logger.exception("Failed to get consumer identifier for request")
         return None
 
 
 def _get_app_info(app_version: Optional[str] = None) -> Dict[str, Any]:
     app_info: Dict[str, Any] = {}
-    if openapi := _get_openapi():
-        app_info["openapi"] = openapi
-    app_info["paths"] = _get_paths()
+    try:
+        app_info["paths"] = _get_paths()
+    except Exception:
+        app_info["paths"] = []
+        logger.exception("Failed to get paths")
+    try:
+        app_info["openapi"] = _get_openapi()
+    except Exception:
+        logger.exception("Failed to get OpenAPI schema")
     app_info["versions"] = get_versions("django", "djangorestframework", "django-ninja", app_version=app_version)
     app_info["client"] = "python:django"
     return app_info
