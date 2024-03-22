@@ -83,6 +83,7 @@ class ApitallyMiddleware:
     def __call__(self, request: HttpRequest) -> HttpResponse:
         start_time = time.perf_counter()
         response = self.get_response(request)
+        response_time = time.perf_counter() - start_time
         path = self.get_path(request)
         if request.method is not None and path is not None:
             consumer = self.get_consumer(request)
@@ -92,7 +93,7 @@ class ApitallyMiddleware:
                     method=request.method,
                     path=path,
                     status_code=response.status_code,
-                    response_time=time.perf_counter() - start_time,
+                    response_time=response_time,
                     request_size=request.headers.get("Content-Length"),
                     response_size=response["Content-Length"]
                     if response.has_header("Content-Length")
