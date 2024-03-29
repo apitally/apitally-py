@@ -40,17 +40,24 @@ class ApitallyMiddleware:
 
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response
-        self.ninja_available = _check_import("ninja")
+        self.drf_available = _check_import("rest_framework")
         self.drf_endpoint_enumerator = None
-        if _check_import("rest_framework"):
-            from rest_framework.schemas.generators import EndpointEnumerator
-
-            self.drf_endpoint_enumerator = EndpointEnumerator()
+        self.ninja_available = _check_import("ninja")
+        self.callbacks = set()
 
         if self.config is None:
             config = getattr(settings, "APITALLY_MIDDLEWARE", {})
             self.configure(**config)
             assert self.config is not None
+
+        if self.drf_available:
+            from rest_framework.schemas.generators import EndpointEnumerator
+
+            self.drf_endpoint_enumerator = EndpointEnumerator()
+            if None not in self.config.urlconfs:
+                self.callbacks.update(_get_drf_callbacks(self.config.urlconfs))
+        if self.ninja_available and None not in self.config.urlconfs:
+            self.callbacks.update(_get_ninja_callbacks(self.config.urlconfs))
 
         self.client = ApitallyClient(client_id=self.config.client_id, env=self.config.env)
         self.client.start_sync_loop()
@@ -124,6 +131,8 @@ class ApitallyMiddleware:
     def get_path(self, request: HttpRequest) -> Optional[str]:
         if (match := request.resolver_match) is not None:
             try:
+                if self.callbacks and match.func not in self.callbacks:
+                    return None
                 if self.drf_endpoint_enumerator is not None:
                     from rest_framework.schemas.generators import is_api_view
 
@@ -206,6 +215,13 @@ def _get_drf_paths(urlconfs: List[Optional[str]]) -> List[Dict[str, str]]:
     ]
 
 
+def _get_drf_callbacks(urlconfs: List[Optional[str]]) -> Set[Callable]:
+    from rest_framework.schemas.generators import EndpointEnumerator
+
+    enumerators = [EndpointEnumerator(urlconf=urlconf) for urlconf in urlconfs]
+    return {callback for enumerator in enumerators for _, _, callback in enumerator.get_api_endpoints()}
+
+
 def _get_drf_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[str, Any]]:
     from rest_framework.schemas.openapi import SchemaGenerator
 
@@ -235,6 +251,15 @@ def _get_ninja_paths(urlconfs: List[Optional[str]]) -> List[Dict[str, str]]:
                         }
                     )
     return endpoints
+
+
+def _get_ninja_callbacks(urlconfs: List[Optional[str]]) -> Set[Callable]:
+    return {
+        path_view.get_view()
+        for api in _get_ninja_api_instances(urlconfs=urlconfs)
+        for _, router in api._routers
+        for path_view in router.path_operations.values()
+    }
 
 
 def _get_ninja_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[str, Any]]:
