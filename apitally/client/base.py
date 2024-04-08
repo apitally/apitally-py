@@ -233,6 +233,7 @@ class ServerError:
     consumer: Optional[str]
     method: str
     path: str
+    type: str
     msg: str
     traceback: str
 
@@ -245,14 +246,15 @@ class ServerErrorCounter:
     def add_server_error(self, consumer: Optional[str], method: str, path: str, exception: BaseException) -> None:
         if not isinstance(exception, BaseException):
             return
-        msg = "".join(traceback.format_exception_only(exception)).strip()
+        exception_type = type(exception)
         tb = "".join(traceback.format_exception(exception)).strip()
         with self._lock:
             server_error = ServerError(
                 consumer=consumer,
                 method=method.upper(),
                 path=path,
-                msg=msg,
+                type=f"{exception_type.__module__}.{exception_type.__qualname__}",
+                msg=str(exception).strip(),
                 traceback=tb,
             )
             self.error_counts[server_error] += 1
@@ -266,6 +268,7 @@ class ServerErrorCounter:
                         "consumer": server_error.consumer,
                         "method": server_error.method,
                         "path": server_error.path,
+                        "type": server_error.type,
                         "msg": server_error.msg,
                         "traceback": server_error.traceback,
                         "error_count": count,

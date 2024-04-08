@@ -117,5 +117,6 @@ def test_server_error_counter():
     assert len(data) == 1
     assert data[0]["method"] == "GET"
     assert data[0]["path"] == "/test"
-    assert data[0]["msg"] == "ValueError: test"
+    assert data[0]["type"] == "builtins.ValueError"
+    assert data[0]["msg"] == "test"
     assert data[0]["error_count"] == 2
