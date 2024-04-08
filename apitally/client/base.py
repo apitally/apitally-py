@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import os
 import re
 import threading
@@ -234,7 +233,6 @@ class ServerError:
     consumer: Optional[str]
     method: str
     path: str
-    hash: int
     msg: str
     traceback: str
 
@@ -249,13 +247,11 @@ class ServerErrorCounter:
             return
         msg = "".join(traceback.format_exception_only(exception)).strip()
         tb = "".join(traceback.format_exception(exception)).strip()
-        tb_hash = int(hashlib.sha256(tb.encode("utf-8")).digest(), 16) % 2**31
         with self._lock:
             server_error = ServerError(
                 consumer=consumer,
                 method=method.upper(),
                 path=path,
-                hash=tb_hash,
                 msg=msg,
                 traceback=tb,
             )
@@ -270,7 +266,6 @@ class ServerErrorCounter:
                         "consumer": server_error.consumer,
                         "method": server_error.method,
                         "path": server_error.path,
-                        "hash": server_error.hash,
                         "msg": server_error.msg,
                         "traceback": server_error.traceback,
                         "error_count": count,

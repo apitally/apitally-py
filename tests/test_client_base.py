@@ -93,3 +93,29 @@ def test_validation_error_counter():
     assert data[0]["type"] == "type_error.integer"
     assert data[0]["msg"] == "value is not a valid integer"
     assert data[0]["error_count"] == 2
+
+
+def test_server_error_counter():
+    from apitally.client.base import ServerErrorCounter
+
+    server_errors = ServerErrorCounter()
+    server_errors.add_server_error(
+        consumer=None,
+        method="GET",
+        path="/test",
+        exception=ValueError("test"),
+    )
+    server_errors.add_server_error(
+        consumer=None,
+        method="GET",
+        path="/test",
+        exception=ValueError("test"),
+    )
+
+    data = server_errors.get_and_reset_server_errors()
+    assert len(server_errors.error_counts) == 0
+    assert len(data) == 1
+    assert data[0]["method"] == "GET"
+    assert data[0]["path"] == "/test"
+    assert data[0]["msg"] == "ValueError: test"
+    assert data[0]["error_count"] == 2
