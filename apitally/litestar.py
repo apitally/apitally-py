@@ -32,7 +32,7 @@ class ApitallyPlugin(InitPluginProtocol):
         self.app_version = app_version
         self.filter_openapi_paths = filter_openapi_paths
         self.identify_consumer_callback = identify_consumer_callback
-        self.openapi_path: Optional[str] = None
+        self.openapi_path = "/schema"
 
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
         app_config.on_startup.append(self.on_startup)
@@ -42,7 +42,12 @@ class ApitallyPlugin(InitPluginProtocol):
 
     def on_startup(self, app: Litestar) -> None:
         openapi_config = app.openapi_config or DEFAULT_OPENAPI_CONFIG
-        self.openapi_path = openapi_config.openapi_controller.path
+        if openapi_config.openapi_controller is not None:
+            self.openapi_path = openapi_config.openapi_controller.path
+        elif hasattr(openapi_config, "openapi_router") and openapi_config.openapi_router is not None:
+            self.openapi_path = openapi_config.openapi_router.path
+        elif openapi_config.path is not None:
+            self.openapi_path = openapi_config.path
 
         app_info = {
             "openapi": _get_openapi(app),
