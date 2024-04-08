@@ -64,6 +64,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
                 response=None,
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                 response_time=time.perf_counter() - start_time,
+                exception=e,
             )
             raise e from None
         else:
@@ -76,7 +77,12 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         return response
 
     async def add_request(
-        self, request: Request, response: Optional[Response], status_code: int, response_time: float
+        self,
+        request: Request,
+        response: Optional[Response],
+        status_code: int,
+        response_time: float,
+        exception: Optional[BaseException] = None,
     ) -> None:
         path_template, is_handled_path = self.get_path_template(request)
         if is_handled_path or not self.filter_unhandled_paths:
@@ -104,6 +110,13 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
                         path=path_template,
                         detail=body["detail"],
                     )
+            if status_code == 500 and exception is not None:
+                self.client.server_error_counter.add_server_error(
+                    consumer=consumer,
+                    method=request.method,
+                    path=path_template,
+                    exception=exception,
+                )
 
     @staticmethod
     async def get_response_json(response: Response) -> Any:

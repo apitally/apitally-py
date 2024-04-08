@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import os
 import re
 import threading
 import time
+import traceback
 from abc import ABC
 from collections import Counter
 from dataclasses import dataclass
@@ -54,6 +56,7 @@ class ApitallyClientBase(ABC):
         self.instance_uuid = str(uuid4())
         self.request_counter = RequestCounter()
         self.validation_error_counter = ValidationErrorCounter()
+        self.server_error_counter = ServerErrorCounter()
 
         self._app_info_payload: Optional[Dict[str, Any]] = None
         self._app_info_sent = False
@@ -86,11 +89,13 @@ class ApitallyClientBase(ABC):
     def get_requests_payload(self) -> Dict[str, Any]:
         requests = self.request_counter.get_and_reset_requests()
         validation_errors = self.validation_error_counter.get_and_reset_validation_errors()
+        server_errors = self.server_error_counter.get_and_reset_server_errors()
         return {
             "instance_uuid": self.instance_uuid,
             "message_uuid": str(uuid4()),
             "requests": requests,
             "validation_errors": validation_errors,
+            "server_errors": server_errors,
         }
 
 
@@ -217,6 +222,57 @@ class ValidationErrorCounter:
                         "loc": validation_error.loc,
                         "msg": validation_error.msg,
                         "type": validation_error.type,
+                        "error_count": count,
+                    }
+                )
+            self.error_counts.clear()
+        return data
+
+
+@dataclass(frozen=True)
+class ServerError:
+    consumer: Optional[str]
+    method: str
+    path: str
+    hash: int
+    msg: str
+    traceback: str
+
+
+class ServerErrorCounter:
+    def __init__(self) -> None:
+        self.error_counts: Counter[ServerError] = Counter()
+        self._lock = threading.Lock()
+
+    def add_server_error(self, consumer: Optional[str], method: str, path: str, exception: BaseException) -> None:
+        if not isinstance(exception, BaseException):
+            return
+        msg = "".join(traceback.format_exception_only(exception)).strip()
+        tb = "".join(traceback.format_exception(exception)).strip()
+        tb_hash = int(hashlib.sha256(tb.encode("utf-8")).digest(), 16) % 2**31
+        with self._lock:
+            server_error = ServerError(
+                consumer=consumer,
+                method=method.upper(),
+                path=path,
+                hash=tb_hash,
+                msg=msg,
+                traceback=tb,
+            )
+            self.error_counts[server_error] += 1
+
+    def get_and_reset_server_errors(self) -> List[Dict[str, Any]]:
+        data: List[Dict[str, Any]] = []
+        with self._lock:
+            for server_error, count in self.error_counts.items():
+                data.append(
+                    {
+                        "consumer": server_error.consumer,
+                        "method": server_error.method,
+                        "path": server_error.path,
+                        "hash": server_error.hash,
+                        "msg": server_error.msg,
+                        "traceback": server_error.traceback,
                         "error_count": count,
                     }
                 )

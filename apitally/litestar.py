@@ -38,6 +38,7 @@ class ApitallyPlugin(InitPluginProtocol):
         app_config.on_startup.append(self.on_startup)
         app_config.on_shutdown.append(self.client.handle_shutdown)
         app_config.middleware.append(self.middleware_factory)
+        app_config.after_exception.append(self.after_exception)
         return app_config
 
     def on_startup(self, app: Litestar) -> None:
@@ -57,6 +58,9 @@ class ApitallyPlugin(InitPluginProtocol):
         }
         self.client.set_app_info(app_info)
         self.client.start_sync_loop()
+
+    def after_exception(self, exception: Exception, scope: Scope) -> None:
+        scope["state"]["exception"] = exception
 
     def middleware_factory(self, app: ASGIApp) -> ASGIApp:
         async def middleware(scope: Scope, receive: Receive, send: Send) -> None:
@@ -139,6 +143,13 @@ class ApitallyPlugin(InitPluginProtocol):
                             if "key" in error and "message" in error
                         ],
                     )
+        if response_status == 500 and "exception" in request.state:
+            self.client.server_error_counter.add_server_error(
+                consumer=consumer,
+                method=request.method,
+                path=path,
+                exception=request.state["exception"],
+            )
 
     def get_path(self, request: Request) -> Optional[str]:
         path: List[str] = []
