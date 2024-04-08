@@ -245,7 +245,7 @@ class ServerErrorCounter:
 
     def add_server_error(self, consumer: Optional[str], method: str, path: str, exception: BaseException) -> None:
         if not isinstance(exception, BaseException):
-            return
+            return  # pragma: no cover
         exception_type = type(exception)
         tb = "".join(traceback.format_exception(exception)).strip()
         with self._lock:
