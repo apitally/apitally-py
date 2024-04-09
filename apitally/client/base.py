@@ -5,6 +5,7 @@ import os
 import re
 import threading
 import time
+import traceback
 from abc import ABC
 from collections import Counter
 from dataclasses import dataclass
@@ -24,6 +25,8 @@ MAX_QUEUE_TIME = 3600
 SYNC_INTERVAL = 60
 INITIAL_SYNC_INTERVAL = 10
 INITIAL_SYNC_INTERVAL_DURATION = 3600
+MAX_EXCEPTION_MSG_LENGTH = 2048
+MAX_EXCEPTION_TRACEBACK_LENGTH = 65536
 
 TApitallyClient = TypeVar("TApitallyClient", bound="ApitallyClientBase")
 
@@ -54,6 +57,7 @@ class ApitallyClientBase(ABC):
         self.instance_uuid = str(uuid4())
         self.request_counter = RequestCounter()
         self.validation_error_counter = ValidationErrorCounter()
+        self.server_error_counter = ServerErrorCounter()
 
         self._app_info_payload: Optional[Dict[str, Any]] = None
         self._app_info_sent = False
@@ -86,11 +90,13 @@ class ApitallyClientBase(ABC):
     def get_requests_payload(self) -> Dict[str, Any]:
         requests = self.request_counter.get_and_reset_requests()
         validation_errors = self.validation_error_counter.get_and_reset_validation_errors()
+        server_errors = self.server_error_counter.get_and_reset_server_errors()
         return {
             "instance_uuid": self.instance_uuid,
             "message_uuid": str(uuid4()),
             "requests": requests,
             "validation_errors": validation_errors,
+            "server_errors": server_errors,
         }
 
 
@@ -222,3 +228,75 @@ class ValidationErrorCounter:
                 )
             self.error_counts.clear()
         return data
+
+
+@dataclass(frozen=True)
+class ServerError:
+    consumer: Optional[str]
+    method: str
+    path: str
+    type: str
+    msg: str
+    traceback: str
+
+
+class ServerErrorCounter:
+    def __init__(self) -> None:
+        self.error_counts: Counter[ServerError] = Counter()
+        self._lock = threading.Lock()
+
+    def add_server_error(self, consumer: Optional[str], method: str, path: str, exception: BaseException) -> None:
+        if not isinstance(exception, BaseException):
+            return  # pragma: no cover
+        exception_type = type(exception)
+        with self._lock:
+            server_error = ServerError(
+                consumer=consumer,
+                method=method.upper(),
+                path=path,
+                type=f"{exception_type.__module__}.{exception_type.__qualname__}",
+                msg=self._get_truncated_exception_msg(exception),
+                traceback=self._get_truncated_exception_traceback(exception),
+            )
+            self.error_counts[server_error] += 1
+
+    def get_and_reset_server_errors(self) -> List[Dict[str, Any]]:
+        data: List[Dict[str, Any]] = []
+        with self._lock:
+            for server_error, count in self.error_counts.items():
+                data.append(
+                    {
+                        "consumer": server_error.consumer,
+                        "method": server_error.method,
+                        "path": server_error.path,
+                        "type": server_error.type,
+                        "msg": server_error.msg,
+                        "traceback": server_error.traceback,
+                        "error_count": count,
+                    }
+                )
+            self.error_counts.clear()
+        return data
+
+    @staticmethod
+    def _get_truncated_exception_msg(exception: BaseException) -> str:
+        msg = str(exception).strip()
+        if len(msg) <= MAX_EXCEPTION_MSG_LENGTH:
+            return msg
+        suffix = "... (truncated)"
+        cutoff = MAX_EXCEPTION_MSG_LENGTH - len(suffix)
+        return msg[:cutoff] + suffix
+
+    @staticmethod
+    def _get_truncated_exception_traceback(exception: BaseException) -> str:
+        prefix = "... (truncated) ...\n"
+        cutoff = MAX_EXCEPTION_TRACEBACK_LENGTH - len(prefix)
+        lines = []
+        length = 0
+        for line in traceback.format_exception(exception)[::-1]:
+            if length + len(line) > cutoff:
+                lines.append(prefix)
+                break
+            lines.append(line)
+            length += len(line)
+        return "".join(lines[::-1]).strip()

@@ -97,16 +97,22 @@ def test_middleware_requests_404(client: Client, mocker: MockerFixture):
 
 
 def test_middleware_requests_error(client: Client, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
+    mock1 = mocker.patch("apitally.client.base.RequestCounter.add_request")
+    mock2 = mocker.patch("apitally.client.base.ServerErrorCounter.add_server_error")
 
     response = client.put("/api/baz")
     assert response.status_code == 500
-    mock.assert_called_once()
-    assert mock.call_args is not None
-    assert mock.call_args.kwargs["method"] == "PUT"
-    assert mock.call_args.kwargs["path"] == "/api/baz"
-    assert mock.call_args.kwargs["status_code"] == 500
-    assert mock.call_args.kwargs["response_time"] > 0
+    mock1.assert_called_once()
+    assert mock1.call_args is not None
+    assert mock1.call_args.kwargs["method"] == "PUT"
+    assert mock1.call_args.kwargs["path"] == "/api/baz"
+    assert mock1.call_args.kwargs["status_code"] == 500
+    assert mock1.call_args.kwargs["response_time"] > 0
+
+    mock2.assert_called_once()
+    assert mock2.call_args is not None
+    exception = mock2.call_args.kwargs["exception"]
+    assert isinstance(exception, ValueError)
 
 
 def test_middleware_validation_error(client: Client, mocker: MockerFixture):

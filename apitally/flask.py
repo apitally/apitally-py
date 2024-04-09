@@ -5,6 +5,7 @@ from threading import Timer
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 
 from flask import Flask, g
+from flask.wrappers import Response
 from werkzeug.datastructures import Headers
 from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
@@ -34,6 +35,7 @@ class ApitallyMiddleware:
         self.app = app
         self.wsgi_app = app.wsgi_app
         self.filter_unhandled_paths = filter_unhandled_paths
+        self.patch_handle_exception()
         self.client = ApitallyClient(client_id=client_id, env=env)
         self.client.start_sync_loop()
         self.delayed_set_app_info(app_version, openapi_url)
@@ -68,8 +70,21 @@ class ApitallyMiddleware:
             )
         return response
 
+    def patch_handle_exception(self) -> None:
+        original_handle_exception = self.app.handle_exception
+
+        def handle_exception(e: Exception) -> Response:
+            g.unhandled_exception = e
+            return original_handle_exception(e)
+
+        self.app.handle_exception = handle_exception  # type: ignore[method-assign]
+
     def add_request(
-        self, environ: WSGIEnvironment, status_code: int, response_time: float, response_headers: Headers
+        self,
+        environ: WSGIEnvironment,
+        status_code: int,
+        response_time: float,
+        response_headers: Headers,
     ) -> None:
         rule, is_handled_path = self.get_rule(environ)
         if is_handled_path or not self.filter_unhandled_paths:
@@ -82,6 +97,13 @@ class ApitallyMiddleware:
                 request_size=environ.get("CONTENT_LENGTH"),
                 response_size=response_headers.get("Content-Length", type=int),
             )
+            if status_code == 500 and "unhandled_exception" in g:
+                self.client.server_error_counter.add_server_error(
+                    consumer=self.get_consumer(),
+                    method=environ["REQUEST_METHOD"],
+                    path=rule,
+                    exception=g.unhandled_exception,
+                )
 
     def get_rule(self, environ: WSGIEnvironment) -> Tuple[str, bool]:
         url_adapter = self.app.url_map.bind_to_environ(environ)

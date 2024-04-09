@@ -126,7 +126,21 @@ class ApitallyMiddleware:
                             )
                 except Exception:  # pragma: no cover
                     logger.exception("Failed to log validation errors")
+            if response.status_code == 500 and hasattr(request, "unhandled_exception"):
+                try:
+                    self.client.server_error_counter.add_server_error(
+                        consumer=consumer,
+                        method=request.method,
+                        path=path,
+                        exception=getattr(request, "unhandled_exception"),
+                    )
+                except Exception:  # pragma: no cover
+                    logger.exception("Failed to log server error")
         return response
+
+    def process_exception(self, request: HttpRequest, exception: Exception) -> None:
+        setattr(request, "unhandled_exception", exception)
+        return None
 
     def get_path(self, request: HttpRequest) -> Optional[str]:
         if (match := request.resolver_match) is not None:
