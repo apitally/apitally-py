@@ -25,6 +25,8 @@ MAX_QUEUE_TIME = 3600
 SYNC_INTERVAL = 60
 INITIAL_SYNC_INTERVAL = 10
 INITIAL_SYNC_INTERVAL_DURATION = 3600
+MAX_EXCEPTION_MSG_LENGTH = 2048
+MAX_EXCEPTION_TRACEBACK_LENGTH = 65536
 
 TApitallyClient = TypeVar("TApitallyClient", bound="ApitallyClientBase")
 
@@ -247,15 +249,14 @@ class ServerErrorCounter:
         if not isinstance(exception, BaseException):
             return  # pragma: no cover
         exception_type = type(exception)
-        tb = "".join(traceback.format_exception(exception)).strip()
         with self._lock:
             server_error = ServerError(
                 consumer=consumer,
                 method=method.upper(),
                 path=path,
                 type=f"{exception_type.__module__}.{exception_type.__qualname__}",
-                msg=str(exception).strip(),
-                traceback=tb,
+                msg=self._get_truncated_exception_msg(exception),
+                traceback=self._get_truncated_exception_traceback(exception),
             )
             self.error_counts[server_error] += 1
 
@@ -276,3 +277,26 @@ class ServerErrorCounter:
                 )
             self.error_counts.clear()
         return data
+
+    @staticmethod
+    def _get_truncated_exception_msg(exception: BaseException) -> str:
+        msg = str(exception).strip()
+        if len(msg) <= MAX_EXCEPTION_MSG_LENGTH:
+            return msg
+        suffix = "... (truncated)"
+        cutoff = MAX_EXCEPTION_MSG_LENGTH - len(suffix)
+        return msg[:cutoff] + suffix
+
+    @staticmethod
+    def _get_truncated_exception_traceback(exception: BaseException) -> str:
+        prefix = "... (truncated) ...\n"
+        cutoff = MAX_EXCEPTION_TRACEBACK_LENGTH - len(prefix)
+        lines = []
+        length = 0
+        for line in traceback.format_exception(exception)[::-1]:
+            if length + len(line) > cutoff:
+                lines.append(prefix)
+                break
+            lines.append(line)
+            length += len(line)
+        return "".join(lines[::-1]).strip()
