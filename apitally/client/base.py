@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, cast
 from uuid import UUID, uuid4
 
 from apitally.client.logging import get_logger
+from apitally.common import get_last_sentry_event_id
 
 
 logger = get_logger(__name__)
@@ -243,12 +244,14 @@ class ServerError:
 class ServerErrorCounter:
     def __init__(self) -> None:
         self.error_counts: Counter[ServerError] = Counter()
+        self.sentry_event_ids: Dict[ServerError, str] = {}
         self._lock = threading.Lock()
 
     def add_server_error(self, consumer: Optional[str], method: str, path: str, exception: BaseException) -> None:
         if not isinstance(exception, BaseException):
             return  # pragma: no cover
         exception_type = type(exception)
+        sentry_event_id = get_last_sentry_event_id()
         with self._lock:
             server_error = ServerError(
                 consumer=consumer,
@@ -259,6 +262,8 @@ class ServerErrorCounter:
                 traceback=self._get_truncated_exception_traceback(exception),
             )
             self.error_counts[server_error] += 1
+            if sentry_event_id:
+                self.sentry_event_ids[server_error] = sentry_event_id
 
     def get_and_reset_server_errors(self) -> List[Dict[str, Any]]:
         data: List[Dict[str, Any]] = []
@@ -272,10 +277,12 @@ class ServerErrorCounter:
                         "type": server_error.type,
                         "msg": server_error.msg,
                         "traceback": server_error.traceback,
+                        "sentry_event_id": self.sentry_event_ids.get(server_error),
                         "error_count": count,
                     }
                 )
             self.error_counts.clear()
+            self.sentry_event_ids.clear()
         return data
 
     @staticmethod
