@@ -268,6 +268,13 @@ class ServerErrorCounter:
             from sentry_sdk.scope import Scope
         except ImportError:
             return  # pragma: no cover
+        if not hasattr(Scope, "get_isolation_scope") or not hasattr(Scope, "last_event_id"):
+            return  # sentry-sdk < 2.2.0 is not supported
+
+        scope = Scope.get_isolation_scope()
+        if event_id := scope.last_event_id():
+            self.sentry_event_ids[server_error] = event_id
+            return
 
         async def _wait_for_sentry_event_id(scope: Scope) -> None:
             i = 0
@@ -277,9 +284,9 @@ class ServerErrorCounter:
             if event_id:
                 self.sentry_event_ids[server_error] = event_id
 
-        scope = Scope.get_isolation_scope()
-        with contextlib.suppress(RuntimeError):  # ignore no running event loop
-            asyncio.create_task(_wait_for_sentry_event_id(scope))
+        with contextlib.suppress(RuntimeError):  # ignore no running loop
+            loop = asyncio.get_running_loop()
+            loop.create_task(_wait_for_sentry_event_id(scope))
 
     def get_and_reset_server_errors(self) -> List[Dict[str, Any]]:
         data: List[Dict[str, Any]] = []
