@@ -265,12 +265,15 @@ class ServerErrorCounter:
 
     def capture_sentry_event_id(self, server_error: ServerError) -> None:
         try:
+            from sentry_sdk.hub import Hub
             from sentry_sdk.scope import Scope
         except ImportError:
             return  # pragma: no cover
         if not hasattr(Scope, "get_isolation_scope") or not hasattr(Scope, "last_event_id"):
             # sentry-sdk < 2.2.0 is not supported
             return  # pragma: no cover
+        if Hub.current.client is None:
+            return  # sentry-sdk not initialized
 
         scope = Scope.get_isolation_scope()
         if event_id := scope.last_event_id():
