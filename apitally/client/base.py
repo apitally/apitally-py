@@ -269,7 +269,8 @@ class ServerErrorCounter:
         except ImportError:
             return  # pragma: no cover
         if not hasattr(Scope, "get_isolation_scope") or not hasattr(Scope, "last_event_id"):
-            return  # sentry-sdk < 2.2.0 is not supported
+            # sentry-sdk < 2.2.0 is not supported
+            return  # pragma: no cover
 
         scope = Scope.get_isolation_scope()
         if event_id := scope.last_event_id():
