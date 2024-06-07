@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import re
@@ -14,7 +15,6 @@ from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, cast
 from uuid import UUID, uuid4
 
 from apitally.client.logging import get_logger
-from apitally.common import get_last_sentry_event_id
 
 
 logger = get_logger(__name__)
@@ -251,7 +251,6 @@ class ServerErrorCounter:
         if not isinstance(exception, BaseException):
             return  # pragma: no cover
         exception_type = type(exception)
-        sentry_event_id = get_last_sentry_event_id()
         with self._lock:
             server_error = ServerError(
                 consumer=consumer,
@@ -262,8 +261,25 @@ class ServerErrorCounter:
                 traceback=self._get_truncated_exception_traceback(exception),
             )
             self.error_counts[server_error] += 1
-            if sentry_event_id:
-                self.sentry_event_ids[server_error] = sentry_event_id
+            self.capture_sentry_event_id(server_error)
+
+    def capture_sentry_event_id(self, server_error: ServerError) -> None:
+        try:
+            from sentry_sdk.scope import Scope
+        except ImportError:
+            return  # pragma: no cover
+
+        async def _wait_for_sentry_event_id(scope: Scope) -> None:
+            i = 0
+            while not (event_id := scope.last_event_id()) and i < 100:
+                i += 1
+                await asyncio.sleep(0.001)
+            if event_id:
+                self.sentry_event_ids[server_error] = event_id
+
+        scope = Scope.get_isolation_scope()
+        with contextlib.suppress(RuntimeError):  # ignore no running event loop
+            asyncio.create_task(_wait_for_sentry_event_id(scope))
 
     def get_and_reset_server_errors(self) -> List[Dict[str, Any]]:
         data: List[Dict[str, Any]] = []

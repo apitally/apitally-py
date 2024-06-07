@@ -29,12 +29,3 @@ def _get_package_version(name: str) -> Optional[str]:
         return version(name)
     except PackageNotFoundError:
         return None
-
-
-def get_last_sentry_event_id() -> Optional[str]:
-    try:
-        from sentry_sdk import last_event_id
-
-        return last_event_id()
-    except ImportError:
-        return None
