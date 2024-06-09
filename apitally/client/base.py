@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import re
@@ -243,6 +244,7 @@ class ServerError:
 class ServerErrorCounter:
     def __init__(self) -> None:
         self.error_counts: Counter[ServerError] = Counter()
+        self.sentry_event_ids: Dict[ServerError, str] = {}
         self._lock = threading.Lock()
 
     def add_server_error(self, consumer: Optional[str], method: str, path: str, exception: BaseException) -> None:
@@ -259,6 +261,36 @@ class ServerErrorCounter:
                 traceback=self._get_truncated_exception_traceback(exception),
             )
             self.error_counts[server_error] += 1
+            self.capture_sentry_event_id(server_error)
+
+    def capture_sentry_event_id(self, server_error: ServerError) -> None:
+        try:
+            from sentry_sdk.hub import Hub
+            from sentry_sdk.scope import Scope
+        except ImportError:
+            return  # pragma: no cover
+        if not hasattr(Scope, "get_isolation_scope") or not hasattr(Scope, "last_event_id"):
+            # sentry-sdk < 2.2.0 is not supported
+            return  # pragma: no cover
+        if Hub.current.client is None:
+            return  # sentry-sdk not initialized
+
+        scope = Scope.get_isolation_scope()
+        if event_id := scope.last_event_id():
+            self.sentry_event_ids[server_error] = event_id
+            return
+
+        async def _wait_for_sentry_event_id(scope: Scope) -> None:
+            i = 0
+            while not (event_id := scope.last_event_id()) and i < 100:
+                i += 1
+                await asyncio.sleep(0.001)
+            if event_id:
+                self.sentry_event_ids[server_error] = event_id
+
+        with contextlib.suppress(RuntimeError):  # ignore no running loop
+            loop = asyncio.get_running_loop()
+            loop.create_task(_wait_for_sentry_event_id(scope))
 
     def get_and_reset_server_errors(self) -> List[Dict[str, Any]]:
         data: List[Dict[str, Any]] = []
@@ -272,10 +304,12 @@ class ServerErrorCounter:
                         "type": server_error.type,
                         "msg": server_error.msg,
                         "traceback": server_error.traceback,
+                        "sentry_event_id": self.sentry_event_ids.get(server_error),
                         "error_count": count,
                     }
                 )
             self.error_counts.clear()
+            self.sentry_event_ids.clear()
         return data
 
     @staticmethod

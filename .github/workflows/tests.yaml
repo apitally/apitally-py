@@ -27,11 +27,11 @@ jobs:
         if: steps.cached-poetry.outputs.cache-hit != 'true'
         uses: snok/install-poetry@v1
         with:
-          version: "1.6.1"
+          version: "1.8.3"
           virtualenvs-in-project: true
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: poetry
       - name: Run Poetry check
         run: poetry check
@@ -82,7 +82,7 @@ jobs:
         if: steps.cached-poetry.outputs.cache-hit != 'true'
         uses: snok/install-poetry@v1
         with:
-          version: "1.6.1"
+          version: "1.8.3"
           virtualenvs-in-project: true
       - name: Build Python package wheel
         run: poetry build -f wheel
