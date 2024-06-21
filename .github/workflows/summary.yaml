@@ -1,7 +1,7 @@
 name: Summary
 on:
-  pull_request:
-    branches:
+  push:
+    branches-ignore:
       - main
 jobs:
   wait-for-triggered-checks:
