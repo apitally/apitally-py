@@ -168,12 +168,14 @@ class ApitallyPlugin(InitPluginProtocol):
         return False  # pragma: no cover
 
     def get_consumer(self, request: Request) -> Optional[str]:
-        if hasattr(request.state, "consumer_identifier"):
+        if hasattr(request.state, "apitally_consumer"):
+            return str(request.state.apitally_consumer)
+        if hasattr(request.state, "consumer_identifier"):  # Keeping this for legacy support
             return str(request.state.consumer_identifier)
         if self.identify_consumer_callback is not None:
-            consumer_identifier = self.identify_consumer_callback(request)
-            if consumer_identifier is not None:
-                return str(consumer_identifier)
+            consumer = self.identify_consumer_callback(request)
+            if consumer is not None:
+                return str(consumer)
         return None
 
 

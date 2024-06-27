@@ -164,12 +164,14 @@ class ApitallyMiddleware:
 
     def get_consumer(self, request: HttpRequest) -> Optional[str]:
         try:
-            if hasattr(request, "consumer_identifier"):
+            if hasattr(request, "apitally_consumer"):
+                return str(request.apitally_consumer)
+            if hasattr(request, "consumer_identifier"):  # Keeping this for legacy support
                 return str(request.consumer_identifier)
             if self.config is not None and self.config.identify_consumer_callback is not None:
-                consumer_identifier = self.config.identify_consumer_callback(request)
-                if consumer_identifier is not None:
-                    return str(consumer_identifier)
+                consumer = self.config.identify_consumer_callback(request)
+                if consumer is not None:
+                    return str(consumer)
         except Exception:  # pragma: no cover
             logger.exception("Failed to get consumer identifier for request")
         return None

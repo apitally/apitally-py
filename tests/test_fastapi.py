@@ -51,7 +51,7 @@ def app(module_mocker: MockerFixture) -> FastAPI:
 
     @app.get("/baz/")
     def baz(request: Request):
-        request.state.consumer_identifier = "baz"
+        request.state.apitally_consumer = "baz"
         return "baz"
 
     return app
