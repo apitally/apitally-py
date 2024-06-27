@@ -2,13 +2,13 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://assets.apitally.io/logos/logo-vertical-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="https://assets.apitally.io/logos/logo-vertical-light.png">
-    <img alt="Apitally logo" src="https://assets.apitally.io/logos/logo-vertical-light.png">
+    <img alt="Apitally logo" src="https://assets.apitally.io/logos/logo-vertical-light.png" width="150">
   </picture>
 </p>
 
 <p align="center"><b>API monitoring made easy.</b></p>
 
-<p align="center"><i>Apitally is a simple and affordable API monitoring tool with a focus on data privacy.<br>It is super easy to use for API projects in Python or Node.js and never collects sensitive data.</i></p>
+<p align="center"><i>Apitally is a simple API monitoring & analytics tool with a focus on data privacy.<br>It is super easy to use for API projects in Python or Node.js and never collects sensitive data.</i></p>
 
 <p align="center">🔗 <b><a href="https://apitally.io" target="_blank">apitally.io</a></b></p>
 
@@ -18,8 +18,8 @@
 
 # Apitally client library for Python
 
-[![Tests](https://github.com/apitally/python-client/actions/workflows/tests.yaml/badge.svg?event=push)](https://github.com/apitally/python-client/actions)
-[![Codecov](https://codecov.io/gh/apitally/python-client/graph/badge.svg?token=UNLYBY4Y3V)](https://codecov.io/gh/apitally/python-client)
+[![Tests](https://github.com/apitally/apitally-py/actions/workflows/tests.yaml/badge.svg?event=push)](https://github.com/apitally/apitally-py/actions)
+[![Codecov](https://codecov.io/gh/apitally/apitally-py/graph/badge.svg?token=UNLYBY4Y3V)](https://codecov.io/gh/apitally/apitally-py)
 [![PyPI](https://img.shields.io/pypi/v/apitally?logo=pypi&logoColor=white&color=%23006dad)](https://pypi.org/project/apitally/)
 
 This client library for Apitally currently supports the following Python web
