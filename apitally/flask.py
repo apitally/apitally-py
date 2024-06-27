@@ -115,7 +115,11 @@ class ApitallyMiddleware:
             return environ["PATH_INFO"], False
 
     def get_consumer(self) -> Optional[str]:
-        return str(g.consumer_identifier) if "consumer_identifier" in g else None
+        if "apitally_consumer" in g:
+            return str(g.apitally_consumer)
+        if "consumer_identifier" in g:  # Keeping this for legacy support
+            return str(g.consumer_identifier)
+        return None
 
 
 def _get_app_info(app: Flask, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> Dict[str, Any]:

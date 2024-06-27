@@ -35,7 +35,7 @@ async def app(module_mocker: MockerFixture) -> Litestar:
 
     @get("/foo/{bar:str}")
     async def foo_bar(request: Request, bar: str) -> str:
-        request.state.consumer_identifier = "test2"
+        request.state.apitally_consumer = "test2"
         return f"foo: {bar}"
 
     @post("/bar")
