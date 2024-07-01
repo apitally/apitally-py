@@ -98,11 +98,7 @@ class ApitallyClient(ApitallyClientBase):
     async def _send_app_info(self, client: httpx.AsyncClient, payload: Dict[str, Any]) -> None:
         logger.debug("Sending app info")
         response = await client.post(url="/info", json=payload, timeout=REQUEST_TIMEOUT)
-        if response.status_code == 404:
-            self.stop_sync_loop()
-            logger.error(f"Invalid Apitally client ID {self.client_id}")
-        else:
-            response.raise_for_status()
+        self._handle_hub_response(response)
         self._app_info_sent = True
         self._app_info_payload = None
 
@@ -110,4 +106,11 @@ class ApitallyClient(ApitallyClientBase):
     async def _send_requests_data(self, client: httpx.AsyncClient, payload: Dict[str, Any]) -> None:
         logger.debug("Sending requests data")
         response = await client.post(url="/requests", json=payload)
-        response.raise_for_status()
+        self._handle_hub_response(response)
+
+    def _handle_hub_response(self, response: httpx.Response) -> None:
+        if response.status_code == 404:
+            self.stop_sync_loop()
+            logger.error(f"Invalid Apitally client ID {self.client_id}")
+        else:
+            response.raise_for_status()
