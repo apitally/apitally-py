@@ -57,22 +57,22 @@ def client() -> ApitallyClient:
 
 
 def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
-    send_requests_data_mock = mocker.patch("apitally.client.threading.ApitallyClient.send_requests_data")
+    send_sync_data_mock = mocker.patch("apitally.client.threading.ApitallyClient.send_sync_data")
     mocker.patch("apitally.client.base.INITIAL_SYNC_INTERVAL", 0.05)
 
     client.start_sync_loop()
     time.sleep(0.02)  # Ensure loop enters first iteration
     client.stop_sync_loop()  # Should stop after first iteration
     assert client._thread is None
-    assert send_requests_data_mock.call_count >= 1
+    assert send_sync_data_mock.call_count >= 1
 
 
-def test_send_requests_data(client: ApitallyClient, requests_mock: Mocker):
+def test_send_sync_data(client: ApitallyClient, requests_mock: Mocker):
     from apitally.client.base import HUB_BASE_URL, HUB_VERSION
 
-    mock = requests_mock.register_uri("POST", f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/requests")
+    mock = requests_mock.register_uri("POST", f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/sync")
     with requests.Session() as session:
-        client.send_requests_data(session)
+        client.send_sync_data(session)
 
     assert len(mock.request_history) == 1
     request_data = mock.request_history[0].json()
@@ -82,12 +82,12 @@ def test_send_requests_data(client: ApitallyClient, requests_mock: Mocker):
     assert request_data["validation_errors"][0]["error_count"] == 1
 
 
-def test_set_app_info(client: ApitallyClient, requests_mock: Mocker):
+def test_set_startup_data(client: ApitallyClient, requests_mock: Mocker):
     from apitally.client.base import HUB_BASE_URL, HUB_VERSION
 
-    mock = requests_mock.register_uri("POST", f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/info")
-    app_info = {"paths": [], "client_version": "1.0.0", "starlette_version": "0.28.0", "python_version": "3.11.4"}
-    client.set_app_info(app_info)
+    mock = requests_mock.register_uri("POST", f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/startup")
+    data = {"paths": [], "client_version": "1.0.0", "starlette_version": "0.28.0", "python_version": "3.11.4"}
+    client.set_startup_data(data)
 
     assert len(mock.request_history) == 1
     request_data = mock.request_history[0].json()

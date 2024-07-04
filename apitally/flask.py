@@ -38,16 +38,20 @@ class ApitallyMiddleware:
         self.patch_handle_exception()
         self.client = ApitallyClient(client_id=client_id, env=env)
         self.client.start_sync_loop()
-        self.delayed_set_app_info(app_version, openapi_url)
+        self.delayed_set_startup_data(app_version, openapi_url)
 
-    def delayed_set_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
+    def delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         # Short delay to allow app routes to be registered first
-        timer = Timer(1.0, self._delayed_set_app_info, kwargs={"app_version": app_version, "openapi_url": openapi_url})
+        timer = Timer(
+            1.0,
+            self._delayed_set_startup_data,
+            kwargs={"app_version": app_version, "openapi_url": openapi_url},
+        )
         timer.start()
 
-    def _delayed_set_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
-        app_info = _get_app_info(self.app, app_version, openapi_url)
-        self.client.set_app_info(app_info)
+    def _delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
+        data = _get_startup_data(self.app, app_version, openapi_url)
+        self.client.set_startup_data(data)
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
         status_code = 200
@@ -122,15 +126,17 @@ class ApitallyMiddleware:
         return None
 
 
-def _get_app_info(app: Flask, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> Dict[str, Any]:
-    app_info: Dict[str, Any] = {}
+def _get_startup_data(
+    app: Flask, app_version: Optional[str] = None, openapi_url: Optional[str] = None
+) -> Dict[str, Any]:
+    data: Dict[str, Any] = {}
     if openapi_url and (openapi := _get_openapi(app, openapi_url)):
-        app_info["openapi"] = openapi
+        data["openapi"] = openapi
     if paths := _get_paths(app.url_map):
-        app_info["paths"] = paths
-    app_info["versions"] = get_versions("flask", app_version=app_version)
-    app_info["client"] = "python:flask"
-    return app_info
+        data["paths"] = paths
+    data["versions"] = get_versions("flask", app_version=app_version)
+    data["client"] = "python:flask"
+    return data
 
 
 def _get_paths(url_map: Map) -> List[Dict[str, str]]:

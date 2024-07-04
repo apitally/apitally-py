@@ -50,13 +50,13 @@ class ApitallyPlugin(InitPluginProtocol):
         elif openapi_config.path is not None:
             self.openapi_path = openapi_config.path
 
-        app_info = {
+        data = {
             "openapi": _get_openapi(app),
             "paths": [route for route in _get_routes(app) if not self.filter_path(route["path"])],
             "versions": get_versions("litestar", app_version=self.app_version),
             "client": "python:litestar",
         }
-        self.client.set_app_info(app_info)
+        self.client.set_startup_data(data)
         self.client.start_sync_loop()
 
     def after_exception(self, exception: Exception, scope: Scope) -> None:

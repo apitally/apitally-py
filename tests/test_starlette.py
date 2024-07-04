@@ -24,8 +24,8 @@ if TYPE_CHECKING:
 async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlette:
     module_mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.asyncio.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.asyncio.ApitallyClient.set_app_info")
-    module_mocker.patch("apitally.starlette.ApitallyMiddleware.delayed_set_app_info")
+    module_mocker.patch("apitally.client.asyncio.ApitallyClient.set_startup_data")
+    module_mocker.patch("apitally.starlette.ApitallyMiddleware.delayed_set_startup_data")
     if request.param == "starlette":
         return get_starlette_app()
     elif request.param == "fastapi":
@@ -180,15 +180,15 @@ def test_middleware_validation_error(app: Starlette, mocker: MockerFixture):
         assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
 
 
-def test_get_app_info(app: Starlette, mocker: MockerFixture):
-    from apitally.starlette import _get_app_info
+def test_get_startup_data(app: Starlette, mocker: MockerFixture):
+    from apitally.starlette import _get_startup_data
 
     mocker.patch("apitally.starlette.ApitallyClient")
     if app.middleware_stack is None:
         app.middleware_stack = app.build_middleware_stack()
 
-    app_info = _get_app_info(app=app.middleware_stack, app_version="1.2.3", openapi_url=None)
-    assert len(app_info["paths"]) == 5
-    assert app_info["versions"]["starlette"]
-    assert app_info["versions"]["app"] == "1.2.3"
-    assert app_info["client"] == "python:starlette"
+    data = _get_startup_data(app=app.middleware_stack, app_version="1.2.3", openapi_url=None)
+    assert len(data["paths"]) == 5
+    assert data["versions"]["starlette"]
+    assert data["versions"]["app"] == "1.2.3"
+    assert data["client"] == "python:starlette"

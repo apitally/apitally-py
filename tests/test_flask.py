@@ -24,8 +24,8 @@ def app(module_mocker: MockerFixture) -> Flask:
 
     module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.threading.ApitallyClient.set_app_info")
-    module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_set_app_info")
+    module_mocker.patch("apitally.client.threading.ApitallyClient.set_startup_data")
+    module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_set_startup_data")
 
     app = Flask("test")
     app.wsgi_app = ApitallyMiddleware(app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]
@@ -95,11 +95,11 @@ def test_middleware_requests_unhandled(app: Flask, mocker: MockerFixture):
     mock.assert_not_called()
 
 
-def test_get_app_info(app: Flask):
-    from apitally.flask import _get_app_info
+def test_get_startup_data(app: Flask):
+    from apitally.flask import _get_startup_data
 
-    app_info = _get_app_info(app, app_version="1.2.3", openapi_url="/openapi.json")
-    assert len(app_info["paths"]) == 3
-    assert app_info["versions"]["flask"]
-    assert app_info["versions"]["app"] == "1.2.3"
-    assert app_info["client"] == "python:flask"
+    data = _get_startup_data(app, app_version="1.2.3", openapi_url="/openapi.json")
+    assert len(data["paths"]) == 3
+    assert data["versions"]["flask"]
+    assert data["versions"]["app"] == "1.2.3"
+    assert data["client"] == "python:flask"

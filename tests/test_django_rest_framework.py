@@ -30,7 +30,7 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
 
     module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.threading.ApitallyClient.set_app_info")
+    module_mocker.patch("apitally.client.threading.ApitallyClient.set_startup_data")
     module_mocker.patch("apitally.django.ApitallyMiddleware.config", None)
 
     settings.configure(
@@ -113,18 +113,18 @@ def test_middleware_requests_error(client: APIClient, mocker: MockerFixture):
     assert isinstance(exception, ValueError)
 
 
-def test_get_app_info():
-    from apitally.django import _get_app_info
+def test_get_startup_data():
+    from apitally.django import _get_startup_data
 
-    app_info = _get_app_info(app_version="1.2.3", urlconfs=[None])
-    openapi = json.loads(app_info["openapi"])
-    assert len(app_info["paths"]) == 4
+    data = _get_startup_data(app_version="1.2.3", urlconfs=[None])
+    openapi = json.loads(data["openapi"])
+    assert len(data["paths"]) == 4
     assert len(openapi["paths"]) == 4
 
-    assert app_info["versions"]["django"]
-    assert app_info["versions"]["djangorestframework"]
-    assert app_info["versions"]["app"] == "1.2.3"
-    assert app_info["client"] == "python:django"
+    assert data["versions"]["django"]
+    assert data["versions"]["djangorestframework"]
+    assert data["versions"]["app"] == "1.2.3"
+    assert data["client"] == "python:django"
 
 
 def test_get_drf_api_endpoints():
