@@ -27,7 +27,7 @@ async def app(module_mocker: MockerFixture) -> Litestar:
 
     module_mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.asyncio.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.asyncio.ApitallyClient.set_app_info")
+    module_mocker.patch("apitally.client.asyncio.ApitallyClient.set_startup_data")
 
     @get("/foo")
     async def foo() -> str:
@@ -147,13 +147,13 @@ def test_middleware_validation_error(client: TestClient, mocker: MockerFixture):
     assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
 
 
-def test_get_app_info(app: Litestar, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.asyncio.ApitallyClient.set_app_info")
+def test_get_startup_data(app: Litestar, mocker: MockerFixture):
+    mock = mocker.patch("apitally.client.asyncio.ApitallyClient.set_startup_data")
     app.on_startup[0](app)  # type: ignore[call-arg]
     mock.assert_called_once()
-    app_info = mock.call_args.args[0]
-    assert len(app_info["openapi"]) > 0
-    assert len(app_info["paths"]) == 5
-    assert app_info["versions"]["litestar"]
-    assert app_info["versions"]["app"] == "1.2.3"
-    assert app_info["client"] == "python:litestar"
+    data = mock.call_args.args[0]
+    assert len(data["openapi"]) > 0
+    assert len(data["paths"]) == 5
+    assert data["versions"]["litestar"]
+    assert data["versions"]["app"] == "1.2.3"
+    assert data["client"] == "python:litestar"

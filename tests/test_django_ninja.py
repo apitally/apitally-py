@@ -37,7 +37,7 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
 
     module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.threading.ApitallyClient.set_app_info")
+    module_mocker.patch("apitally.client.threading.ApitallyClient.set_startup_data")
     module_mocker.patch("apitally.django.ApitallyMiddleware.config", None)
 
     settings.configure(
@@ -128,18 +128,18 @@ def test_middleware_validation_error(client: Client, mocker: MockerFixture):
     assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
 
 
-def test_get_app_info():
-    from apitally.django import _get_app_info
+def test_get_startup_data():
+    from apitally.django import _get_startup_data
 
-    app_info = _get_app_info(app_version="1.2.3", urlconfs=[None])
-    openapi = json.loads(app_info["openapi"])
-    assert len(app_info["paths"]) == 5
+    data = _get_startup_data(app_version="1.2.3", urlconfs=[None])
+    openapi = json.loads(data["openapi"])
+    assert len(data["paths"]) == 5
     assert len(openapi["paths"]) == 5
 
-    assert app_info["versions"]["django"]
-    assert app_info["versions"]["django-ninja"]
-    assert app_info["versions"]["app"] == "1.2.3"
-    assert app_info["client"] == "python:django"
+    assert data["versions"]["django"]
+    assert data["versions"]["django-ninja"]
+    assert data["versions"]["app"] == "1.2.3"
+    assert data["client"] == "python:django"
 
 
 def test_get_ninja_api_instances():

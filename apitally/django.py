@@ -61,8 +61,8 @@ class ApitallyMiddleware:
 
         self.client = ApitallyClient(client_id=self.config.client_id, env=self.config.env)
         self.client.start_sync_loop()
-        self.client.set_app_info(
-            app_info=_get_app_info(
+        self.client.set_startup_data(
+            _get_startup_data(
                 app_version=self.config.app_version,
                 urlconfs=self.config.urlconfs,
             )
@@ -177,20 +177,20 @@ class ApitallyMiddleware:
         return None
 
 
-def _get_app_info(app_version: Optional[str], urlconfs: List[Optional[str]]) -> Dict[str, Any]:
-    app_info: Dict[str, Any] = {}
+def _get_startup_data(app_version: Optional[str], urlconfs: List[Optional[str]]) -> Dict[str, Any]:
+    data: Dict[str, Any] = {}
     try:
-        app_info["paths"] = _get_paths(urlconfs)
+        data["paths"] = _get_paths(urlconfs)
     except Exception:  # pragma: no cover
-        app_info["paths"] = []
+        data["paths"] = []
         logger.exception("Failed to get paths")
     try:
-        app_info["openapi"] = _get_openapi(urlconfs)
+        data["openapi"] = _get_openapi(urlconfs)
     except Exception:  # pragma: no cover
         logger.exception("Failed to get OpenAPI schema")
-    app_info["versions"] = get_versions("django", "djangorestframework", "django-ninja", app_version=app_version)
-    app_info["client"] = "python:django"
-    return app_info
+    data["versions"] = get_versions("django", "djangorestframework", "django-ninja", app_version=app_version)
+    data["client"] = "python:django"
+    return data
 
 
 def _get_openapi(urlconfs: List[Optional[str]]) -> Optional[str]:

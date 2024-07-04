@@ -46,7 +46,7 @@ class ApitallyClient(ApitallyClientBase):
         super().__init__(client_id=client_id, env=env)
         self._thread: Optional[Thread] = None
         self._stop_sync_loop = Event()
-        self._requests_data_queue: queue.Queue[Tuple[float, Dict[str, Any]]] = queue.Queue()
+        self._sync_data_queue: queue.Queue[Tuple[float, Dict[str, Any]]] = queue.Queue()
 
     def start_sync_loop(self) -> None:
         self._stop_sync_loop.clear()
@@ -63,17 +63,17 @@ class ApitallyClient(ApitallyClientBase):
                     now = time.time()
                     if (now - last_sync_time) >= self.sync_interval:
                         with requests.Session() as session:
-                            if not self._app_info_sent and last_sync_time > 0:  # not on first sync
-                                self.send_app_info(session)
-                            self.send_requests_data(session)
+                            if not self._startup_data_sent and last_sync_time > 0:  # not on first sync
+                                self.send_startup_data(session)
+                            self.send_sync_data(session)
                         last_sync_time = now
                     time.sleep(1)
                 except Exception as e:  # pragma: no cover
                     logger.exception(e)
         finally:
-            # Send any remaining requests data before exiting
+            # Send any remaining data before exiting
             with requests.Session() as session:
-                self.send_requests_data(session)
+                self.send_sync_data(session)
 
     def stop_sync_loop(self) -> None:
         self._stop_sync_loop.set()
@@ -81,45 +81,45 @@ class ApitallyClient(ApitallyClientBase):
             self._thread.join()
             self._thread = None
 
-    def set_app_info(self, app_info: Dict[str, Any]) -> None:
-        self._app_info_sent = False
-        self._app_info_payload = self.get_info_payload(app_info)
+    def set_startup_data(self, data: Dict[str, Any]) -> None:
+        self._startup_data_sent = False
+        self._startup_data = self.add_uuids_to_data(data)
         with requests.Session() as session:
-            self.send_app_info(session)
+            self.send_startup_data(session)
 
-    def send_app_info(self, session: requests.Session) -> None:
-        if self._app_info_payload is not None:
-            self._send_app_info(session, self._app_info_payload)
+    def send_startup_data(self, session: requests.Session) -> None:
+        if self._startup_data is not None:
+            self._send_startup_data(session, self._startup_data)
 
-    def send_requests_data(self, session: requests.Session) -> None:
-        payload = self.get_requests_payload()
-        self._requests_data_queue.put_nowait((time.time(), payload))
+    def send_sync_data(self, session: requests.Session) -> None:
+        data = self.get_sync_data()
+        self._sync_data_queue.put_nowait((time.time(), data))
 
         failed_items = []
-        while not self._requests_data_queue.empty():
-            payload_time, payload = self._requests_data_queue.get_nowait()
+        while not self._sync_data_queue.empty():
+            timestamp, data = self._sync_data_queue.get_nowait()
             try:
-                if (time_offset := time.time() - payload_time) <= MAX_QUEUE_TIME:
-                    payload["time_offset"] = time_offset
-                    self._send_requests_data(session, payload)
-                self._requests_data_queue.task_done()
+                if (time_offset := time.time() - timestamp) <= MAX_QUEUE_TIME:
+                    data["time_offset"] = time_offset
+                    self._send_sync_data(session, data)
+                self._sync_data_queue.task_done()
             except requests.RequestException:
-                failed_items.append((payload_time, payload))
+                failed_items.append((timestamp, data))
         for item in failed_items:
-            self._requests_data_queue.put_nowait(item)
+            self._sync_data_queue.put_nowait(item)
 
     @retry(raise_on_giveup=False)
-    def _send_app_info(self, session: requests.Session, payload: Dict[str, Any]) -> None:
-        logger.debug("Sending app info")
-        response = session.post(url=f"{self.hub_url}/info", json=payload, timeout=REQUEST_TIMEOUT)
+    def _send_startup_data(self, session: requests.Session, data: Dict[str, Any]) -> None:
+        logger.debug("Sending startup data")
+        response = session.post(url=f"{self.hub_url}/startup", json=data, timeout=REQUEST_TIMEOUT)
         self._handle_hub_response(response)
-        self._app_info_sent = True
-        self._app_info_payload = None
+        self._startup_data_sent = True
+        self._startup_data = None
 
     @retry()
-    def _send_requests_data(self, session: requests.Session, payload: Dict[str, Any]) -> None:
-        logger.debug("Sending requests data")
-        response = session.post(url=f"{self.hub_url}/requests", json=payload, timeout=REQUEST_TIMEOUT)
+    def _send_sync_data(self, session: requests.Session, data: Dict[str, Any]) -> None:
+        logger.debug("Synchronizing data with hub")
+        response = session.post(url=f"{self.hub_url}/sync", json=data, timeout=REQUEST_TIMEOUT)
         self._handle_hub_response(response)
 
     def _handle_hub_response(self, response: requests.Response) -> None:

@@ -42,17 +42,19 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         self.identify_consumer_callback = identify_consumer_callback
         self.client = ApitallyClient(client_id=client_id, env=env)
         self.client.start_sync_loop()
-        self.delayed_set_app_info(app_version, openapi_url)
+        self.delayed_set_startup_data(app_version, openapi_url)
         _register_shutdown_handler(app, self.client.handle_shutdown)
         super().__init__(app)
 
-    def delayed_set_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
-        asyncio.create_task(self._delayed_set_app_info(app_version, openapi_url))
+    def delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
+        asyncio.create_task(self._delayed_set_startup_data(app_version, openapi_url))
 
-    async def _delayed_set_app_info(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
+    async def _delayed_set_startup_data(
+        self, app_version: Optional[str] = None, openapi_url: Optional[str] = None
+    ) -> None:
         await asyncio.sleep(1.0)  # Short delay to allow app routes to be registered first
-        app_info = _get_app_info(self.app, app_version, openapi_url)
-        self.client.set_app_info(app_info)
+        data = _get_startup_data(self.app, app_version, openapi_url)
+        self.client.set_startup_data(data)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         try:
@@ -153,15 +155,17 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         return None
 
 
-def _get_app_info(app: ASGIApp, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> Dict[str, Any]:
-    app_info: Dict[str, Any] = {}
+def _get_startup_data(
+    app: ASGIApp, app_version: Optional[str] = None, openapi_url: Optional[str] = None
+) -> Dict[str, Any]:
+    data: Dict[str, Any] = {}
     if openapi_url and (openapi := _get_openapi(app, openapi_url)):
-        app_info["openapi"] = openapi
+        data["openapi"] = openapi
     if endpoints := _get_endpoint_info(app):
-        app_info["paths"] = [{"path": endpoint.path, "method": endpoint.http_method} for endpoint in endpoints]
-    app_info["versions"] = get_versions("fastapi", "starlette", app_version=app_version)
-    app_info["client"] = "python:starlette"
-    return app_info
+        data["paths"] = [{"path": endpoint.path, "method": endpoint.http_method} for endpoint in endpoints]
+    data["versions"] = get_versions("fastapi", "starlette", app_version=app_version)
+    data["client"] = "python:starlette"
+    return data
 
 
 def _get_openapi(app: ASGIApp, openapi_url: str) -> Optional[str]:

@@ -20,7 +20,7 @@ from apitally.client.logging import get_logger
 logger = get_logger(__name__)
 
 HUB_BASE_URL = os.getenv("APITALLY_HUB_BASE_URL") or "https://hub.apitally.io"
-HUB_VERSION = "v1"
+HUB_VERSION = "v2"
 REQUEST_TIMEOUT = 10
 MAX_QUEUE_TIME = 3600
 SYNC_INTERVAL = 60
@@ -60,8 +60,8 @@ class ApitallyClientBase(ABC):
         self.validation_error_counter = ValidationErrorCounter()
         self.server_error_counter = ServerErrorCounter()
 
-        self._app_info_payload: Optional[Dict[str, Any]] = None
-        self._app_info_sent = False
+        self._startup_data: Optional[Dict[str, Any]] = None
+        self._startup_data_sent = False
         self._started_at = time.time()
 
     @classmethod
@@ -80,25 +80,21 @@ class ApitallyClientBase(ABC):
     def hub_url(self) -> str:
         return f"{HUB_BASE_URL}/{HUB_VERSION}/{self.client_id}/{self.env}"
 
-    def get_info_payload(self, app_info: Dict[str, Any]) -> Dict[str, Any]:
-        payload = {
+    def add_uuids_to_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        data_with_uuids = {
             "instance_uuid": self.instance_uuid,
             "message_uuid": str(uuid4()),
         }
-        payload.update(app_info)
-        return payload
+        data_with_uuids.update(data)
+        return data_with_uuids
 
-    def get_requests_payload(self) -> Dict[str, Any]:
-        requests = self.request_counter.get_and_reset_requests()
-        validation_errors = self.validation_error_counter.get_and_reset_validation_errors()
-        server_errors = self.server_error_counter.get_and_reset_server_errors()
-        return {
-            "instance_uuid": self.instance_uuid,
-            "message_uuid": str(uuid4()),
-            "requests": requests,
-            "validation_errors": validation_errors,
-            "server_errors": server_errors,
+    def get_sync_data(self) -> Dict[str, Any]:
+        data = {
+            "requests": self.request_counter.get_and_reset_requests(),
+            "validation_errors": self.validation_error_counter.get_and_reset_validation_errors(),
+            "server_errors": self.server_error_counter.get_and_reset_server_errors(),
         }
+        return self.add_uuids_to_data(data)
 
 
 @dataclass(frozen=True)
