@@ -89,13 +89,10 @@ class ApitallyClientBase(ABC):
         return data_with_uuids
 
     def get_sync_data(self) -> Dict[str, Any]:
-        requests = self.request_counter.get_and_reset_requests()
-        validation_errors = self.validation_error_counter.get_and_reset_validation_errors()
-        server_errors = self.server_error_counter.get_and_reset_server_errors()
         data = {
-            "requests": requests,
-            "validation_errors": validation_errors,
-            "server_errors": server_errors,
+            "requests": self.request_counter.get_and_reset_requests(),
+            "validation_errors": self.validation_error_counter.get_and_reset_validation_errors(),
+            "server_errors": self.server_error_counter.get_and_reset_server_errors(),
         }
         return self.add_uuids_to_data(data)
 
