@@ -2,6 +2,7 @@ import contextlib
 import json
 import time
 from typing import Callable, Dict, List, Optional, Union
+from warnings import warn
 
 from litestar.app import DEFAULT_OPENAPI_CONFIG, Litestar
 from litestar.config.app import AppConfig
@@ -175,6 +176,11 @@ class ApitallyPlugin(InitPluginProtocol):
             return ApitallyConsumer.from_string_or_object(request.state.apitally_consumer)
         if hasattr(request.state, "consumer_identifier") and request.state.consumer_identifier:
             # Keeping this for legacy support
+            warn(
+                "Providing a consumer identifier via `request.state.consumer_identifier` is deprecated, "
+                "use `request.state.apitally_consumer` instead.",
+                DeprecationWarning,
+            )
             return ApitallyConsumer.from_string_or_object(request.state.consumer_identifier)
         if self.identify_consumer_callback is not None:
             consumer = self.identify_consumer_callback(request)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from threading import Timer
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
+from warnings import warn
 
 from flask import Flask, g
 from flask.wrappers import Response
@@ -127,6 +128,11 @@ class ApitallyMiddleware:
             return ApitallyConsumer.from_string_or_object(g.apitally_consumer)
         if "consumer_identifier" in g and g.consumer_identifier:
             # Keeping this for legacy support
+            warn(
+                "Providing a consumer identifier via `g.consumer_identifier` is deprecated, "
+                "use `g.apitally_consumer` instead.",
+                DeprecationWarning,
+            )
             return ApitallyConsumer.from_string_or_object(g.consumer_identifier)
         return None
 

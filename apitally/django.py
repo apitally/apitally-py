@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
+from warnings import warn
 
 from django.conf import settings
 from django.urls import URLPattern, URLResolver, get_resolver
@@ -174,6 +175,11 @@ class ApitallyMiddleware:
             return ApitallyConsumer.from_string_or_object(request.apitally_consumer)
         if hasattr(request, "consumer_identifier") and request.consumer_identifier:
             # Keeping this for legacy support
+            warn(
+                "Providing a consumer identifier via `request.consumer_identifier` is deprecated, "
+                "use `request.apitally_consumer` instead.",
+                DeprecationWarning,
+            )
             return ApitallyConsumer.from_string_or_object(request.consumer_identifier)
         if self.config is not None and self.config.identify_consumer_callback is not None:
             consumer = self.config.identify_consumer_callback(request)
