@@ -111,6 +111,8 @@ class ApitallyClient(ApitallyClientBase):
     def _handle_hub_response(self, response: httpx.Response) -> None:
         if response.status_code == 404:
             self.stop_sync_loop()
-            logger.error(f"Invalid Apitally client ID {self.client_id}")
+            logger.error("Invalid Apitally client ID: %s", self.client_id)
+        elif response.status_code == 422:
+            logger.error("Received validation error from hub: %s", response.json())
         else:
             response.raise_for_status()
