@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture(scope="module")
 def app(module_mocker: MockerFixture) -> Flask:
-    from flask import Flask
+    from flask import Flask, g
 
     from apitally.flask import ApitallyMiddleware
 
@@ -32,6 +32,7 @@ def app(module_mocker: MockerFixture) -> Flask:
 
     @app.route("/foo/<bar>")
     def foo_bar(bar: int):
+        g.apitally_consumer = "test"
         return f"foo: {bar}"
 
     @app.route("/bar", methods=["POST"])
@@ -53,6 +54,7 @@ def test_middleware_requests_ok(app: Flask, mocker: MockerFixture):
     assert response.status_code == 200
     mock.assert_called_once()
     assert mock.call_args is not None
+    assert mock.call_args.kwargs["consumer"] == "test"
     assert mock.call_args.kwargs["method"] == "GET"
     assert mock.call_args.kwargs["path"] == "/foo/<bar>"
     assert mock.call_args.kwargs["status_code"] == 200

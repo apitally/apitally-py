@@ -23,7 +23,7 @@ async def app(module_mocker: MockerFixture) -> Litestar:
     from litestar.connection import Request
     from litestar.handlers import get, post
 
-    from apitally.litestar import ApitallyPlugin
+    from apitally.litestar import ApitallyConsumer, ApitallyPlugin
 
     module_mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.asyncio.ApitallyClient.start_sync_loop")
@@ -50,8 +50,8 @@ async def app(module_mocker: MockerFixture) -> Litestar:
     async def val(foo: int) -> str:
         return "val"
 
-    def identify_consumer(request: Request) -> Optional[str]:
-        return "test1" if "/foo" in request.route_handler.paths else None
+    def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
+        return ApitallyConsumer("test1", name="Test 1") if "/foo" in request.route_handler.paths else None
 
     plugin = ApitallyPlugin(
         client_id=CLIENT_ID,

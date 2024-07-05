@@ -72,6 +72,7 @@ def test_middleware_requests_ok(client: APIClient, mocker: MockerFixture):
     assert response.status_code == 200
     mock.assert_called_once()
     assert mock.call_args is not None
+    assert mock.call_args.kwargs["consumer"] == "test"
     assert mock.call_args.kwargs["method"] == "GET"
     assert mock.call_args.kwargs["path"] == "/foo/{bar}/"
     assert mock.call_args.kwargs["status_code"] == 200

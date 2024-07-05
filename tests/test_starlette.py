@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from importlib.util import find_spec
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import pytest
 from pytest import FixtureRequest
@@ -42,6 +42,7 @@ def get_starlette_app() -> Starlette:
     from apitally.starlette import ApitallyMiddleware
 
     def foo(request: Request):
+        request.state.apitally_consumer = "test"
         return PlainTextResponse("foo")
 
     def foo_bar(request: Request):
@@ -69,12 +70,15 @@ def get_starlette_app() -> Starlette:
 
 
 def get_fastapi_app() -> Starlette:
-    from fastapi import FastAPI, Query
+    from fastapi import FastAPI, Query, Request
 
-    from apitally.fastapi import ApitallyMiddleware
+    from apitally.fastapi import ApitallyConsumer, ApitallyMiddleware
+
+    def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
+        return ApitallyConsumer("test", name="Test")
 
     app = FastAPI(title="Test App", description="A simple test app.", version="1.2.3")
-    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV)
+    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV, identify_consumer_callback=identify_consumer)
 
     @app.get("/foo/")
     def foo():
@@ -109,6 +113,7 @@ def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
     assert response.status_code == 200
     mock.assert_called_once()
     assert mock.call_args is not None
+    assert mock.call_args.kwargs["consumer"] == "test"
     assert mock.call_args.kwargs["method"] == "GET"
     assert mock.call_args.kwargs["path"] == "/foo/"
     assert mock.call_args.kwargs["status_code"] == 200
