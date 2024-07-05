@@ -68,8 +68,8 @@ class ApitallyClient(ApitallyClientBase):
                             self.send_sync_data(session)
                         last_sync_time = now
                     time.sleep(1)
-                except Exception as e:  # pragma: no cover
-                    logger.exception(e)
+                except Exception:  # pragma: no cover
+                    logger.exception("An error occurred during sync with Apitally hub")
         finally:
             # Send any remaining data before exiting
             with requests.Session() as session:
@@ -110,7 +110,7 @@ class ApitallyClient(ApitallyClientBase):
 
     @retry(raise_on_giveup=False)
     def _send_startup_data(self, session: requests.Session, data: Dict[str, Any]) -> None:
-        logger.debug("Sending startup data")
+        logger.debug("Sending startup data to Apitally hub")
         response = session.post(url=f"{self.hub_url}/startup", json=data, timeout=REQUEST_TIMEOUT)
         self._handle_hub_response(response)
         self._startup_data_sent = True
@@ -118,7 +118,7 @@ class ApitallyClient(ApitallyClientBase):
 
     @retry()
     def _send_sync_data(self, session: requests.Session, data: Dict[str, Any]) -> None:
-        logger.debug("Synchronizing data with hub")
+        logger.debug("Synchronizing data with Apitally hub")
         response = session.post(url=f"{self.hub_url}/sync", json=data, timeout=REQUEST_TIMEOUT)
         self._handle_hub_response(response)
 
@@ -127,6 +127,6 @@ class ApitallyClient(ApitallyClientBase):
             self.stop_sync_loop()
             logger.error("Invalid Apitally client ID: %s", self.client_id)
         elif response.status_code == 422:
-            logger.error("Received validation error from hub: %s", response.json())
+            logger.error("Received validation error from Apitally hub: %s", response.json())
         else:
             response.raise_for_status()
