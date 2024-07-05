@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from threading import Timer
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
+from warnings import warn
 
 from flask import Flask, g
 from flask.wrappers import Response
@@ -10,6 +11,7 @@ from werkzeug.datastructures import Headers
 from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
 
+from apitally.client.base import Consumer as ApitallyConsumer
 from apitally.client.threading import ApitallyClient
 from apitally.common import get_versions
 
@@ -19,7 +21,7 @@ if TYPE_CHECKING:
     from werkzeug.routing.map import Map
 
 
-__all__ = ["ApitallyMiddleware"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer"]
 
 
 class ApitallyMiddleware:
@@ -92,8 +94,11 @@ class ApitallyMiddleware:
     ) -> None:
         rule, is_handled_path = self.get_rule(environ)
         if is_handled_path or not self.filter_unhandled_paths:
+            consumer = self.get_consumer()
+            consumer_identifier = consumer.identifier if consumer else None
+            self.client.consumer_registry.add_or_update_consumer(consumer)
             self.client.request_counter.add_request(
-                consumer=self.get_consumer(),
+                consumer=consumer_identifier,
                 method=environ["REQUEST_METHOD"],
                 path=rule,
                 status_code=status_code,
@@ -103,7 +108,7 @@ class ApitallyMiddleware:
             )
             if status_code == 500 and "unhandled_exception" in g:
                 self.client.server_error_counter.add_server_error(
-                    consumer=self.get_consumer(),
+                    consumer=consumer_identifier,
                     method=environ["REQUEST_METHOD"],
                     path=rule,
                     exception=g.unhandled_exception,
@@ -118,11 +123,17 @@ class ApitallyMiddleware:
         except NotFound:
             return environ["PATH_INFO"], False
 
-    def get_consumer(self) -> Optional[str]:
-        if "apitally_consumer" in g:
-            return str(g.apitally_consumer)
-        if "consumer_identifier" in g:  # Keeping this for legacy support
-            return str(g.consumer_identifier)
+    def get_consumer(self) -> Optional[ApitallyConsumer]:
+        if "apitally_consumer" in g and g.apitally_consumer:
+            return ApitallyConsumer.from_string_or_object(g.apitally_consumer)
+        if "consumer_identifier" in g and g.consumer_identifier:
+            # Keeping this for legacy support
+            warn(
+                "Providing a consumer identifier via `g.consumer_identifier` is deprecated, "
+                "use `g.apitally_consumer` instead.",
+                DeprecationWarning,
+            )
+            return ApitallyConsumer.from_string_or_object(g.consumer_identifier)
         return None
 
 

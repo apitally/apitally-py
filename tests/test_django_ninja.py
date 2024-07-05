@@ -18,9 +18,7 @@ if TYPE_CHECKING:
 
 
 def identify_consumer(request: HttpRequest) -> Optional[str]:
-    if consumer := request.GET.get("consumer"):
-        return consumer
-    return None
+    return "test"
 
 
 @pytest.fixture(scope="module")
@@ -74,6 +72,7 @@ def test_middleware_requests_ok(client: Client, mocker: MockerFixture):
     assert response.status_code == 200
     mock.assert_called_once()
     assert mock.call_args is not None
+    assert mock.call_args.kwargs["consumer"] == "test"
     assert mock.call_args.kwargs["method"] == "GET"
     assert mock.call_args.kwargs["path"] == "/api/foo/{bar}"
     assert mock.call_args.kwargs["status_code"] == 200

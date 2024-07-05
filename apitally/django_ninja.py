@@ -1,4 +1,4 @@
-from apitally.django import ApitallyMiddleware
+from apitally.django import ApitallyConsumer, ApitallyMiddleware
 
 
-__all__ = ["ApitallyMiddleware"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer"]

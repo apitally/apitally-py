@@ -4,6 +4,7 @@ import asyncio
 import json
 import time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from warnings import warn
 
 from httpx import HTTPStatusError
 from starlette.concurrency import iterate_in_threadpool
@@ -15,6 +16,7 @@ from starlette.testclient import TestClient
 from starlette.types import ASGIApp
 
 from apitally.client.asyncio import ApitallyClient
+from apitally.client.base import Consumer as ApitallyConsumer
 from apitally.common import get_versions
 
 
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
     from starlette.responses import Response
 
 
-__all__ = ["ApitallyMiddleware"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer"]
 
 
 class ApitallyMiddleware(BaseHTTPMiddleware):
@@ -36,7 +38,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = "/openapi.json",
         filter_unhandled_paths: bool = True,
-        identify_consumer_callback: Optional[Callable[[Request], Optional[str]]] = None,
+        identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
     ) -> None:
         self.filter_unhandled_paths = filter_unhandled_paths
         self.identify_consumer_callback = identify_consumer_callback
@@ -89,8 +91,10 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         path_template, is_handled_path = self.get_path_template(request)
         if is_handled_path or not self.filter_unhandled_paths:
             consumer = self.get_consumer(request)
+            consumer_identifier = consumer.identifier if consumer else None
+            self.client.consumer_registry.add_or_update_consumer(consumer)
             self.client.request_counter.add_request(
-                consumer=consumer,
+                consumer=consumer_identifier,
                 method=request.method,
                 path=path_template,
                 status_code=status_code,
@@ -107,14 +111,14 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
                 if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
                     # Log FastAPI / Pydantic validation errors
                     self.client.validation_error_counter.add_validation_errors(
-                        consumer=consumer,
+                        consumer=consumer_identifier,
                         method=request.method,
                         path=path_template,
                         detail=body["detail"],
                     )
             if status_code == 500 and exception is not None:
                 self.client.server_error_counter.add_server_error(
-                    consumer=consumer,
+                    consumer=consumer_identifier,
                     method=request.method,
                     path=path_template,
                     exception=exception,
@@ -143,15 +147,20 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
                 return route.path, True
         return request.url.path, False
 
-    def get_consumer(self, request: Request) -> Optional[str]:
-        if hasattr(request.state, "apitally_consumer"):
-            return str(request.state.apitally_consumer)
-        if hasattr(request.state, "consumer_identifier"):  # Keeping this for legacy support
-            return str(request.state.consumer_identifier)
+    def get_consumer(self, request: Request) -> Optional[ApitallyConsumer]:
+        if hasattr(request.state, "apitally_consumer") and request.state.apitally_consumer:
+            return ApitallyConsumer.from_string_or_object(request.state.apitally_consumer)
+        if hasattr(request.state, "consumer_identifier") and request.state.consumer_identifier:
+            # Keeping this for legacy support
+            warn(
+                "Providing a consumer identifier via `request.state.consumer_identifier` is deprecated, "
+                "use `request.state.apitally_consumer` instead.",
+                DeprecationWarning,
+            )
+            return ApitallyConsumer.from_string_or_object(request.state.consumer_identifier)
         if self.identify_consumer_callback is not None:
             consumer = self.identify_consumer_callback(request)
-            if consumer is not None:
-                return str(consumer)
+            return ApitallyConsumer.from_string_or_object(consumer)
         return None
 
 

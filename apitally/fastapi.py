@@ -1,4 +1,4 @@
-from apitally.starlette import ApitallyMiddleware
+from apitally.starlette import ApitallyConsumer, ApitallyMiddleware
 
 
-__all__ = ["ApitallyMiddleware"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer"]

@@ -7,11 +7,13 @@ import time
 from dataclasses import dataclass
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
+from warnings import warn
 
 from django.conf import settings
 from django.urls import URLPattern, URLResolver, get_resolver
 from django.utils.module_loading import import_string
 
+from apitally.client.base import Consumer as ApitallyConsumer
 from apitally.client.logging import get_logger
 from apitally.client.threading import ApitallyClient
 from apitally.common import get_versions
@@ -22,7 +24,7 @@ if TYPE_CHECKING:
     from ninja import NinjaAPI
 
 
-__all__ = ["ApitallyMiddleware"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer"]
 logger = get_logger(__name__)
 
 
@@ -31,7 +33,7 @@ class ApitallyMiddlewareConfig:
     client_id: str
     env: str
     app_version: Optional[str]
-    identify_consumer_callback: Optional[Callable[[HttpRequest], Optional[str]]]
+    identify_consumer_callback: Optional[Callable[[HttpRequest], Union[str, ApitallyConsumer, None]]]
     urlconfs: List[Optional[str]]
 
 
@@ -93,10 +95,16 @@ class ApitallyMiddleware:
         response_time = time.perf_counter() - start_time
         path = self.get_path(request)
         if request.method is not None and path is not None:
-            consumer = self.get_consumer(request)
+            try:
+                consumer = self.get_consumer(request)
+                consumer_identifier = consumer.identifier if consumer else None
+                self.client.consumer_registry.add_or_update_consumer(consumer)
+            except Exception:  # pragma: no cover
+                logger.exception("Failed to get consumer for request")
+                consumer_identifier = None
             try:
                 self.client.request_counter.add_request(
-                    consumer=consumer,
+                    consumer=consumer_identifier,
                     method=request.method,
                     path=path,
                     status_code=response.status_code,
@@ -119,7 +127,7 @@ class ApitallyMiddleware:
                         if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
                             # Log Django Ninja / Pydantic validation errors
                             self.client.validation_error_counter.add_validation_errors(
-                                consumer=consumer,
+                                consumer=consumer_identifier,
                                 method=request.method,
                                 path=path,
                                 detail=body["detail"],
@@ -129,7 +137,7 @@ class ApitallyMiddleware:
             if response.status_code == 500 and hasattr(request, "unhandled_exception"):
                 try:
                     self.client.server_error_counter.add_server_error(
-                        consumer=consumer,
+                        consumer=consumer_identifier,
                         method=request.method,
                         path=path,
                         exception=getattr(request, "unhandled_exception"),
@@ -162,18 +170,20 @@ class ApitallyMiddleware:
                 logger.exception("Failed to get path for request")
         return None
 
-    def get_consumer(self, request: HttpRequest) -> Optional[str]:
-        try:
-            if hasattr(request, "apitally_consumer"):
-                return str(request.apitally_consumer)
-            if hasattr(request, "consumer_identifier"):  # Keeping this for legacy support
-                return str(request.consumer_identifier)
-            if self.config is not None and self.config.identify_consumer_callback is not None:
-                consumer = self.config.identify_consumer_callback(request)
-                if consumer is not None:
-                    return str(consumer)
-        except Exception:  # pragma: no cover
-            logger.exception("Failed to get consumer identifier for request")
+    def get_consumer(self, request: HttpRequest) -> Optional[ApitallyConsumer]:
+        if hasattr(request, "apitally_consumer") and request.apitally_consumer:
+            return ApitallyConsumer.from_string_or_object(request.apitally_consumer)
+        if hasattr(request, "consumer_identifier") and request.consumer_identifier:
+            # Keeping this for legacy support
+            warn(
+                "Providing a consumer identifier via `request.consumer_identifier` is deprecated, "
+                "use `request.apitally_consumer` instead.",
+                DeprecationWarning,
+            )
+            return ApitallyConsumer.from_string_or_object(request.consumer_identifier)
+        if self.config is not None and self.config.identify_consumer_callback is not None:
+            consumer = self.config.identify_consumer_callback(request)
+            return ApitallyConsumer.from_string_or_object(consumer)
         return None
 
 
