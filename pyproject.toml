@@ -52,7 +52,7 @@ pytest = [
     { version = "^7.0.0", python = ">=3.8,<3.9" },
     { version = "^8.0.0", python = ">=3.9" }
 ]
-pytest-asyncio = "^0.21.2"
+pytest-asyncio = "^0.23.0"
 pytest-cov = "^5.0.0"
 pytest-httpx = [
     { version = "^0.22.0", python = ">=3.8,<3.9" },
