@@ -513,13 +513,13 @@ bcrypt = ["bcrypt"]
 
 [[package]]
 name = "django-ninja"
-version = "1.2.0"
+version = "1.2.1"
 description = "Django Ninja - Fast Django REST framework"
 optional = true
 python-versions = ">=3.7"
 files = [
-    {file = "django_ninja-1.2.0-py3-none-any.whl", hash = "sha256:aa8ca853bf189cc13247b1922ca41f1a6e60056c90041ec0081cce0ea8d8de02"},
-    {file = "django_ninja-1.2.0.tar.gz", hash = "sha256:0a7b7e20202f50546ae45af6a262fccb606c9e75b8bbe9fe38d49075a9435bf0"},
+    {file = "django_ninja-1.2.1-py3-none-any.whl", hash = "sha256:acb7a0005e84acdb0ae96066c42c7f304f988a078d370e5952382b928bb28a08"},
+    {file = "django_ninja-1.2.1.tar.gz", hash = "sha256:667ff27304039d4692421709ae532fd62b16a4d34a969ef850d5cd22cb46090a"},
 ]
 
 [package.dependencies]
