@@ -114,9 +114,6 @@ check_untyped_defs = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-filterwarnings = [
-    "ignore:Support for class-based `config` is deprecated,.+:pydantic.warnings.PydanticDeprecatedSince20",  # from django-ninja
-]
 
 [tool.coverage.run]
 source = ["apitally"]
