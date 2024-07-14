@@ -28,7 +28,10 @@ backoff = ">=2.0.0"
 python = ">=3.8,<4.0"
 
 # Optional dependencies, included in extras
-django = { version = ">=2.2", optional = true }
+django = [
+    { version = ">=2.2,<5", python = "<3.10", optional = true },
+    { version = ">=2.2", python = ">=3.10", optional = true }
+]
 django-ninja = { version = ">=0.18.0", optional = true }
 djangorestframework = { version = ">=3.10.0", optional = true }
 fastapi = { version = ">=0.87.0", optional = true }
@@ -49,13 +52,13 @@ ruff = "^0.5.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = [
-    { version = "^7.0.0", python = ">=3.8,<3.9" },
+    { version = "^7.0.0", python = "<3.9" },
     { version = "^8.0.0", python = ">=3.9" }
 ]
-pytest-asyncio = "^0.23.0"
+pytest-asyncio = "^0.21.2"
 pytest-cov = "^5.0.0"
 pytest-httpx = [
-    { version = "^0.22.0", python = ">=3.8,<3.9" },
+    { version = "^0.22.0", python = "<3.9" },
     { version = "^0.30.0", python = ">=3.9" }
 ]
 pytest-mock = "^3.12.0"
@@ -111,6 +114,9 @@ check_untyped_defs = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore:Support for class-based `config` is deprecated,.+:pydantic.warnings.PydanticDeprecatedSince20",  # from django-ninja
+]
 
 [tool.coverage.run]
 source = ["apitally"]
