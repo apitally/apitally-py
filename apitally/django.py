@@ -252,7 +252,9 @@ def _get_drf_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[str, Any]]:
     from rest_framework.schemas.openapi import SchemaGenerator
 
     schemas = []
-    with contextlib.suppress(AssertionError):  # uritemplate and inflection must be installed for OpenAPI schema support
+    # AssertionError is raised if uritemplate or inflection are not installed (required for OpenAPI schema support)
+    # AttributeError is raised if app is using CoreAPI schema (deprecated) instead of OpenAPI
+    with contextlib.suppress(AssertionError, AttributeError):
         for urlconf in urlconfs:
             generator = SchemaGenerator(urlconf=urlconf)
             schema = generator.get_schema()
