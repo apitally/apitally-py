@@ -13,4 +13,4 @@ jobs:
         uses: poseidon/wait-for-status-checks@v0.5.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          ignore: codecov/*
+          ignore_pattern: ^codecov/.+
