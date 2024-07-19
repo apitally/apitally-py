@@ -28,8 +28,9 @@ class ApitallyClient(ApitallyClientBase):
     def __init__(self, client_id: str, env: str) -> None:
         super().__init__(client_id=client_id, env=env)
         self._stop_sync_loop = False
-        self._sync_loop_task: Optional[asyncio.Task[Any]] = None
+        self._sync_loop_task: Optional[asyncio.Task] = None
         self._sync_data_queue: asyncio.Queue[Tuple[float, Dict[str, Any]]] = asyncio.Queue()
+        self._set_startup_data_task: Optional[asyncio.Task] = None
 
     def get_http_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(base_url=self.hub_url, timeout=REQUEST_TIMEOUT)
@@ -67,9 +68,9 @@ class ApitallyClient(ApitallyClientBase):
     def set_startup_data(self, data: Dict[str, Any]) -> None:
         self._startup_data_sent = False
         self._startup_data = self.add_uuids_to_data(data)
-        asyncio.create_task(self._set_startup_data_task())
+        self._set_startup_data_task = asyncio.create_task(self._set_startup_data())
 
-    async def _set_startup_data_task(self) -> None:
+    async def _set_startup_data(self) -> None:
         async with self.get_http_client() as client:
             await self.send_startup_data(client)
 
