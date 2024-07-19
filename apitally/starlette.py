@@ -44,12 +44,15 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         self.identify_consumer_callback = identify_consumer_callback
         self.client = ApitallyClient(client_id=client_id, env=env)
         self.client.start_sync_loop()
+        self._delayed_set_startup_data_task: Optional[asyncio.Task] = None
         self.delayed_set_startup_data(app_version, openapi_url)
         _register_shutdown_handler(app, self.client.handle_shutdown)
         super().__init__(app)
 
     def delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
-        asyncio.create_task(self._delayed_set_startup_data(app_version, openapi_url))
+        self._delayed_set_startup_data_task = asyncio.create_task(
+            self._delayed_set_startup_data(app_version, openapi_url)
+        )
 
     async def _delayed_set_startup_data(
         self, app_version: Optional[str] = None, openapi_url: Optional[str] = None

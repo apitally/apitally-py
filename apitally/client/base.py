@@ -244,6 +244,7 @@ class ServerErrorCounter:
         self.error_counts: Counter[ServerError] = Counter()
         self.sentry_event_ids: Dict[ServerError, str] = {}
         self._lock = threading.Lock()
+        self._tasks: Set[asyncio.Task] = set()
 
     def add_server_error(self, consumer: Optional[str], method: str, path: str, exception: BaseException) -> None:
         if not isinstance(exception, BaseException):
@@ -288,7 +289,9 @@ class ServerErrorCounter:
 
         with contextlib.suppress(RuntimeError):  # ignore no running loop
             loop = asyncio.get_running_loop()
-            loop.create_task(_wait_for_sentry_event_id(scope))
+            task = loop.create_task(_wait_for_sentry_event_id(scope))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
 
     def get_and_reset_server_errors(self) -> List[Dict[str, Any]]:
         data: List[Dict[str, Any]] = []
