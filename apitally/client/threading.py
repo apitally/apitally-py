@@ -38,7 +38,7 @@ try:
 
     ipython = get_ipython()  # type: ignore
 except NameError:
-    from atexit import register as register_exit
+    from atexit import register as register_exit  # type: ignore[assignment]
 
 
 class ApitallyClient(ApitallyClientBase):
