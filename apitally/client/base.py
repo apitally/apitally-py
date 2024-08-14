@@ -268,20 +268,20 @@ class ServerErrorCounter:
             from sentry_sdk.scope import Scope
         except ImportError:
             return  # pragma: no cover
-        if not hasattr(Scope, "get_isolation_scope") or not hasattr(Scope, "last_event_id"):
+        if not hasattr(Scope, "get_isolation_scope") or not hasattr(Scope, "_last_event_id"):
             # sentry-sdk < 2.2.0 is not supported
             return  # pragma: no cover
         if Hub.current.client is None:
             return  # sentry-sdk not initialized
 
         scope = Scope.get_isolation_scope()
-        if event_id := scope.last_event_id():
+        if event_id := scope._last_event_id:
             self.sentry_event_ids[server_error] = event_id
             return
 
         async def _wait_for_sentry_event_id(scope: Scope) -> None:
             i = 0
-            while not (event_id := scope.last_event_id()) and i < 100:
+            while not (event_id := scope._last_event_id) and i < 100:
                 i += 1
                 await asyncio.sleep(0.001)
             if event_id:
