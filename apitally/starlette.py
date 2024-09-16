@@ -92,7 +92,7 @@ class ApitallyMiddleware(BaseHTTPMiddleware):
         exception: Optional[BaseException] = None,
     ) -> None:
         path_template, is_handled_path = self.get_path_template(request)
-        if is_handled_path or not self.filter_unhandled_paths:
+        if (is_handled_path or not self.filter_unhandled_paths) and request.method != "OPTIONS":
             consumer = self.get_consumer(request)
             consumer_identifier = consumer.identifier if consumer else None
             self.client.consumer_registry.add_or_update_consumer(consumer)

@@ -93,7 +93,7 @@ class ApitallyMiddleware:
         response_headers: Headers,
     ) -> None:
         rule, is_handled_path = self.get_rule(environ)
-        if is_handled_path or not self.filter_unhandled_paths:
+        if (is_handled_path or not self.filter_unhandled_paths) and environ["REQUEST_METHOD"] != "OPTIONS":
             consumer = self.get_consumer()
             consumer_identifier = consumer.identifier if consumer else None
             self.client.consumer_registry.add_or_update_consumer(consumer)

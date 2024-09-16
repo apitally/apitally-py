@@ -94,7 +94,7 @@ class ApitallyMiddleware:
         response = self.get_response(request)
         response_time = time.perf_counter() - start_time
         path = self.get_path(request)
-        if request.method is not None and path is not None:
+        if request.method is not None and request.method != "OPTIONS" and path is not None:
             try:
                 consumer = self.get_consumer(request)
                 consumer_identifier = consumer.identifier if consumer else None
