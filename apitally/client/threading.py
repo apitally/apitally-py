@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import random
 import time
 from functools import partial
 from threading import Event, Thread
@@ -95,18 +96,21 @@ class ApitallyClient(ApitallyClientBase):
         data = self.get_sync_data()
         self._sync_data_queue.put_nowait((time.time(), data))
 
-        failed_items = []
+        i = 0
         while not self._sync_data_queue.empty():
             timestamp, data = self._sync_data_queue.get_nowait()
             try:
                 if (time_offset := time.time() - timestamp) <= MAX_QUEUE_TIME:
+                    if i > 0:
+                        time.sleep(random.uniform(0.1, 0.3))
                     data["time_offset"] = time_offset
                     self._send_sync_data(session, data)
-                self._sync_data_queue.task_done()
+                    i += 1
             except requests.RequestException:
-                failed_items.append((timestamp, data))
-        for item in failed_items:
-            self._sync_data_queue.put_nowait(item)
+                self._sync_data_queue.put_nowait((timestamp, data))
+                break
+            finally:
+                self._sync_data_queue.task_done()
 
     @retry(raise_on_giveup=False)
     def _send_startup_data(self, session: requests.Session, data: Dict[str, Any]) -> None:

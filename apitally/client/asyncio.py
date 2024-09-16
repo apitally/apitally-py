@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
 from functools import partial
 from typing import Any, Dict, Optional, Tuple
@@ -82,18 +83,21 @@ class ApitallyClient(ApitallyClientBase):
         data = self.get_sync_data()
         self._sync_data_queue.put_nowait((time.time(), data))
 
-        failed_items = []
+        i = 0
         while not self._sync_data_queue.empty():
             timestamp, data = self._sync_data_queue.get_nowait()
             try:
                 if (time_offset := time.time() - timestamp) <= MAX_QUEUE_TIME:
+                    if i > 0:
+                        await asyncio.sleep(random.uniform(0.1, 0.3))
                     data["time_offset"] = time_offset
                     await self._send_sync_data(client, data)
-                self._sync_data_queue.task_done()
+                    i += 1
             except httpx.HTTPError:
-                failed_items.append((timestamp, data))
-        for item in failed_items:
-            self._sync_data_queue.put_nowait(item)
+                self._sync_data_queue.put_nowait((timestamp, data))
+                break
+            finally:
+                self._sync_data_queue.task_done()
 
     @retry(raise_on_giveup=False)
     async def _send_startup_data(self, client: httpx.AsyncClient, data: Dict[str, Any]) -> None:
