@@ -617,14 +617,17 @@ django = ">=4.2"
 
 [[package]]
 name = "djangorestframework-types"
-version = "0.8.0"
+version = "0.9.0"
 description = "Type stubs for Django Rest Framework"
 optional = false
-python-versions = ">=3.7,<4.0"
+python-versions = "<4.0,>=3.8"
 files = [
-    {file = "djangorestframework-types-0.8.0.tar.gz", hash = "sha256:bed5dc8ce4f3500a4d29632e333262059e2218f2291c88313ce8443c24e50a76"},
-    {file = "djangorestframework_types-0.8.0-py3-none-any.whl", hash = "sha256:5136212ec0df2c11d5ebcf217246f606e68f1d46a770419de84ed676bdab0113"},
+    {file = "djangorestframework_types-0.9.0-py3-none-any.whl", hash = "sha256:5e4258fe43774d0a3d018780170bd702bf615407fe244453ea5ec6e6676b98c4"},
+    {file = "djangorestframework_types-0.9.0.tar.gz", hash = "sha256:aa6b27fbdab5ff4ab1dfa5376f3b6ec45713ce48dbcdd4226bf3e1410f0deaca"},
 ]
+
+[package.dependencies]
+typing_extensions = {version = ">=4.6,<5.0", markers = "python_version < \"3.11\""}
 
 [[package]]
 name = "exceptiongroup"
