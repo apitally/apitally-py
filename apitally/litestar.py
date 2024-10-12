@@ -72,16 +72,31 @@ class ApitallyPlugin(InitPluginProtocol):
                 response_time = 0.0
                 response_headers = Headers()
                 response_body = b""
+                response_size = 0
+                response_chunked = False
                 start_time = time.perf_counter()
 
                 async def send_wrapper(message: Message) -> None:
-                    nonlocal response_time, response_status, response_headers, response_body
+                    nonlocal \
+                        response_time, \
+                        response_status, \
+                        response_headers, \
+                        response_body, \
+                        response_size, \
+                        response_chunked
                     if message["type"] == "http.response.start":
                         response_time = time.perf_counter() - start_time
                         response_status = message["status"]
                         response_headers = Headers(message["headers"])
-                    elif message["type"] == "http.response.body" and response_status == 400:
-                        response_body += message["body"]
+                        response_chunked = (
+                            response_headers.get("Transfer-Encoding") == "chunked"
+                            or "Content-Length" not in response_headers
+                        )
+                    elif message["type"] == "http.response.body":
+                        if response_chunked:
+                            response_size += len(message.get("body", b""))
+                        if response_status == 400:
+                            response_body += message.get("body", b"")
                     await send(message)
 
                 await app(scope, receive, send_wrapper)
@@ -91,6 +106,7 @@ class ApitallyPlugin(InitPluginProtocol):
                     response_time=response_time,
                     response_headers=response_headers,
                     response_body=response_body,
+                    response_size=response_size,
                 )
             else:
                 await app(scope, receive, send)  # pragma: no cover
@@ -104,6 +120,7 @@ class ApitallyPlugin(InitPluginProtocol):
         response_time: float,
         response_headers: Headers,
         response_body: bytes,
+        response_size: int = 0,
     ) -> None:
         if response_status < 100 or not request.route_handler.paths:
             return  # pragma: no cover
@@ -120,7 +137,7 @@ class ApitallyPlugin(InitPluginProtocol):
             status_code=response_status,
             response_time=response_time,
             request_size=request.headers.get("Content-Length"),
-            response_size=response_headers.get("Content-Length"),
+            response_size=response_size or response_headers.get("Content-Length"),
         )
         if response_status == 400 and response_body and len(response_body) < 4096:
             with contextlib.suppress(json.JSONDecodeError):
