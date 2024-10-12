@@ -36,7 +36,7 @@ async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlett
 def get_starlette_app() -> Starlette:
     from starlette.applications import Starlette
     from starlette.requests import Request
-    from starlette.responses import PlainTextResponse
+    from starlette.responses import PlainTextResponse, StreamingResponse
     from starlette.routing import Route
 
     from apitally.starlette import ApitallyMiddleware
@@ -57,12 +57,20 @@ def get_starlette_app() -> Starlette:
     def val(request: Request):
         return PlainTextResponse("validation error", status_code=422)
 
+    def stream(request: Request):
+        def stream_response():
+            yield b"foo"
+            yield b"bar"
+
+        return StreamingResponse(stream_response())
+
     routes = [
         Route("/foo/", foo),
         Route("/foo/{bar}/", foo_bar),
         Route("/bar/", bar, methods=["POST"]),
         Route("/baz/", baz, methods=["POST"]),
         Route("/val/", val),
+        Route("/stream/", stream),
     ]
     app = Starlette(routes=routes)
     app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV)
@@ -71,6 +79,7 @@ def get_starlette_app() -> Starlette:
 
 def get_fastapi_app() -> Starlette:
     from fastapi import FastAPI, Query, Request
+    from fastapi.responses import StreamingResponse
 
     from apitally.fastapi import ApitallyConsumer, ApitallyMiddleware
 
@@ -99,6 +108,14 @@ def get_fastapi_app() -> Starlette:
     @app.get("/val/")
     def val(foo: int = Query()):
         return "val"
+
+    @app.get("/stream/")
+    def stream():
+        def stream_response():
+            yield b"foo"
+            yield b"bar"
+
+        return StreamingResponse(stream_response())
 
     return app
 
@@ -130,6 +147,12 @@ def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
     assert mock.call_count == 3
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "POST"
+
+    response = client.get("/stream/")
+    assert response.status_code == 200
+    assert mock.call_count == 4
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["response_size"] == 6
 
 
 def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
