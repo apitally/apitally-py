@@ -62,16 +62,31 @@ class ApitallyMiddleware:
             response_time = 0.0
             response_headers = Headers()
             response_body = b""
+            response_size = 0
+            response_chunked = False
             start_time = time.perf_counter()
 
             async def send_wrapper(message: Message) -> None:
-                nonlocal response_time, response_status, response_headers, response_body
+                nonlocal \
+                    response_time, \
+                    response_status, \
+                    response_headers, \
+                    response_body, \
+                    response_size, \
+                    response_chunked
                 if message["type"] == "http.response.start":
                     response_time = time.perf_counter() - start_time
                     response_status = message["status"]
                     response_headers = Headers(scope=message)
-                elif message["type"] == "http.response.body" and response_status == 422:
-                    response_body += message["body"]
+                    response_chunked = (
+                        response_headers.get("Transfer-Encoding") == "chunked"
+                        or "Content-Length" not in response_headers
+                    )
+                elif message["type"] == "http.response.body":
+                    if response_chunked:
+                        response_size += len(message.get("body", b""))
+                    if response_status == 422:
+                        response_body += message.get("body", b"")
                 await send(message)
 
             try:
@@ -83,6 +98,7 @@ class ApitallyMiddleware:
                     response_time=time.perf_counter() - start_time,
                     response_headers=response_headers,
                     response_body=response_body,
+                    response_size=response_size,
                     exception=e,
                 )
                 raise e from None
@@ -93,6 +109,7 @@ class ApitallyMiddleware:
                     response_time=response_time,
                     response_headers=response_headers,
                     response_body=response_body,
+                    response_size=response_size,
                 )
         else:
             await self.app(scope, receive, send)  # pragma: no cover
@@ -104,6 +121,7 @@ class ApitallyMiddleware:
         response_time: float,
         response_headers: Headers,
         response_body: bytes,
+        response_size: int = 0,
         exception: Optional[BaseException] = None,
     ) -> None:
         path_template, is_handled_path = self.get_path_template(request)
@@ -118,7 +136,7 @@ class ApitallyMiddleware:
                 status_code=response_status,
                 response_time=response_time,
                 request_size=request.headers.get("Content-Length"),
-                response_size=response_headers.get("Content-Length"),
+                response_size=response_size or response_headers.get("Content-Length"),
             )
             if response_status == 422 and response_body and response_headers.get("Content-Type") == "application/json":
                 with contextlib.suppress(json.JSONDecodeError):
