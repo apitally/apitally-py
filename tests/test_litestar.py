@@ -11,6 +11,10 @@ from .constants import CLIENT_ID, ENV
 
 if find_spec("litestar") is None:
     pytest.skip("litestar is not available", allow_module_level=True)
+else:
+    # Need to import Stream at package level to avoid NameError in Litestar
+    from litestar.response import Stream
+
 
 if TYPE_CHECKING:
     from litestar.app import Litestar
@@ -22,6 +26,7 @@ async def app(module_mocker: MockerFixture) -> Litestar:
     from litestar.app import Litestar
     from litestar.connection import Request
     from litestar.handlers import get, post
+    from litestar.response import Stream
 
     from apitally.litestar import ApitallyConsumer, ApitallyPlugin
 
@@ -50,6 +55,14 @@ async def app(module_mocker: MockerFixture) -> Litestar:
     async def val(foo: int) -> str:
         return "val"
 
+    @get("/stream")
+    async def stream() -> Stream:
+        def stream_response():
+            yield b"foo"
+            yield b"bar"
+
+        return Stream(stream_response())
+
     def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
         return ApitallyConsumer("test1", name="Test 1") if "/foo" in request.route_handler.paths else None
 
@@ -60,7 +73,7 @@ async def app(module_mocker: MockerFixture) -> Litestar:
         identify_consumer_callback=identify_consumer,
     )
     app = Litestar(
-        route_handlers=[foo, foo_bar, bar, baz, val],
+        route_handlers=[foo, foo_bar, bar, baz, val, stream],
         plugins=[plugin],
     )
     return app
@@ -100,9 +113,15 @@ def test_middleware_requests_ok(client: TestClient, mocker: MockerFixture):
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "POST"
 
+    response = client.get("/stream")
+    assert response.status_code == 200
+    assert mock.call_count == 4
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["response_size"] == 6
+
     response = client.get("/schema/openapi.json")
     assert response.status_code == 200
-    assert mock.call_count == 3  # OpenAPI paths are filtered out
+    assert mock.call_count == 4  # OpenAPI paths are filtered out
 
 
 def test_middleware_requests_unhandled(client: TestClient, mocker: MockerFixture):
@@ -153,7 +172,7 @@ def test_get_startup_data(app: Litestar, mocker: MockerFixture):
     mock.assert_called_once()
     data = mock.call_args.args[0]
     assert len(data["openapi"]) > 0
-    assert len(data["paths"]) == 5
+    assert len(data["paths"]) == 6
     assert data["versions"]["litestar"]
     assert data["versions"]["app"] == "1.2.3"
     assert data["client"] == "python:litestar"
