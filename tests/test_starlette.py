@@ -216,7 +216,7 @@ def test_get_startup_data(app: Starlette, mocker: MockerFixture):
         app.middleware_stack = app.build_middleware_stack()
 
     data = _get_startup_data(app=app.middleware_stack, app_version="1.2.3", openapi_url=None)
-    assert len(data["paths"]) == 5
+    assert len(data["paths"]) == 6
     assert data["versions"]["starlette"]
     assert data["versions"]["app"] == "1.2.3"
     assert data["client"] == "python:starlette"
