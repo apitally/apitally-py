@@ -10,12 +10,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Install and configure Poetry
-        uses: snok/install-poetry@v1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
         with:
-          version: "1.6.1"
-          virtualenvs-in-project: true
-      - name: Install dynamic versioning plugin for Poetry
-        run: poetry self add "poetry-dynamic-versioning[plugin]"
-      - name: Build and publish to PyPI
-        run: poetry publish --build --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+          version: "0.4.29"
+          enable-cache: true
+      - name: Get version
+        uses: mtkennerly/dunamai-action@v1
+        with:
+          env-var: VERSION
+          args: --style pep440
+      - name: Set version in pyproject.toml
+        run: uvx --from=toml-cli toml set --toml-path=pyproject.toml project.version $VERSION
+      - name: Build package
+        run: uv build
+      - name: Publish package to PyPI
+        run: uv publish --token ${{ secrets.PYPI_TOKEN }}

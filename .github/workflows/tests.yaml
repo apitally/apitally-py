@@ -22,31 +22,19 @@ jobs:
   test-coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Load cached Poetry installation
-        id: cached-poetry
-        uses: actions/cache@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
         with:
-          path: ~/.local
-          key: poetry-0 # increment to reset cache
-      - name: Install and configure Poetry
-        if: steps.cached-poetry.outputs.cache-hit != 'true'
-        uses: snok/install-poetry@v1
-        with:
-          version: "1.8.3"
-          virtualenvs-in-project: true
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: poetry
-      - name: Run Poetry check
-        run: poetry check
+          version: "0.4.29"
+          enable-cache: true
+      - name: Install Python
+        run: uv python install
       - name: Install dependencies
-        run: poetry install --no-interaction --all-extras
+        run: uv sync --all-extras --frozen
       - name: Run checks
-        run: poetry run make check
+        run: uv run make check
       - name: Run tests and create coverage report
-        run: poetry run make test-coverage
+        run: uv run make test-coverage
       - name: Upload coverage report to Codecov
         uses: codecov/codecov-action@v4
         with:
@@ -78,26 +66,18 @@ jobs:
           - litestar==2.0.1
     steps:
       - uses: actions/checkout@v4
-      - name: Load cached Poetry installation
-        id: cached-poetry
-        uses: actions/cache@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
         with:
-          path: ~/.local # the path depends on the OS
-          key: poetry-0 # increment to reset cache
-      - name: Install and configure Poetry
-        if: steps.cached-poetry.outputs.cache-hit != 'true'
-        uses: snok/install-poetry@v1
-        with:
-          version: "1.8.3"
-          virtualenvs-in-project: true
+          version: "0.4.29"
+          enable-cache: true
+      - name: Install Python
+        run: uv python install ${{ matrix.python }}
       - name: Build Python package wheel
-        run: poetry build -f wheel
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "${{ matrix.python }}"
+        run: uv build --wheel
       - name: Install test dependencies
-        run: poetry install --no-interaction --no-root --only test
+        run: uv sync --no-install-project --only-group test --frozen
       - name: Install app dependencies
-        run: poetry run pip install ${{ matrix.deps }} ./dist/apitally-*.whl
+        run: uv pip install ${{ matrix.deps }} ./dist/apitally-*.whl
       - name: Run tests
-        run: poetry run make test
+        run: uv run make test
