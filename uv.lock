@@ -36,7 +36,7 @@ wheels = [
 
 [[package]]
 name = "apitally"
-version = "0.12.2.dev18+gd8fff50.d20241104"
+version = "0.12.2.dev14+gda0b858"
 source = { editable = "." }
 dependencies = [
     { name = "backoff" },
@@ -84,7 +84,7 @@ dev = [
     { name = "ipykernel" },
     { name = "mypy" },
     { name = "pre-commit", version = "3.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-    { name = "pre-commit", version = "3.7.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "pre-commit", version = "4.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "ruff" },
 ]
 test = [
@@ -140,7 +140,7 @@ dev = [
     { name = "ipykernel", specifier = "~=6.26.0" },
     { name = "mypy", specifier = "~=1.10.0" },
     { name = "pre-commit", marker = "python_full_version < '3.9'", specifier = "~=3.5.0" },
-    { name = "pre-commit", marker = "python_full_version >= '3.9'", specifier = "~=3.7.0" },
+    { name = "pre-commit", marker = "python_full_version >= '3.9'", specifier = "~=4.0.1" },
     { name = "ruff", specifier = "~=0.7.0" },
 ]
 test = [
@@ -1426,7 +1426,7 @@ wheels = [
 
 [[package]]
 name = "pre-commit"
-version = "3.7.1"
+version = "4.0.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version == '3.9.*'",
@@ -1440,9 +1440,9 @@ dependencies = [
     { name = "pyyaml", marker = "python_full_version >= '3.9'" },
     { name = "virtualenv", marker = "python_full_version >= '3.9'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/aa/46/cc214ef6514270328910083d0119d0a80a6d2c4ec8c6608c0219db0b74cf/pre_commit-3.7.1.tar.gz", hash = "sha256:8ca3ad567bc78a4972a3f1a477e94a79d4597e8140a6e0b651c5e33899c3654a", size = 177317 }
+sdist = { url = "https://files.pythonhosted.org/packages/2e/c8/e22c292035f1bac8b9f5237a2622305bc0304e776080b246f3df57c4ff9f/pre_commit-4.0.1.tar.gz", hash = "sha256:80905ac375958c0444c65e9cebebd948b3cdb518f335a091a670a89d652139d2", size = 191678 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b9/0f/d6d0b4e2f5b2933a557087fc0560371aa545a18232d4d3427eb3bb3af12e/pre_commit-3.7.1-py2.py3-none-any.whl", hash = "sha256:fae36fd1d7ad7d6a5a1c0b0d5adb2ed1a3bda5a21bf6c3e5372073d7a11cd4c5", size = 204268 },
+    { url = "https://files.pythonhosted.org/packages/16/8f/496e10d51edd6671ebe0432e33ff800aa86775d2d147ce7d43389324a525/pre_commit-4.0.1-py2.py3-none-any.whl", hash = "sha256:efde913840816312445dc98787724647c65473daefe420785f885e8ed9a06878", size = 218713 },
 ]
 
 [[package]]
