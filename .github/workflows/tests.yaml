@@ -50,21 +50,20 @@ jobs:
         deps:
           - starlette
           - fastapi starlette
-          - fastapi==0.100.1 starlette
-          - fastapi==0.87.0 starlette anyio==3.*
+          - \"fastapi==0.100.1; python_version < '3.12'\" \"fastapi==0.109.0; python_version >= '3.12'\" starlette
+          - \"fastapi==0.87.0; python_version < '3.12'\" \"fastapi==0.109.0; python_version >= '3.12'\" starlette anyio==3.*
           - flask
           - flask==2.3.*
           - flask==2.0.3 Werkzeug==2.*
           - djangorestframework django uritemplate inflection
           - djangorestframework django==4.2.* uritemplate inflection
-          - djangorestframework==3.12.* django==3.2.* uritemplate
-          - djangorestframework==3.10.* django==2.2.* uritemplate
+          - \"djangorestframework==3.10.*; python_version < '3.12'\" \"djangorestframework==3.12.*; python_version >= '3.12'\" \"django==2.2.*; python_version < '3.12'\" \"django==3.2.*; python_version >= '3.12'\" uritemplate
           - django-ninja django
           - django-ninja==0.22.* django
           - django-ninja==0.18.0 django
           - litestar
           - litestar==2.6.1
-          - litestar==2.0.1
+          - \"litestar==2.0.1; python_version < '3.12'\" \"litestar==2.3.0; python_version >= '3.12'\"
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
