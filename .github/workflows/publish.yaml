@@ -15,14 +15,7 @@ jobs:
         with:
           version: "0.4.29"
           enable-cache: true
-      - name: Get version
-        uses: mtkennerly/dunamai-action@v1
-        with:
-          env-var: VERSION
-          args: --style pep440
-      - name: Set version in pyproject.toml
-        run: uvx --from=toml-cli toml set --toml-path=pyproject.toml project.version $VERSION
       - name: Build package
         run: uv build
       - name: Publish package to PyPI
-        run: uv publish --token ${{ secrets.PYPI_TOKEN }}
+        run: uv publish
