@@ -1,103 +1,122 @@
-[build-system]
-requires = ["poetry-core", "poetry-dynamic-versioning"]
-build-backend = "poetry_dynamic_versioning.backend"
-
-[tool.poetry]
+[project]
 name = "apitally"
-version = "1.0.0"
 description = "Simple API monitoring & analytics for REST APIs built with FastAPI, Flask, Django, Starlette and Litestar."
+authors = [
+    { name = "Apitally", email = "hello@apitally.io" },
+]
 readme = "README.md"
-authors = ["Apitally <hello@apitally.io>"]
-license = "MIT License"
-homepage = "https://apitally.io"
-documentation = "https://docs.apitally.io"
-repository = "https://github.com/apitally/apitally-py"
+license = { text = "MIT License" }
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
     "Framework :: Django",
     "Framework :: FastAPI",
     "Framework :: Flask",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Internet",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Internet :: WWW/HTTP :: WSGI :: Middleware",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
-
-[tool.poetry.dependencies]
-backoff = ">=2.0.0"
-python = ">=3.8,<4.0"
-
-# Optional dependencies, included in extras
-django = [
-    { version = ">=2.2,<5", python = "<3.10", optional = true },
-    { version = ">=2.2", python = ">=3.10", optional = true }
+requires-python = ">=3.8,<4.0"
+dependencies = [
+    "backoff>=2.0.0",
 ]
-django-ninja = { version = ">=0.18.0", optional = true }
-djangorestframework = { version = ">=3.10.0", optional = true }
-fastapi = { version = ">=0.87.0", optional = true }
-flask = { version = ">=2.0.0", optional = true }
-httpx = { version = ">=0.22.0", optional = true }
-inflection = { version = ">=0.5.1", optional = true }
-litestar = { version = ">=2.0.0", optional = true }
-requests = { version = ">=2.26.0", optional = true }
-sentry-sdk = { version = ">=2.2.0", optional = true }
-starlette = { version = ">=0.21.0,<1.0.0", optional = true }
-uritemplate = { version = ">=3.0.0", optional = true }
+dynamic = ["version"]
 
-[tool.poetry.group.dev.dependencies]
-ipykernel = "^6.26.0"
-mypy = "^1.10.0"
-pre-commit = [
-    { version = "^3.5.0", python = "<3.9" },
-    { version = "^3.7.0", python = ">=3.9" }
+[project.optional-dependencies]
+django_ninja = [
+    "django>=2.2,<5; python_version<'3.10'",
+    "django>=2.2; python_version>='3.10'",
+    "django-ninja>=0.18.0",
+    "requests>=2.26.0",
 ]
-ruff = "^0.7.0"
-
-[tool.poetry.group.test.dependencies]
-pytest = [
-    { version = "^7.0.0", python = "<3.9" },
-    { version = "^8.0.0", python = ">=3.9" }
-]
-pytest-asyncio = "^0.21.2"
-pytest-cov = "^5.0.0"
-pytest-httpx = [
-    { version = "^0.22.0", python = "<3.9" },
-    { version = "^0.30.0", python = ">=3.9" }
-]
-pytest-mock = "^3.12.0"
-requests-mock = "^1.11.0"
-
-[tool.poetry.group.types.dependencies]
-django-types = "*"
-djangorestframework-types = "*"
-types-colorama = "*"
-types-docutils = "*"
-types-pygments = "*"
-types-pyyaml = "*"
-types-requests = "*"
-types-setuptools = "*"
-types-six = "*"
-types-ujson = "*"
-
-[tool.poetry.extras]
-django_ninja = ["django", "django-ninja", "requests"]
 django_rest_framework = [
-    "django",
-    "djangorestframework",
-    "uritemplate", # required for schema generation
-    "inflection", # required for schema generation
-    "requests",
+    "django>=2.2,<5; python_version<'3.10'",
+    "django>=2.2; python_version>='3.10'",
+    "djangorestframework>=3.10.0",
+    "uritemplate>=3.0.0", # required for schema generation
+    "inflection>=0.5.1", # required for schema generation
+    "requests>=2.26.0",
 ]
-fastapi = ["fastapi", "starlette", "httpx"]
-flask = ["flask", "requests"]
-litestar = ["litestar", "httpx"]
-sentry = ["sentry-sdk"]
-starlette = ["starlette", "httpx"]
+fastapi = [
+    "fastapi>=0.88.0",
+    "starlette>=0.22.0,<1.0.0",
+    "httpx>=0.22.0",
+]
+flask = [
+    "flask>=2.0.0",
+    "requests>=2.26.0",
+]
+litestar = [
+    "litestar>=2.0.0",
+    "httpx>=0.22.0",
+]
+sentry = [
+    "sentry-sdk>=2.2.0",
+]
+starlette = [
+    "starlette>=0.21.0,<1.0.0",
+    "httpx>=0.22.0",
+]
 
-[tool.poetry-dynamic-versioning]
-enable = true
-style = "semver"
-vcs = "git"
+[project.urls]
+homepage = "https://apitally.io"
+documentation = "https://docs.apitally.io"
+source = "https://github.com/apitally/apitally-py"
+
+[dependency-groups]
+dev = [
+    "ipykernel~=6.26.0",
+    "mypy~=1.10.0",
+    "pre-commit~=3.5.0; python_version<'3.9'",
+    "pre-commit~=3.7.0; python_version>='3.9'",
+    "ruff~=0.7.0",
+]
+test = [
+    "pytest~=7.0.0; python_version<'3.9'",
+    "pytest~=8.0.0; python_version>='3.9'",
+    "pytest-asyncio~=0.21.2",
+    "pytest-cov~=5.0.0",
+    "pytest-httpx~=0.22.0; python_version<'3.9'",
+    "pytest-httpx~=0.30.0; python_version>='3.9'",
+    "pytest-mock~=3.12.0",
+    "requests-mock~=1.11.0",
+]
+types = [
+    "django-types",
+    "djangorestframework-types",
+    "types-colorama",
+    "types-docutils",
+    "types-pygments",
+    "types-pyyaml",
+    "types-requests",
+    "types-setuptools",
+    "types-six",
+    "types-ujson",
+]
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.uv]
+default-groups = ["dev", "test", "types"]
 
 [tool.ruff]
 line-length = 120

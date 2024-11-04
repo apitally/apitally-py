@@ -5,10 +5,10 @@ format:
 	ruff format apitally tests
 
 check:
+	uv lock --locked
 	ruff check apitally tests
 	ruff format --diff apitally tests
 	mypy --install-types --non-interactive apitally tests
-	poetry check
 
 test:
 	pytest -v --tb=short

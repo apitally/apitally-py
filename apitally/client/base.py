@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import os
 import re
+import sys
 import threading
 import time
 import traceback
@@ -328,7 +329,11 @@ class ServerErrorCounter:
         cutoff = MAX_EXCEPTION_TRACEBACK_LENGTH - len(prefix)
         lines = []
         length = 0
-        for line in traceback.format_exception(exception)[::-1]:
+        if sys.version_info >= (3, 10):
+            traceback_lines = traceback.format_exception(exception)
+        else:
+            traceback_lines = traceback.format_exception(type(exception), exception, exception.__traceback__)
+        for line in traceback_lines[::-1]:
             if length + len(line) > cutoff:
                 lines.append(prefix)
                 break
