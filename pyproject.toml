@@ -1,27 +1,40 @@
 [project]
 name = "apitally"
 description = "Simple API monitoring & analytics for REST APIs built with FastAPI, Flask, Django, Starlette and Litestar."
-version = "0.9.4"
 authors = [
     { name = "Apitally", email = "hello@apitally.io" },
 ]
 readme = "README.md"
 license = { text = "MIT License" }
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
     "Framework :: Django",
     "Framework :: FastAPI",
     "Framework :: Flask",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Internet",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Internet :: WWW/HTTP :: WSGI :: Middleware",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
-
 requires-python = ">=3.8,<4.0"
 dependencies = [
     "backoff>=2.0.0",
 ]
+dynamic = ["version"]
 
 [project.optional-dependencies]
 django_ninja = [
@@ -39,8 +52,8 @@ django_rest_framework = [
     "requests>=2.26.0",
 ]
 fastapi = [
-    "fastapi>=0.87.0",
-    "starlette>=0.21.0,<1.0.0",
+    "fastapi>=0.88.0",
+    "starlette>=0.22.0,<1.0.0",
     "httpx>=0.22.0",
 ]
 flask = [
@@ -96,8 +109,11 @@ types = [
 ]
 
 [build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.uv]
 default-groups = ["dev", "test", "types"]

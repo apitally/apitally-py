@@ -36,7 +36,7 @@ wheels = [
 
 [[package]]
 name = "apitally"
-version = "0.0.0"
+version = "0.12.2.dev18+gd8fff50.d20241104"
 source = { editable = "." }
 dependencies = [
     { name = "backoff" },
@@ -119,7 +119,7 @@ requires-dist = [
     { name = "django", marker = "python_full_version < '3.10' and extra == 'django-rest-framework'", specifier = ">=2.2,<5" },
     { name = "django-ninja", marker = "extra == 'django-ninja'", specifier = ">=0.18.0" },
     { name = "djangorestframework", marker = "extra == 'django-rest-framework'", specifier = ">=3.10.0" },
-    { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.87.0" },
+    { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.88.0" },
     { name = "flask", marker = "extra == 'flask'", specifier = ">=2.0.0" },
     { name = "httpx", marker = "extra == 'fastapi'", specifier = ">=0.22.0" },
     { name = "httpx", marker = "extra == 'litestar'", specifier = ">=0.22.0" },
@@ -130,7 +130,7 @@ requires-dist = [
     { name = "requests", marker = "extra == 'django-rest-framework'", specifier = ">=2.26.0" },
     { name = "requests", marker = "extra == 'flask'", specifier = ">=2.26.0" },
     { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.2.0" },
-    { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.21.0,<1.0.0" },
+    { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.22.0,<1.0.0" },
     { name = "starlette", marker = "extra == 'starlette'", specifier = ">=0.21.0,<1.0.0" },
     { name = "uritemplate", marker = "extra == 'django-rest-framework'", specifier = ">=3.0.0" },
 ]
