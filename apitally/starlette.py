@@ -59,11 +59,12 @@ class ApitallyMiddleware:
         if scope["type"] == "http" and scope["method"] != "OPTIONS":
             request = Request(scope)
             response_status = 0
-            response_time = 0.0
+            response_time: Optional[float] = None
             response_headers = Headers()
             response_body = b""
             response_size = 0
             response_chunked = False
+            exception: Optional[BaseException] = None
             start_time = time.perf_counter()
 
             async def send_wrapper(message: Message) -> None:
@@ -92,17 +93,11 @@ class ApitallyMiddleware:
             try:
                 await self.app(scope, receive, send_wrapper)
             except BaseException as e:
-                self.add_request(
-                    request=request,
-                    response_status=500,
-                    response_time=time.perf_counter() - start_time,
-                    response_headers=response_headers,
-                    response_body=response_body,
-                    response_size=response_size,
-                    exception=e,
-                )
+                exception = e
                 raise e from None
-            else:
+            finally:
+                if response_time is None:
+                    response_time = time.perf_counter() - start_time
                 self.add_request(
                     request=request,
                     response_status=response_status,
@@ -110,6 +105,7 @@ class ApitallyMiddleware:
                     response_headers=response_headers,
                     response_body=response_body,
                     response_size=response_size,
+                    exception=exception,
                 )
         else:
             await self.app(scope, receive, send)  # pragma: no cover
@@ -129,6 +125,8 @@ class ApitallyMiddleware:
             consumer = self.get_consumer(request)
             consumer_identifier = consumer.identifier if consumer else None
             self.client.consumer_registry.add_or_update_consumer(consumer)
+            if response_status == 0 and exception is not None:
+                response_status = 500
             self.client.request_counter.add_request(
                 consumer=consumer_identifier,
                 method=request.method,
