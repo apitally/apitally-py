@@ -12,6 +12,9 @@ from .constants import CLIENT_ID, ENV
 
 if find_spec("starlette") is None:
     pytest.skip("starlette is not available", allow_module_level=True)
+else:
+    # Need to import BackgroundTasks at package level to avoid NameError in FastAPI
+    from starlette.background import BackgroundTasks
 
 if TYPE_CHECKING:
     from starlette.applications import Starlette
@@ -64,6 +67,14 @@ def get_starlette_app() -> Starlette:
 
         return StreamingResponse(stream_response())
 
+    def task(request: Request):
+        def task_func_with_error():
+            raise ValueError("task")
+
+        tasks = BackgroundTasks()
+        tasks.add_task(task_func_with_error)
+        return PlainTextResponse("ok", background=tasks)
+
     routes = [
         Route("/foo/", foo),
         Route("/foo/{bar}/", foo_bar),
@@ -71,6 +82,7 @@ def get_starlette_app() -> Starlette:
         Route("/baz/", baz, methods=["POST"]),
         Route("/val/", val),
         Route("/stream/", stream),
+        Route("/task/", task, methods=["POST"]),
     ]
     app = Starlette(routes=routes)
     app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV)
@@ -116,6 +128,14 @@ def get_fastapi_app() -> Starlette:
             yield b"bar"
 
         return StreamingResponse(stream_response())
+
+    @app.post("/task/")
+    def task(background_tasks: BackgroundTasks):
+        def task_func_with_error():
+            raise ValueError("task")
+
+        background_tasks.add_task(task_func_with_error)
+        return "ok"
 
     return app
 
@@ -176,6 +196,14 @@ def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
     exception = mock2.call_args.kwargs["exception"]
     assert isinstance(exception, ValueError)
 
+    # Throws a ValueError in a background task, but returns 200
+    response = client.post("/task/")
+    assert response.status_code == 200
+    assert mock1.call_count == 2
+    assert mock1.call_args is not None
+    assert mock1.call_args.kwargs["status_code"] == 200
+    mock2.assert_called_once()  # Not called again
+
 
 def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
@@ -216,7 +244,7 @@ def test_get_startup_data(app: Starlette, mocker: MockerFixture):
         app.middleware_stack = app.build_middleware_stack()
 
     data = _get_startup_data(app=app.middleware_stack, app_version="1.2.3", openapi_url=None)
-    assert len(data["paths"]) == 6
+    assert len(data["paths"]) == 7
     assert data["versions"]["starlette"]
     assert data["versions"]["app"] == "1.2.3"
     assert data["client"] == "python:starlette"
