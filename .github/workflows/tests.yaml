@@ -58,8 +58,8 @@ jobs:
           - flask==2.0.3 Werkzeug==2.*
           - djangorestframework django uritemplate inflection
           - djangorestframework django==4.2.* uritemplate inflection
-          - djangorestframework==3.12.* django==3.2.* uritemplate inflection
-          - djangorestframework==3.10.* django==2.2.* uritemplate inflection
+          - djangorestframework==3.12.* django==3.2.* uritemplate
+          - djangorestframework==3.10.* django==2.2.* uritemplate
           - django-ninja django
           - django-ninja==0.22.* django
           - django-ninja==0.18.0 django
@@ -73,9 +73,9 @@ jobs:
           - python: "3.12"
             deps: fastapi==0.87.0 starlette
           - python: "3.12"
-            deps: djangorestframework==3.12.* django==3.2.* uritemplate inflection
+            deps: djangorestframework==3.12.* django==3.2.* uritemplate
           - python: "3.12"
-            deps: djangorestframework==3.10.* django==2.2.* uritemplate inflection
+            deps: djangorestframework==3.10.* django==2.2.* uritemplate
           - python: "3.12"
             deps: litestar==2.0.1
     steps:
