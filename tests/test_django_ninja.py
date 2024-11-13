@@ -33,9 +33,9 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
     import django
     from django.conf import settings
 
-    module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
-    module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.threading.ApitallyClient.set_startup_data")
+    module_mocker.patch("apitally.client.client_threading.ApitallyClient._instance", None)
+    module_mocker.patch("apitally.client.client_threading.ApitallyClient.start_sync_loop")
+    module_mocker.patch("apitally.client.client_threading.ApitallyClient.set_startup_data")
     module_mocker.patch("apitally.django.ApitallyMiddleware.config", None)
 
     settings.configure(
@@ -66,7 +66,7 @@ def client(module_mocker: MockerFixture) -> Client:
 
 
 def test_middleware_requests_ok(client: Client, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
+    mock = mocker.patch("apitally.client.requests.RequestCounter.add_request")
 
     response = client.get("/api/foo/123")
     assert response.status_code == 200
@@ -88,7 +88,7 @@ def test_middleware_requests_ok(client: Client, mocker: MockerFixture):
 
 
 def test_middleware_requests_404(client: Client, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
+    mock = mocker.patch("apitally.client.requests.RequestCounter.add_request")
 
     response = client.get("/api/none")
     assert response.status_code == 404
@@ -96,8 +96,8 @@ def test_middleware_requests_404(client: Client, mocker: MockerFixture):
 
 
 def test_middleware_requests_error(client: Client, mocker: MockerFixture):
-    mock1 = mocker.patch("apitally.client.base.RequestCounter.add_request")
-    mock2 = mocker.patch("apitally.client.base.ServerErrorCounter.add_server_error")
+    mock1 = mocker.patch("apitally.client.requests.RequestCounter.add_request")
+    mock2 = mocker.patch("apitally.client.server_errors.ServerErrorCounter.add_server_error")
 
     response = client.put("/api/baz")
     assert response.status_code == 500
@@ -115,7 +115,7 @@ def test_middleware_requests_error(client: Client, mocker: MockerFixture):
 
 
 def test_middleware_validation_error(client: Client, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.ValidationErrorCounter.add_validation_errors")
+    mock = mocker.patch("apitally.client.validation_errors.ValidationErrorCounter.add_validation_errors")
 
     response = client.get("/api/val?foo=bar")
     assert response.status_code == 422

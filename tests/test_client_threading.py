@@ -12,12 +12,12 @@ from .constants import CLIENT_ID, ENV
 
 
 if TYPE_CHECKING:
-    from apitally.client.threading import ApitallyClient
+    from apitally.client.client_threading import ApitallyClient
 
 
 @pytest.fixture(scope="module")
 def client() -> ApitallyClient:
-    from apitally.client.threading import ApitallyClient
+    from apitally.client.client_threading import ApitallyClient
 
     client = ApitallyClient(client_id=CLIENT_ID, env=ENV)
     client.request_counter.add_request(
@@ -57,8 +57,8 @@ def client() -> ApitallyClient:
 
 
 def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
-    send_sync_data_mock = mocker.patch("apitally.client.threading.ApitallyClient.send_sync_data")
-    mocker.patch("apitally.client.base.INITIAL_SYNC_INTERVAL", 0.05)
+    send_sync_data_mock = mocker.patch("apitally.client.client_threading.ApitallyClient.send_sync_data")
+    mocker.patch("apitally.client.client_base.INITIAL_SYNC_INTERVAL", 0.05)
 
     client.start_sync_loop()
     time.sleep(0.02)  # Ensure loop enters first iteration
@@ -68,7 +68,7 @@ def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
 
 
 def test_send_sync_data(client: ApitallyClient, requests_mock: Mocker):
-    from apitally.client.base import HUB_BASE_URL, HUB_VERSION
+    from apitally.client.client_base import HUB_BASE_URL, HUB_VERSION
 
     mock = requests_mock.register_uri("POST", f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/sync")
     with requests.Session() as session:
@@ -83,7 +83,7 @@ def test_send_sync_data(client: ApitallyClient, requests_mock: Mocker):
 
 
 def test_set_startup_data(client: ApitallyClient, requests_mock: Mocker):
-    from apitally.client.base import HUB_BASE_URL, HUB_VERSION
+    from apitally.client.client_base import HUB_BASE_URL, HUB_VERSION
 
     mock = requests_mock.register_uri("POST", f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/startup")
     data = {"paths": [], "client_version": "1.0.0", "starlette_version": "0.28.0", "python_version": "3.11.4"}

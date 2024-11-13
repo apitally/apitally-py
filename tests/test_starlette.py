@@ -25,9 +25,9 @@ if TYPE_CHECKING:
     params=["starlette", "fastapi"] if find_spec("fastapi") is not None else ["starlette"],
 )
 async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlette:
-    module_mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
-    module_mocker.patch("apitally.client.asyncio.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.asyncio.ApitallyClient.set_startup_data")
+    module_mocker.patch("apitally.client.client_asyncio.ApitallyClient._instance", None)
+    module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.start_sync_loop")
+    module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.set_startup_data")
     module_mocker.patch("apitally.starlette.ApitallyMiddleware.delayed_set_startup_data")
     if request.param == "starlette":
         return get_starlette_app()
@@ -143,7 +143,7 @@ def get_fastapi_app() -> Starlette:
 def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
+    mock = mocker.patch("apitally.client.requests.RequestCounter.add_request")
     client = TestClient(app)
 
     response = client.get("/foo/")
@@ -178,8 +178,8 @@ def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
 def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mock1 = mocker.patch("apitally.client.base.RequestCounter.add_request")
-    mock2 = mocker.patch("apitally.client.base.ServerErrorCounter.add_server_error")
+    mock1 = mocker.patch("apitally.client.requests.RequestCounter.add_request")
+    mock2 = mocker.patch("apitally.client.server_errors.ServerErrorCounter.add_server_error")
     client = TestClient(app, raise_server_exceptions=False)
 
     response = client.post("/baz/")
@@ -208,7 +208,7 @@ def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
 def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
+    mock = mocker.patch("apitally.client.requests.RequestCounter.add_request")
     client = TestClient(app)
 
     response = client.post("/xxx/")
@@ -219,7 +219,7 @@ def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
 def test_middleware_validation_error(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
-    mock = mocker.patch("apitally.client.base.ValidationErrorCounter.add_validation_errors")
+    mock = mocker.patch("apitally.client.validation_errors.ValidationErrorCounter.add_validation_errors")
     client = TestClient(app)
 
     # Validation error as foo must be an integer

@@ -11,8 +11,8 @@ from werkzeug.datastructures import Headers
 from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
 
-from apitally.client.base import Consumer as ApitallyConsumer
-from apitally.client.threading import ApitallyClient
+from apitally.client.client_threading import ApitallyClient
+from apitally.client.consumers import Consumer as ApitallyConsumer
 from apitally.common import get_versions
 
 
@@ -32,11 +32,9 @@ class ApitallyMiddleware:
         env: str = "dev",
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = None,
-        filter_unhandled_paths: bool = True,
     ) -> None:
         self.app = app
         self.wsgi_app = app.wsgi_app
-        self.filter_unhandled_paths = filter_unhandled_paths
         self.patch_handle_exception()
         self.client = ApitallyClient(client_id=client_id, env=env)
         self.client.start_sync_loop()
@@ -93,7 +91,7 @@ class ApitallyMiddleware:
         response_headers: Headers,
     ) -> None:
         rule, is_handled_path = self.get_rule(environ)
-        if (is_handled_path or not self.filter_unhandled_paths) and environ["REQUEST_METHOD"] != "OPTIONS":
+        if is_handled_path and environ["REQUEST_METHOD"] != "OPTIONS":
             consumer = self.get_consumer()
             consumer_identifier = consumer.identifier if consumer else None
             self.client.consumer_registry.add_or_update_consumer(consumer)

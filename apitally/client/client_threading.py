@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 import backoff
 import requests
 
-from apitally.client.base import MAX_QUEUE_TIME, REQUEST_TIMEOUT, ApitallyClientBase
+from apitally.client.client_base import MAX_QUEUE_TIME, REQUEST_TIMEOUT, ApitallyClientBase
 from apitally.client.logging import get_logger
 
 

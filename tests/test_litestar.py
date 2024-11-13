@@ -30,9 +30,9 @@ async def app(module_mocker: MockerFixture) -> Litestar:
 
     from apitally.litestar import ApitallyConsumer, ApitallyPlugin
 
-    module_mocker.patch("apitally.client.asyncio.ApitallyClient._instance", None)
-    module_mocker.patch("apitally.client.asyncio.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.asyncio.ApitallyClient.set_startup_data")
+    module_mocker.patch("apitally.client.client_asyncio.ApitallyClient._instance", None)
+    module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.start_sync_loop")
+    module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.set_startup_data")
 
     @get("/foo")
     async def foo() -> str:
@@ -88,7 +88,7 @@ async def client(app: Litestar) -> TestClient:
 
 
 def test_middleware_requests_ok(client: TestClient, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
+    mock = mocker.patch("apitally.client.requests.RequestCounter.add_request")
 
     response = client.get("/foo/")
     assert response.status_code == 200
@@ -125,7 +125,7 @@ def test_middleware_requests_ok(client: TestClient, mocker: MockerFixture):
 
 
 def test_middleware_requests_unhandled(client: TestClient, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
+    mock = mocker.patch("apitally.client.requests.RequestCounter.add_request")
 
     response = client.post("/xxx")
     assert response.status_code == 404
@@ -133,8 +133,8 @@ def test_middleware_requests_unhandled(client: TestClient, mocker: MockerFixture
 
 
 def test_middleware_requests_error(client: TestClient, mocker: MockerFixture):
-    mock1 = mocker.patch("apitally.client.base.RequestCounter.add_request")
-    mock2 = mocker.patch("apitally.client.base.ServerErrorCounter.add_server_error")
+    mock1 = mocker.patch("apitally.client.requests.RequestCounter.add_request")
+    mock2 = mocker.patch("apitally.client.server_errors.ServerErrorCounter.add_server_error")
 
     response = client.post("/baz")
     assert response.status_code == 500
@@ -152,7 +152,7 @@ def test_middleware_requests_error(client: TestClient, mocker: MockerFixture):
 
 
 def test_middleware_validation_error(client: TestClient, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.ValidationErrorCounter.add_validation_errors")
+    mock = mocker.patch("apitally.client.validation_errors.ValidationErrorCounter.add_validation_errors")
 
     # Validation error as foo must be an integer
     response = client.get("/val?foo=bar")
@@ -167,7 +167,7 @@ def test_middleware_validation_error(client: TestClient, mocker: MockerFixture):
 
 
 def test_get_startup_data(app: Litestar, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.asyncio.ApitallyClient.set_startup_data")
+    mock = mocker.patch("apitally.client.client_asyncio.ApitallyClient.set_startup_data")
     app.on_startup[0](app)  # type: ignore[call-arg]
     mock.assert_called_once()
     data = mock.call_args.args[0]
