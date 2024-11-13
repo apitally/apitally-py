@@ -11,8 +11,8 @@ from werkzeug.datastructures import Headers
 from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
 
-from apitally.client.base import Consumer as ApitallyConsumer
-from apitally.client.threading import ApitallyClient
+from apitally.client.client_threading import ApitallyClient
+from apitally.client.consumers import Consumer as ApitallyConsumer
 from apitally.common import get_versions
 
 

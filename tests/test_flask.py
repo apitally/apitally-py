@@ -22,9 +22,9 @@ def app(module_mocker: MockerFixture) -> Flask:
 
     from apitally.flask import ApitallyMiddleware
 
-    module_mocker.patch("apitally.client.threading.ApitallyClient._instance", None)
-    module_mocker.patch("apitally.client.threading.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.threading.ApitallyClient.set_startup_data")
+    module_mocker.patch("apitally.client.client_threading.ApitallyClient._instance", None)
+    module_mocker.patch("apitally.client.client_threading.ApitallyClient.start_sync_loop")
+    module_mocker.patch("apitally.client.client_threading.ApitallyClient.set_startup_data")
     module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_set_startup_data")
 
     app = Flask("test")
@@ -47,7 +47,7 @@ def app(module_mocker: MockerFixture) -> Flask:
 
 
 def test_middleware_requests_ok(app: Flask, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
+    mock = mocker.patch("apitally.client.requests.RequestCounter.add_request")
     client = app.test_client()
 
     response = client.get("/foo/123")
@@ -69,8 +69,8 @@ def test_middleware_requests_ok(app: Flask, mocker: MockerFixture):
 
 
 def test_middleware_requests_error(app: Flask, mocker: MockerFixture):
-    mock1 = mocker.patch("apitally.client.base.RequestCounter.add_request")
-    mock2 = mocker.patch("apitally.client.base.ServerErrorCounter.add_server_error")
+    mock1 = mocker.patch("apitally.client.requests.RequestCounter.add_request")
+    mock2 = mocker.patch("apitally.client.server_errors.ServerErrorCounter.add_server_error")
     client = app.test_client()
 
     response = client.put("/baz")
@@ -89,7 +89,7 @@ def test_middleware_requests_error(app: Flask, mocker: MockerFixture):
 
 
 def test_middleware_requests_unhandled(app: Flask, mocker: MockerFixture):
-    mock = mocker.patch("apitally.client.base.RequestCounter.add_request")
+    mock = mocker.patch("apitally.client.requests.RequestCounter.add_request")
     client = app.test_client()
 
     response = client.post("/xxx")

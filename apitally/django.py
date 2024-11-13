@@ -13,9 +13,9 @@ from django.conf import settings
 from django.urls import URLPattern, URLResolver, get_resolver
 from django.utils.module_loading import import_string
 
-from apitally.client.base import Consumer as ApitallyConsumer
+from apitally.client.client_threading import ApitallyClient
+from apitally.client.consumers import Consumer as ApitallyConsumer
 from apitally.client.logging import get_logger
-from apitally.client.threading import ApitallyClient
 from apitally.common import get_versions
 
 

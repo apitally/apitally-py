@@ -12,12 +12,12 @@ from .constants import CLIENT_ID, ENV
 
 
 if TYPE_CHECKING:
-    from apitally.client.asyncio import ApitallyClient
+    from apitally.client.client_asyncio import ApitallyClient
 
 
 @pytest.fixture(scope="module")
 async def client() -> ApitallyClient:
-    from apitally.client.asyncio import ApitallyClient
+    from apitally.client.client_asyncio import ApitallyClient
 
     client = ApitallyClient(client_id=CLIENT_ID, env=ENV)
     client.request_counter.add_request(
@@ -57,8 +57,8 @@ async def client() -> ApitallyClient:
 
 
 async def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
-    send_sync_data_mock = mocker.patch("apitally.client.asyncio.ApitallyClient.send_sync_data")
-    mocker.patch("apitally.client.base.INITIAL_SYNC_INTERVAL", 0.05)
+    send_sync_data_mock = mocker.patch("apitally.client.client_asyncio.ApitallyClient.send_sync_data")
+    mocker.patch("apitally.client.client_base.INITIAL_SYNC_INTERVAL", 0.05)
 
     client.start_sync_loop()
     await asyncio.sleep(0.2)  # Ensure loop starts
@@ -68,7 +68,7 @@ async def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
 
 
 async def test_send_sync_data(client: ApitallyClient, httpx_mock: HTTPXMock):
-    from apitally.client.base import HUB_BASE_URL, HUB_VERSION
+    from apitally.client.client_base import HUB_BASE_URL, HUB_VERSION
 
     httpx_mock.add_response()
     async with client.get_http_client() as http_client:
@@ -84,7 +84,7 @@ async def test_send_sync_data(client: ApitallyClient, httpx_mock: HTTPXMock):
 
 
 async def test_set_startup_data(client: ApitallyClient, httpx_mock: HTTPXMock):
-    from apitally.client.base import HUB_BASE_URL, HUB_VERSION
+    from apitally.client.client_base import HUB_BASE_URL, HUB_VERSION
 
     httpx_mock.add_response()
     data = {"paths": [], "client_version": "1.0.0", "starlette_version": "0.28.0", "python_version": "3.11.4"}

@@ -13,8 +13,8 @@ from litestar.handlers import HTTPRouteHandler
 from litestar.plugins import InitPluginProtocol
 from litestar.types import ASGIApp, Message, Receive, Scope, Send
 
-from apitally.client.asyncio import ApitallyClient
-from apitally.client.base import Consumer as ApitallyConsumer
+from apitally.client.client_asyncio import ApitallyClient
+from apitally.client.consumers import Consumer as ApitallyConsumer
 from apitally.common import get_versions
 
 
