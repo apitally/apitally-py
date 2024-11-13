@@ -3,11 +3,6 @@ from __future__ import annotations
 import threading
 from typing import Any, Dict, List, Optional, Set, Union
 
-from apitally.client.logging import get_logger
-
-
-logger = get_logger(__name__)
-
 
 class Consumer:
     def __init__(self, identifier: str, name: Optional[str] = None, group: Optional[str] = None) -> None:

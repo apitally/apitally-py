@@ -9,10 +9,6 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set
 
-from apitally.client.logging import get_logger
-
-
-logger = get_logger(__name__)
 
 MAX_EXCEPTION_MSG_LENGTH = 2048
 MAX_EXCEPTION_TRACEBACK_LENGTH = 65536

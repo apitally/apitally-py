@@ -5,11 +5,6 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from apitally.client.logging import get_logger
-
-
-logger = get_logger(__name__)
-
 
 @dataclass(frozen=True)
 class ValidationError:

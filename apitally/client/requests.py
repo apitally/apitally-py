@@ -7,11 +7,6 @@ from dataclasses import dataclass
 from math import floor
 from typing import Any, Dict, List, Optional
 
-from apitally.client.logging import get_logger
-
-
-logger = get_logger(__name__)
-
 
 @dataclass(frozen=True)
 class RequestInfo:
