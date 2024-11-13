@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-import queue
 import random
 import time
 from functools import partial
+from queue import Queue
 from threading import Event, Thread
 from typing import Any, Callable, Dict, Optional, Tuple
 
@@ -47,7 +47,7 @@ class ApitallyClient(ApitallyClientBase):
         super().__init__(client_id=client_id, env=env)
         self._thread: Optional[Thread] = None
         self._stop_sync_loop = Event()
-        self._sync_data_queue: queue.Queue[Tuple[float, Dict[str, Any]]] = queue.Queue()
+        self._sync_data_queue: Queue[Tuple[float, Dict[str, Any]]] = Queue()
 
     def start_sync_loop(self) -> None:
         self._stop_sync_loop.clear()
