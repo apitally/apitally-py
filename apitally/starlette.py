@@ -31,11 +31,9 @@ class ApitallyMiddleware:
         env: str = "dev",
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = "/openapi.json",
-        filter_unhandled_paths: bool = True,
         identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
     ) -> None:
         self.app = app
-        self.filter_unhandled_paths = filter_unhandled_paths
         self.identify_consumer_callback = identify_consumer_callback
         self.client = ApitallyClient(client_id=client_id, env=env)
         self.client.start_sync_loop()
@@ -121,7 +119,7 @@ class ApitallyMiddleware:
         exception: Optional[BaseException] = None,
     ) -> None:
         path_template, is_handled_path = self.get_path_template(request)
-        if is_handled_path or not self.filter_unhandled_paths:
+        if is_handled_path:
             consumer = self.get_consumer(request)
             consumer_identifier = consumer.identifier if consumer else None
             self.client.consumer_registry.add_or_update_consumer(consumer)
