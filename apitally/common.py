@@ -1,6 +1,15 @@
 import sys
 from importlib.metadata import PackageNotFoundError, version
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
+
+
+def parse_int(x: Union[str, int, None]) -> Optional[int]:
+    if x is None:
+        return None
+    try:
+        return int(x)
+    except ValueError:
+        return None
 
 
 def get_versions(*packages, app_version: Optional[str] = None) -> Dict[str, str]:

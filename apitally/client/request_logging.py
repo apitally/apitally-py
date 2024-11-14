@@ -42,6 +42,7 @@ class RequestDict(TypedDict):
     path: Optional[str]
     url: str
     headers: Dict[str, str]
+    size: Optional[int]
     consumer: Optional[str]
 
 
@@ -49,7 +50,7 @@ class ResponseDict(TypedDict):
     status_code: int
     response_time: float
     headers: Dict[str, str]
-    size: int | None
+    size: Optional[int]
 
 
 class TempGzipFile:

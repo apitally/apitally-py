@@ -124,6 +124,7 @@ class ApitallyMiddleware:
                     "path": path,
                     "url": request.url,
                     "headers": dict(request.headers),
+                    "size": request.content_length,
                     "consumer": consumer_identifier,
                 },
                 response={

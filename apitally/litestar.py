@@ -16,7 +16,7 @@ from litestar.types import ASGIApp, Message, Receive, Scope, Send
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
 from apitally.client.request_logging import RequestLoggingConfig
-from apitally.common import get_versions
+from apitally.common import get_versions, parse_int
 
 
 __all__ = ["ApitallyPlugin", "ApitallyConsumer", "RequestLoggingConfig"]
@@ -122,13 +122,15 @@ class ApitallyPlugin(InitPluginProtocol):
         response_time: float,
         response_headers: Headers,
         response_body: bytes,
-        response_size: int = 0,
+        response_size: Optional[int] = None,
     ) -> None:
         if response_status < 100:
             return  # pragma: no cover
         path = self.get_path(request)
         if self.filter_path(path):
             return
+        request_size = parse_int(request.headers.get("Content-Length"))
+        response_size = response_size or parse_int(response_headers.get("Content-Length"))
 
         consumer = self.get_consumer(request)
         consumer_identifier = consumer.identifier if consumer else None
@@ -141,8 +143,8 @@ class ApitallyPlugin(InitPluginProtocol):
                 path=path,
                 status_code=response_status,
                 response_time=response_time,
-                request_size=request.headers.get("Content-Length"),
-                response_size=response_size or response_headers.get("Content-Length"),
+                request_size=request_size,
+                response_size=response_size,
             )
 
             if response_status == 400 and response_body and len(response_body) < 4096:
@@ -186,6 +188,7 @@ class ApitallyPlugin(InitPluginProtocol):
                     "path": path,
                     "url": str(request.url),
                     "headers": dict(request.headers),
+                    "size": request_size,
                     "consumer": consumer_identifier,
                 },
                 response={

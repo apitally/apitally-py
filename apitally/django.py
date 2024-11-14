@@ -17,7 +17,7 @@ from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
 from apitally.client.logging import get_logger
 from apitally.client.request_logging import RequestLoggingConfig
-from apitally.common import get_versions
+from apitally.common import get_versions, parse_int
 
 
 if TYPE_CHECKING:
@@ -98,10 +98,11 @@ class ApitallyMiddleware:
         response = self.get_response(request)
         response_time = time.perf_counter() - start_time
         response_size = (
-            _to_int(response["Content-Length"])
+            parse_int(response["Content-Length"])
             if response.has_header("Content-Length")
             else (len(response.content) if not response.streaming else None)
         )
+        request_size = parse_int(request.headers.get("Content-Length"))
         path = self.get_path(request)
 
         try:
@@ -120,7 +121,7 @@ class ApitallyMiddleware:
                     path=path,
                     status_code=response.status_code,
                     response_time=response_time,
-                    request_size=request.headers.get("Content-Length"),
+                    request_size=request_size,
                     response_size=response_size,
                 )
             except Exception:  # pragma: no cover
@@ -163,6 +164,7 @@ class ApitallyMiddleware:
                     "path": path,
                     "url": request.build_absolute_uri(),
                     "headers": dict(request.headers),
+                    "size": request_size,
                     "consumer": consumer_identifier,
                 },
                 response={
@@ -364,12 +366,3 @@ def _check_import(name: str) -> bool:
         return True
     except ImportError:
         return False
-
-
-def _to_int(x: Union[str, int, None]) -> Optional[int]:
-    if x is None:
-        return None
-    try:
-        return int(x)
-    except ValueError:
-        return None

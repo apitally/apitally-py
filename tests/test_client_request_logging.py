@@ -14,6 +14,8 @@ def test_request_logger():
         "path": "/test",
         "url": "http://localhost:8000/test?foo=bar",
         "headers": {"Accept": "application/json"},
+        "size": 100,
+        "consumer": "test",
     }
     response: ResponseDict = {
         "status_code": 200,
