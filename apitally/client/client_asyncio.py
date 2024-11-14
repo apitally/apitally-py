@@ -5,13 +5,14 @@ import logging
 import random
 import time
 from functools import partial
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 import backoff
 import httpx
 
 from apitally.client.client_base import MAX_QUEUE_TIME, REQUEST_TIMEOUT, ApitallyClientBase
 from apitally.client.logging import get_logger
+from apitally.client.request_logging import RequestLoggingConfig
 
 
 logger = get_logger(__name__)
@@ -26,8 +27,8 @@ retry = partial(
 
 
 class ApitallyClient(ApitallyClientBase):
-    def __init__(self, client_id: str, env: str) -> None:
-        super().__init__(client_id=client_id, env=env)
+    def __init__(self, client_id: str, env: str, request_logging_config: Optional[RequestLoggingConfig] = None) -> None:
+        super().__init__(client_id=client_id, env=env, request_logging_config=request_logging_config)
         self._stop_sync_loop = False
         self._sync_loop_task: Optional[asyncio.Task] = None
         self._sync_data_queue: asyncio.Queue[Tuple[float, Dict[str, Any]]] = asyncio.Queue()
@@ -41,20 +42,26 @@ class ApitallyClient(ApitallyClientBase):
         self._sync_loop_task = asyncio.create_task(self._run_sync_loop())
 
     async def _run_sync_loop(self) -> None:
-        first_iteration = True
+        last_sync_time = 0.0
         while not self._stop_sync_loop:
             try:
-                time_start = time.perf_counter()
-                async with self.get_http_client() as client:
-                    tasks = [self.send_sync_data(client)]
-                    if not self._startup_data_sent and not first_iteration:
-                        tasks.append(self.send_startup_data(client))
-                    await asyncio.gather(*tasks)
-                time_elapsed = time.perf_counter() - time_start
-                await asyncio.sleep(self.sync_interval - time_elapsed)
+                self.request_logger.write_to_file()
             except Exception:  # pragma: no cover
-                logger.exception("An error occurred during sync with Apitally hub")
-            first_iteration = False
+                logger.exception("An error occurred while writing request logs")
+
+            now = time.time()
+            if (now - last_sync_time) >= self.sync_interval:
+                try:
+                    async with self.get_http_client() as client:
+                        tasks = [self.send_sync_data(client), self.send_log_data(client)]
+                        if not self._startup_data_sent and last_sync_time > 0:  # not on first sync
+                            tasks.append(self.send_startup_data(client))
+                        await asyncio.gather(*tasks)
+                    last_sync_time = now
+                except Exception:  # pragma: no cover
+                    logger.exception("An error occurred during sync with Apitally hub")
+
+            await asyncio.sleep(1)
 
     def stop_sync_loop(self) -> None:
         self._stop_sync_loop = True
@@ -65,6 +72,7 @@ class ApitallyClient(ApitallyClientBase):
         # Send any remaining data before exiting
         async with self.get_http_client() as client:
             await self.send_sync_data(client)
+            await self.send_log_data(client)
 
     def set_startup_data(self, data: Dict[str, Any]) -> None:
         self._startup_data_sent = False
@@ -99,10 +107,27 @@ class ApitallyClient(ApitallyClientBase):
             finally:
                 self._sync_data_queue.task_done()
 
+    async def send_log_data(self, client: httpx.AsyncClient) -> None:
+        self.request_logger.rotate_file()
+        i = 0
+        while log_file := self.request_logger.get_file():
+            if i > 0:
+                time.sleep(random.uniform(0.1, 0.3))
+            try:
+                stream = log_file.stream_lines_compressed()
+                await self._send_log_data(client, stream)
+                log_file.delete()
+            except httpx.HTTPError:
+                self.request_logger.retry_file_later(log_file)
+                break
+            i += 1
+            if i >= 10:
+                break
+
     @retry(raise_on_giveup=False)
     async def _send_startup_data(self, client: httpx.AsyncClient, data: Dict[str, Any]) -> None:
         logger.debug("Sending startup data to Apitally hub")
-        response = await client.post(url="/startup", json=data, timeout=REQUEST_TIMEOUT)
+        response = await client.post(url="/startup", json=data)
         self._handle_hub_response(response)
         self._startup_data_sent = True
         self._startup_data = None
@@ -111,6 +136,11 @@ class ApitallyClient(ApitallyClientBase):
     async def _send_sync_data(self, client: httpx.AsyncClient, data: Dict[str, Any]) -> None:
         logger.debug("Synchronizing data with Apitally hub")
         response = await client.post(url="/sync", json=data)
+        self._handle_hub_response(response)
+
+    async def _send_log_data(self, client: httpx.AsyncClient, stream: Iterable[bytes]) -> None:
+        logger.debug("Streaming request log data to Apitally hub")
+        response = await client.post(url=f"{self.hub_url}/log?time_ns={time.time_ns()}", content=stream)
         self._handle_hub_response(response)
 
     def _handle_hub_response(self, response: httpx.Response) -> None:

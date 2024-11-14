@@ -4,6 +4,7 @@ import logging
 import random
 import time
 from functools import partial
+from io import BufferedReader
 from queue import Queue
 from threading import Event, Thread
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -13,6 +14,7 @@ import requests
 
 from apitally.client.client_base import MAX_QUEUE_TIME, REQUEST_TIMEOUT, ApitallyClientBase
 from apitally.client.logging import get_logger
+from apitally.client.request_logging import RequestLoggingConfig
 
 
 logger = get_logger(__name__)
@@ -43,7 +45,7 @@ except NameError:
 
 
 class ApitallyClient(ApitallyClientBase):
-    def __init__(self, client_id: str, env: str) -> None:
+    def __init__(self, client_id: str, env: str, request_logging_config: Optional[RequestLoggingConfig] = None) -> None:
         super().__init__(client_id=client_id, env=env)
         self._thread: Optional[Thread] = None
         self._stop_sync_loop = Event()
@@ -61,20 +63,33 @@ class ApitallyClient(ApitallyClientBase):
             last_sync_time = 0.0
             while not self._stop_sync_loop.is_set():
                 try:
-                    now = time.time()
-                    if (now - last_sync_time) >= self.sync_interval:
+                    self.request_logger.write_to_file()
+                except Exception:  # pragma: no cover
+                    logger.exception("An error occurred while writing request logs")
+
+                now = time.time()
+                if (now - last_sync_time) >= self.sync_interval:
+                    try:
                         with requests.Session() as session:
                             if not self._startup_data_sent and last_sync_time > 0:  # not on first sync
                                 self.send_startup_data(session)
                             self.send_sync_data(session)
+                            self.send_log_data(session)
                         last_sync_time = now
-                    time.sleep(1)
+                    except Exception:  # pragma: no cover
+                        logger.exception("An error occurred during sync with Apitally hub")
+
+                try:
+                    self.request_logger.maybe_rotate_file()
                 except Exception:  # pragma: no cover
-                    logger.exception("An error occurred during sync with Apitally hub")
+                    logger.exception("An error occurred while rotating request log files")
+
+                time.sleep(1)
         finally:
             # Send any remaining data before exiting
             with requests.Session() as session:
                 self.send_sync_data(session)
+                self.send_log_data(session)
 
     def stop_sync_loop(self) -> None:
         self._stop_sync_loop.set()
@@ -112,6 +127,23 @@ class ApitallyClient(ApitallyClientBase):
             finally:
                 self._sync_data_queue.task_done()
 
+    def send_log_data(self, session: requests.Session) -> None:
+        self.request_logger.rotate_file()
+        i = 0
+        while log_file := self.request_logger.get_file():
+            if i > 0:
+                time.sleep(random.uniform(0.1, 0.3))
+            try:
+                with log_file.open_compressed() as fp:
+                    self._send_log_data(session, fp)
+                log_file.delete()
+            except requests.RequestException:
+                self.request_logger.retry_file_later(log_file)
+                break
+            i += 1
+            if i >= 10:
+                break
+
     @retry(raise_on_giveup=False)
     def _send_startup_data(self, session: requests.Session, data: Dict[str, Any]) -> None:
         logger.debug("Sending startup data to Apitally hub")
@@ -124,6 +156,11 @@ class ApitallyClient(ApitallyClientBase):
     def _send_sync_data(self, session: requests.Session, data: Dict[str, Any]) -> None:
         logger.debug("Synchronizing data with Apitally hub")
         response = session.post(url=f"{self.hub_url}/sync", json=data, timeout=REQUEST_TIMEOUT)
+        self._handle_hub_response(response)
+
+    def _send_log_data(self, session: requests.Session, fp: BufferedReader) -> None:
+        logger.debug("Streaming request log data to Apitally hub")
+        response = session.post(url=f"{self.hub_url}/log?time_ns={time.time_ns()}", data=fp, timeout=REQUEST_TIMEOUT)
         self._handle_hub_response(response)
 
     def _handle_hub_response(self, response: requests.Response) -> None:
