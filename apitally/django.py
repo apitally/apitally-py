@@ -16,6 +16,7 @@ from django.utils.module_loading import import_string
 from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
 from apitally.client.logging import get_logger
+from apitally.client.request_logging import RequestLoggingConfig
 from apitally.common import get_versions
 
 
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
     from ninja import NinjaAPI
 
 
-__all__ = ["ApitallyMiddleware", "ApitallyConsumer"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig"]
 logger = get_logger(__name__)
 
 
@@ -32,6 +33,7 @@ logger = get_logger(__name__)
 class ApitallyMiddlewareConfig:
     client_id: str
     env: str
+    request_logging_config: Optional[RequestLoggingConfig]
     app_version: Optional[str]
     identify_consumer_callback: Optional[Callable[[HttpRequest], Union[str, ApitallyConsumer, None]]]
     urlconfs: List[Optional[str]]
@@ -75,6 +77,7 @@ class ApitallyMiddleware:
         cls,
         client_id: str,
         env: str = "dev",
+        request_logging_config: Optional[RequestLoggingConfig] = None,
         app_version: Optional[str] = None,
         identify_consumer_callback: Optional[str] = None,
         urlconf: Optional[Union[List[Optional[str]], str]] = None,
@@ -82,6 +85,7 @@ class ApitallyMiddleware:
         cls.config = ApitallyMiddlewareConfig(
             client_id=client_id,
             env=env,
+            request_logging_config=request_logging_config,
             app_version=app_version,
             identify_consumer_callback=import_string(identify_consumer_callback)
             if identify_consumer_callback
@@ -93,15 +97,22 @@ class ApitallyMiddleware:
         start_time = time.perf_counter()
         response = self.get_response(request)
         response_time = time.perf_counter() - start_time
+        response_size = (
+            _to_int(response["Content-Length"])
+            if response.has_header("Content-Length")
+            else (len(response.content) if not response.streaming else None)
+        )
         path = self.get_path(request)
+
+        try:
+            consumer = self.get_consumer(request)
+            consumer_identifier = consumer.identifier if consumer else None
+            self.client.consumer_registry.add_or_update_consumer(consumer)
+        except Exception:  # pragma: no cover
+            logger.exception("Failed to get consumer for request")
+            consumer_identifier = None
+
         if request.method is not None and request.method != "OPTIONS" and path is not None:
-            try:
-                consumer = self.get_consumer(request)
-                consumer_identifier = consumer.identifier if consumer else None
-                self.client.consumer_registry.add_or_update_consumer(consumer)
-            except Exception:  # pragma: no cover
-                logger.exception("Failed to get consumer for request")
-                consumer_identifier = None
             try:
                 self.client.request_counter.add_request(
                     consumer=consumer_identifier,
@@ -110,12 +121,11 @@ class ApitallyMiddleware:
                     status_code=response.status_code,
                     response_time=response_time,
                     request_size=request.headers.get("Content-Length"),
-                    response_size=response["Content-Length"]
-                    if response.has_header("Content-Length")
-                    else (len(response.content) if not response.streaming else None),
+                    response_size=response_size,
                 )
             except Exception:  # pragma: no cover
                 logger.exception("Failed to log request metadata")
+
             if (
                 response.status_code == 422
                 and (content_type := response.get("Content-Type")) is not None
@@ -134,6 +144,7 @@ class ApitallyMiddleware:
                             )
                 except Exception:  # pragma: no cover
                     logger.exception("Failed to log validation errors")
+
             if response.status_code == 500 and hasattr(request, "unhandled_exception"):
                 try:
                     self.client.server_error_counter.add_server_error(
@@ -144,6 +155,24 @@ class ApitallyMiddleware:
                     )
                 except Exception:  # pragma: no cover
                     logger.exception("Failed to log server error")
+
+        if self.client.request_logger.enabled and request.method is not None:
+            self.client.request_logger.log_request(
+                request={
+                    "method": request.method,
+                    "path": path,
+                    "url": request.build_absolute_uri(),
+                    "headers": dict(request.headers),
+                    "consumer": consumer_identifier,
+                },
+                response={
+                    "status_code": response.status_code,
+                    "response_time": response_time,
+                    "headers": dict(response.items()),
+                    "size": response_size,
+                },
+            )
+
         return response
 
     def process_exception(self, request: HttpRequest, exception: Exception) -> None:
@@ -335,3 +364,12 @@ def _check_import(name: str) -> bool:
         return True
     except ImportError:
         return False
+
+
+def _to_int(x: Union[str, int, None]) -> Optional[int]:
+    if x is None:
+        return None
+    try:
+        return int(x)
+    except ValueError:
+        return None

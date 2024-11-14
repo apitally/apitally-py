@@ -39,9 +39,10 @@ class RequestLoggingConfig:
 
 class RequestDict(TypedDict):
     method: str
-    path: str
+    path: Optional[str]
     url: str
     headers: Dict[str, str]
+    consumer: Optional[str]
 
 
 class ResponseDict(TypedDict):

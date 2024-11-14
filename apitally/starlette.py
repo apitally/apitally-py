@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import json
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from warnings import warn
 
 from httpx import HTTPStatusError
@@ -17,10 +17,11 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
+from apitally.client.request_logging import RequestLoggingConfig
 from apitally.common import get_versions
 
 
-__all__ = ["ApitallyMiddleware", "ApitallyConsumer"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig"]
 
 
 class ApitallyMiddleware:
@@ -29,13 +30,14 @@ class ApitallyMiddleware:
         app: ASGIApp,
         client_id: str,
         env: str = "dev",
+        request_logging_config: Optional[RequestLoggingConfig] = None,
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = "/openapi.json",
         identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
     ) -> None:
         self.app = app
         self.identify_consumer_callback = identify_consumer_callback
-        self.client = ApitallyClient(client_id=client_id, env=env)
+        self.client = ApitallyClient(client_id=client_id, env=env, request_logging_config=request_logging_config)
         self.client.start_sync_loop()
         self._delayed_set_startup_data_task: Optional[asyncio.Task] = None
         self.delayed_set_startup_data(app_version, openapi_url)
@@ -118,17 +120,18 @@ class ApitallyMiddleware:
         response_size: int = 0,
         exception: Optional[BaseException] = None,
     ) -> None:
-        path_template, is_handled_path = self.get_path_template(request)
-        if is_handled_path:
-            consumer = self.get_consumer(request)
-            consumer_identifier = consumer.identifier if consumer else None
-            self.client.consumer_registry.add_or_update_consumer(consumer)
+        path = self.get_path(request)
+        consumer = self.get_consumer(request)
+        consumer_identifier = consumer.identifier if consumer else None
+        self.client.consumer_registry.add_or_update_consumer(consumer)
+
+        if path is not None:
             if response_status == 0 and exception is not None:
                 response_status = 500
             self.client.request_counter.add_request(
                 consumer=consumer_identifier,
                 method=request.method,
-                path=path_template,
+                path=path,
                 status_code=response_status,
                 response_time=response_time,
                 request_size=request.headers.get("Content-Length"),
@@ -142,24 +145,41 @@ class ApitallyMiddleware:
                         self.client.validation_error_counter.add_validation_errors(
                             consumer=consumer_identifier,
                             method=request.method,
-                            path=path_template,
+                            path=path,
                             detail=body["detail"],
                         )
             if response_status == 500 and exception is not None:
                 self.client.server_error_counter.add_server_error(
                     consumer=consumer_identifier,
                     method=request.method,
-                    path=path_template,
+                    path=path,
                     exception=exception,
                 )
 
+        if self.client.request_logger.enabled:
+            self.client.request_logger.log_request(
+                request={
+                    "method": request.method,
+                    "path": path,
+                    "url": str(request.url),
+                    "headers": dict(request.headers),
+                    "consumer": consumer_identifier,
+                },
+                response={
+                    "status_code": response_status,
+                    "response_time": response_time,
+                    "headers": dict(response_headers),
+                    "size": response_size,
+                },
+            )
+
     @staticmethod
-    def get_path_template(request: Request) -> Tuple[str, bool]:
+    def get_path(request: Request) -> Optional[str]:
         for route in request.app.routes:
             match, _ = route.matches(request.scope)
             if match == Match.FULL:
-                return route.path, True
-        return request.url.path, False
+                return route.path
+        return None
 
     def get_consumer(self, request: Request) -> Optional[ApitallyConsumer]:
         if hasattr(request.state, "apitally_consumer") and request.state.apitally_consumer:

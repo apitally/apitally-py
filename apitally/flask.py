@@ -6,13 +6,14 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 from warnings import warn
 
 from flask import Flask, g
-from flask.wrappers import Response
+from flask.wrappers import Request, Response
 from werkzeug.datastructures import Headers
 from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
 
 from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
+from apitally.client.request_logging import RequestLoggingConfig
 from apitally.common import get_versions
 
 
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     from werkzeug.routing.map import Map
 
 
-__all__ = ["ApitallyMiddleware", "ApitallyConsumer"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig"]
 
 
 class ApitallyMiddleware:
@@ -30,13 +31,14 @@ class ApitallyMiddleware:
         app: Flask,
         client_id: str,
         env: str = "dev",
+        request_logging_config: Optional[RequestLoggingConfig] = None,
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = None,
     ) -> None:
         self.app = app
         self.wsgi_app = app.wsgi_app
         self.patch_handle_exception()
-        self.client = ApitallyClient(client_id=client_id, env=env)
+        self.client = ApitallyClient(client_id=client_id, env=env, request_logging_config=request_logging_config)
         self.client.start_sync_loop()
         self.delayed_set_startup_data(app_version, openapi_url)
 
@@ -90,36 +92,56 @@ class ApitallyMiddleware:
         response_time: float,
         response_headers: Headers,
     ) -> None:
-        rule, is_handled_path = self.get_rule(environ)
-        if is_handled_path and environ["REQUEST_METHOD"] != "OPTIONS":
+        path = self.get_path(environ)
+        request = Request(environ, populate_request=False, shallow=True)
+        response_size = response_headers.get("Content-Length", type=int)
+
+        if path is not None and request.method != "OPTIONS":
             consumer = self.get_consumer()
             consumer_identifier = consumer.identifier if consumer else None
             self.client.consumer_registry.add_or_update_consumer(consumer)
             self.client.request_counter.add_request(
                 consumer=consumer_identifier,
-                method=environ["REQUEST_METHOD"],
-                path=rule,
+                method=request.method,
+                path=path,
                 status_code=status_code,
                 response_time=response_time,
-                request_size=environ.get("CONTENT_LENGTH"),
-                response_size=response_headers.get("Content-Length", type=int),
+                request_size=request.content_length,
+                response_size=response_size,
             )
             if status_code == 500 and "unhandled_exception" in g:
                 self.client.server_error_counter.add_server_error(
                     consumer=consumer_identifier,
-                    method=environ["REQUEST_METHOD"],
-                    path=rule,
+                    method=request.method,
+                    path=path,
                     exception=g.unhandled_exception,
                 )
 
-    def get_rule(self, environ: WSGIEnvironment) -> Tuple[str, bool]:
+        if self.client.request_logger.enabled:
+            self.client.request_logger.log_request(
+                request={
+                    "method": request.method,
+                    "path": path,
+                    "url": request.url,
+                    "headers": dict(request.headers),
+                    "consumer": consumer_identifier,
+                },
+                response={
+                    "status_code": status_code,
+                    "response_time": response_time,
+                    "headers": dict(response_headers),
+                    "size": response_size,
+                },
+            )
+
+    def get_path(self, environ: WSGIEnvironment) -> Optional[str]:
         url_adapter = self.app.url_map.bind_to_environ(environ)
         try:
             endpoint, _ = url_adapter.match()
             rule = self.app.url_map._rules_by_endpoint[endpoint][0]
-            return rule.rule, True
+            return rule.rule
         except NotFound:
-            return environ["PATH_INFO"], False
+            return None
 
     def get_consumer(self) -> Optional[ApitallyConsumer]:
         if "apitally_consumer" in g and g.apitally_consumer:
