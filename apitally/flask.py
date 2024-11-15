@@ -96,10 +96,11 @@ class ApitallyMiddleware:
         request = Request(environ, populate_request=False, shallow=True)
         response_size = response_headers.get("Content-Length", type=int)
 
+        consumer = self.get_consumer()
+        consumer_identifier = consumer.identifier if consumer else None
+        self.client.consumer_registry.add_or_update_consumer(consumer)
+
         if path is not None and request.method != "OPTIONS":
-            consumer = self.get_consumer()
-            consumer_identifier = consumer.identifier if consumer else None
-            self.client.consumer_registry.add_or_update_consumer(consumer)
             self.client.request_counter.add_request(
                 consumer=consumer_identifier,
                 method=request.method,

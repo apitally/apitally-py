@@ -46,7 +46,7 @@ except NameError:
 
 class ApitallyClient(ApitallyClientBase):
     def __init__(self, client_id: str, env: str, request_logging_config: Optional[RequestLoggingConfig] = None) -> None:
-        super().__init__(client_id=client_id, env=env)
+        super().__init__(client_id=client_id, env=env, request_logging_config=request_logging_config)
         self._thread: Optional[Thread] = None
         self._stop_sync_loop = Event()
         self._sync_data_queue: Queue[Tuple[float, Dict[str, Any]]] = Queue()

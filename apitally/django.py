@@ -63,7 +63,11 @@ class ApitallyMiddleware:
         if self.ninja_available and None not in self.config.urlconfs:
             self.callbacks.update(_get_ninja_callbacks(self.config.urlconfs))
 
-        self.client = ApitallyClient(client_id=self.config.client_id, env=self.config.env)
+        self.client = ApitallyClient(
+            client_id=self.config.client_id,
+            env=self.config.env,
+            request_logging_config=self.config.request_logging_config,
+        )
         self.client.start_sync_loop()
         self.client.set_startup_data(
             _get_startup_data(

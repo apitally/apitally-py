@@ -33,6 +33,8 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
     import django
     from django.conf import settings
 
+    from apitally.django_rest_framework import RequestLoggingConfig
+
     module_mocker.patch("apitally.client.client_threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_threading.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.client_threading.ApitallyClient.set_startup_data")
@@ -49,6 +51,7 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
         APITALLY_MIDDLEWARE={
             "client_id": "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9",
             "env": "dev",
+            "request_logging_config": RequestLoggingConfig(enabled=True),
             "identify_consumer_callback": "tests.test_django_ninja.identify_consumer",
         },
     )
@@ -125,6 +128,24 @@ def test_middleware_validation_error(client: Client, mocker: MockerFixture):
     assert mock.call_args.kwargs["path"] == "/api/val"
     assert len(mock.call_args.kwargs["detail"]) == 1
     assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
+
+
+def test_middleware_request_logging(client: Client, mocker: MockerFixture):
+    mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
+
+    response = client.get("/api/foo/123?foo=bar", HTTP_TEST_HEADER="test")
+    assert response.status_code == 200
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["request"]["method"] == "GET"
+    assert mock.call_args.kwargs["request"]["path"] == "/api/foo/{bar}"
+    assert mock.call_args.kwargs["request"]["url"] == "http://testserver/api/foo/123?foo=bar"
+    assert mock.call_args.kwargs["request"]["headers"]["Test-Header"] == "test"
+    assert mock.call_args.kwargs["request"]["consumer"] == "test"
+    assert mock.call_args.kwargs["response"]["status_code"] == 200
+    assert mock.call_args.kwargs["response"]["response_time"] > 0
+    assert mock.call_args.kwargs["response"]["headers"]["Content-Type"] == "application/json; charset=utf-8"
+    assert mock.call_args.kwargs["response"]["size"] > 0
 
 
 def test_get_startup_data():

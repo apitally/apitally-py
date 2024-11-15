@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 def app(module_mocker: MockerFixture) -> Flask:
     from flask import Flask, g
 
-    from apitally.flask import ApitallyMiddleware
+    from apitally.flask import ApitallyMiddleware, RequestLoggingConfig
 
     module_mocker.patch("apitally.client.client_threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_threading.ApitallyClient.start_sync_loop")
@@ -28,7 +28,12 @@ def app(module_mocker: MockerFixture) -> Flask:
     module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_set_startup_data")
 
     app = Flask("test")
-    app.wsgi_app = ApitallyMiddleware(app, client_id=CLIENT_ID, env=ENV)  # type: ignore[method-assign]
+    app.wsgi_app = ApitallyMiddleware(  # type: ignore[method-assign]
+        app,
+        client_id=CLIENT_ID,
+        env=ENV,
+        request_logging_config=RequestLoggingConfig(enabled=True),
+    )
 
     @app.route("/foo/<bar>")
     def foo_bar(bar: int):
@@ -95,6 +100,24 @@ def test_middleware_requests_unhandled(app: Flask, mocker: MockerFixture):
     response = client.post("/xxx")
     assert response.status_code == 404
     mock.assert_not_called()
+
+
+def test_middleware_request_logging(app: Flask, mocker: MockerFixture):
+    mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
+    client = app.test_client()
+
+    response = client.get("/foo/123?foo=bar")
+    assert response.status_code == 200
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["request"]["method"] == "GET"
+    assert mock.call_args.kwargs["request"]["path"] == "/foo/<bar>"
+    assert mock.call_args.kwargs["request"]["url"] == "http://localhost/foo/123?foo=bar"
+    assert mock.call_args.kwargs["request"]["headers"]["User-Agent"].startswith("Werkzeug/")
+    assert mock.call_args.kwargs["response"]["status_code"] == 200
+    assert mock.call_args.kwargs["response"]["response_time"] > 0
+    assert mock.call_args.kwargs["response"]["headers"]["Content-Type"] == "text/html; charset=utf-8"
+    assert mock.call_args.kwargs["response"]["size"] > 0
 
 
 def test_get_startup_data(app: Flask):

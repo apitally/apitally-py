@@ -8,6 +8,10 @@ from io import BufferedReader
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, TypedDict, Union
 
+from apitally.client.logging import get_logger
+
+
+logger = get_logger(__name__)
 
 MAX_FILE_SIZE = 2_000_000  # 2 MB (compressed)
 
@@ -109,8 +113,8 @@ class RequestLogger:
             return
         item = {
             "time_ns": time.time_ns() - response["response_time"] * 1_000_000_000,
-            "request": request,
-            "response": response,
+            "request": {k: v for k, v in request.items() if v is not None},
+            "response": {k: v for k, v in response.items() if v is not None},
         }
         serialized_item = self.serialize(item)
         self.write_deque.append(serialized_item)
@@ -163,7 +167,7 @@ class RequestLogger:
             with tempfile.TemporaryFile():
                 return True
         except (IOError, OSError):
-            # TODO: Log warning that request logging is using memory instead of disk
+            logger.error("Unable to create temporary file for request logging")
             return False
 
     @staticmethod

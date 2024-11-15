@@ -42,7 +42,7 @@ def get_starlette_app() -> Starlette:
     from starlette.responses import PlainTextResponse, StreamingResponse
     from starlette.routing import Route
 
-    from apitally.starlette import ApitallyMiddleware
+    from apitally.starlette import ApitallyConsumer, ApitallyMiddleware, RequestLoggingConfig
 
     def foo(request: Request):
         request.state.apitally_consumer = "test"
@@ -75,6 +75,9 @@ def get_starlette_app() -> Starlette:
         tasks.add_task(task_func_with_error)
         return PlainTextResponse("ok", background=tasks)
 
+    def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
+        return ApitallyConsumer("test", name="Test")
+
     routes = [
         Route("/foo/", foo),
         Route("/foo/{bar}/", foo_bar),
@@ -85,21 +88,33 @@ def get_starlette_app() -> Starlette:
         Route("/task/", task, methods=["POST"]),
     ]
     app = Starlette(routes=routes)
-    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV)
+    app.add_middleware(
+        ApitallyMiddleware,
+        client_id=CLIENT_ID,
+        env=ENV,
+        request_logging_config=RequestLoggingConfig(enabled=True),
+        identify_consumer_callback=identify_consumer,
+    )
     return app
 
 
 def get_fastapi_app() -> Starlette:
     from fastapi import FastAPI, Query, Request
-    from fastapi.responses import StreamingResponse
+    from fastapi.responses import PlainTextResponse, StreamingResponse
 
-    from apitally.fastapi import ApitallyConsumer, ApitallyMiddleware
+    from apitally.fastapi import ApitallyConsumer, ApitallyMiddleware, RequestLoggingConfig
 
     def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
         return ApitallyConsumer("test", name="Test")
 
     app = FastAPI(title="Test App", description="A simple test app.", version="1.2.3")
-    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV, identify_consumer_callback=identify_consumer)
+    app.add_middleware(
+        ApitallyMiddleware,
+        client_id=CLIENT_ID,
+        env=ENV,
+        request_logging_config=RequestLoggingConfig(enabled=True),
+        identify_consumer_callback=identify_consumer,
+    )
 
     @app.get("/foo/")
     def foo():
@@ -107,7 +122,7 @@ def get_fastapi_app() -> Starlette:
 
     @app.get("/foo/{bar}/")
     def foo_bar(bar: str):
-        return f"foo: {bar}"
+        return PlainTextResponse(f"foo: {bar}")
 
     @app.post("/bar/")
     def bar():
@@ -234,6 +249,27 @@ def test_middleware_validation_error(app: Starlette, mocker: MockerFixture):
         assert mock.call_args.kwargs["path"] == "/val/"
         assert len(mock.call_args.kwargs["detail"]) == 1
         assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
+
+
+def test_middleware_request_logging(app: Starlette, mocker: MockerFixture):
+    from starlette.testclient import TestClient
+
+    mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
+    client = TestClient(app)
+
+    response = client.get("/foo/123/?foo=bar", headers={"Test-Header": "test"})
+    assert response.status_code == 200
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["request"]["method"] == "GET"
+    assert mock.call_args.kwargs["request"]["path"] == "/foo/{bar}/"
+    assert mock.call_args.kwargs["request"]["url"] == "http://testserver/foo/123/?foo=bar"
+    assert mock.call_args.kwargs["request"]["headers"]["test-header"] == "test"
+    assert mock.call_args.kwargs["request"]["consumer"] == "test"
+    assert mock.call_args.kwargs["response"]["status_code"] == 200
+    assert mock.call_args.kwargs["response"]["response_time"] > 0
+    assert mock.call_args.kwargs["response"]["headers"]["content-type"] == "text/plain; charset=utf-8"
+    assert mock.call_args.kwargs["response"]["size"] > 0
 
 
 def test_get_startup_data(app: Starlette, mocker: MockerFixture):
