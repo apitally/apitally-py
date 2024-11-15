@@ -95,8 +95,8 @@ def get_starlette_app() -> Starlette:
         env=ENV,
         request_logging_config=RequestLoggingConfig(
             enabled=True,
-            include_request_body=True,
-            include_response_body=True,
+            log_request_body=True,
+            log_response_body=True,
         ),
         identify_consumer_callback=identify_consumer,
     )
@@ -119,8 +119,8 @@ def get_fastapi_app() -> Starlette:
         env=ENV,
         request_logging_config=RequestLoggingConfig(
             enabled=True,
-            include_request_body=True,
-            include_response_body=True,
+            log_request_body=True,
+            log_response_body=True,
         ),
         identify_consumer_callback=identify_consumer,
     )

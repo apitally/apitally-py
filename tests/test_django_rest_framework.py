@@ -53,8 +53,8 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
             "env": "dev",
             "request_logging_config": RequestLoggingConfig(
                 enabled=True,
-                include_request_body=True,
-                include_response_body=True,
+                log_request_body=True,
+                log_response_body=True,
             ),
             "urlconf": ["tests.django_rest_framework_urls"],
         },

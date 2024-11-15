@@ -49,10 +49,10 @@ class ApitallyMiddleware:
         _register_shutdown_handler(app, self.client.handle_shutdown)
 
         self.capture_request_body = (
-            self.client.request_logger.config.enabled and self.client.request_logger.config.include_request_body
+            self.client.request_logger.config.enabled and self.client.request_logger.config.log_request_body
         )
         self.capture_response_body = (
-            self.client.request_logger.config.enabled and self.client.request_logger.config.include_response_body
+            self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
     def delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:

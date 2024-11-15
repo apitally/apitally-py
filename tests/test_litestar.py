@@ -74,8 +74,8 @@ async def app(module_mocker: MockerFixture) -> Litestar:
         identify_consumer_callback=identify_consumer,
         request_logging_config=RequestLoggingConfig(
             enabled=True,
-            include_request_body=True,
-            include_response_body=True,
+            log_request_body=True,
+            log_response_body=True,
         ),
     )
     app = Litestar(

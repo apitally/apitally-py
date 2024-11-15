@@ -1,40 +1,63 @@
+from __future__ import annotations
+
 import base64
 import gzip
 import json
+from typing import TYPE_CHECKING, Iterator
+
+import pytest
 
 
-def test_request_logger():
-    from apitally.client.request_logging import RequestDict, RequestLogger, RequestLoggingConfig, ResponseDict
+if TYPE_CHECKING:
+    from apitally.client.request_logging import RequestDict, RequestLogger, ResponseDict
+
+
+@pytest.fixture()
+def request_logger() -> Iterator[RequestLogger]:
+    from apitally.client.request_logging import RequestLogger, RequestLoggingConfig
 
     config = RequestLoggingConfig(
         enabled=True,
-        include_query_params=True,
-        include_request_headers=True,
-        include_request_body=True,
-        include_response_headers=True,
-        include_response_body=True,
+        log_query_params=True,
+        log_request_headers=True,
+        log_request_body=True,
+        log_response_headers=True,
+        log_response_body=True,
     )
     request_logger = RequestLogger(config=config)
-    assert request_logger.enabled
+    yield request_logger
+    request_logger.close()
 
-    request: RequestDict = {
+
+@pytest.fixture()
+def request_dict() -> RequestDict:
+    return {
         "method": "GET",
         "path": "/test",
         "url": "http://localhost:8000/test?foo=bar",
-        "headers": [("Accept", "application/json")],
+        "headers": [("Accept", "text/plain"), ("Content-Type", "text/plain")],
         "size": 100,
         "consumer": "test",
         "body": b"test",
     }
-    response: ResponseDict = {
+
+
+@pytest.fixture()
+def response_dict() -> ResponseDict:
+    return {
         "status_code": 200,
         "response_time": 0.1,
-        "headers": [("Content-Type", "application/json")],
+        "headers": [("Content-Type", "text/plain")],
         "size": 100,
         "body": b"test",
     }
+
+
+def test_request_logger_end_to_end(
+    request_logger: RequestLogger, request_dict: RequestDict, response_dict: ResponseDict
+):
     for _ in range(3):
-        request_logger.log_request(request, response)
+        request_logger.log_request(request_dict, response_dict)
 
     request_logger.write_to_file()
     assert request_logger.current_file_size > 0
@@ -60,17 +83,32 @@ def test_request_logger():
 
     for json_line in json_lines:
         item = json.loads(json_line)
-        assert item["request"]["method"] == request["method"]
-        assert item["request"]["path"] == request["path"]
-        assert item["request"]["url"] == request["url"]
-        assert item["request"]["headers"] == [list(h) for h in request["headers"]]
-        assert item["request"]["size"] == request["size"]
-        assert item["request"]["consumer"] == request["consumer"]
-        assert item["response"]["status_code"] == response["status_code"]
-        assert item["response"]["response_time"] == response["response_time"]
-        assert item["response"]["headers"] == [list(h) for h in response["headers"]]
-        assert item["response"]["size"] == response["size"]
-        assert base64.b64decode(item["request"]["body"]) == request["body"]
-        assert base64.b64decode(item["response"]["body"]) == response["body"]
+        assert item["request"]["method"] == request_dict["method"]
+        assert item["request"]["path"] == request_dict["path"]
+        assert item["request"]["url"] == request_dict["url"]
+        assert item["request"]["headers"] == [list(h) for h in request_dict["headers"]]
+        assert item["request"]["size"] == request_dict["size"]
+        assert item["request"]["consumer"] == request_dict["consumer"]
+        assert item["response"]["status_code"] == response_dict["status_code"]
+        assert item["response"]["response_time"] == response_dict["response_time"]
+        assert item["response"]["headers"] == [list(h) for h in response_dict["headers"]]
+        assert item["response"]["size"] == response_dict["size"]
+        assert base64.b64decode(item["request"]["body"]) == request_dict["body"]
+        assert base64.b64decode(item["response"]["body"]) == response_dict["body"]
 
-    request_logger.close()
+
+def test_config_include_mask(request_logger: RequestLogger, request_dict: RequestDict, response_dict: ResponseDict):
+    request_logger.config.log_query_params = False
+    request_logger.config.log_request_headers = False
+    request_logger.config.log_request_body = False
+    request_logger.config.log_response_headers = False
+    request_logger.config.log_response_body = False
+
+    request_logger.log_request(request_dict, response_dict)
+    assert len(request_logger.write_deque) == 1
+    item = json.loads(request_logger.write_deque[0])
+    assert item["request"]["url"] == "http://localhost:8000/test"
+    assert "headers" not in item["request"]
+    assert "body" not in item["request"]
+    assert "headers" not in item["response"]
+    assert "body" not in item["response"]

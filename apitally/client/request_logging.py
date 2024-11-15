@@ -1,13 +1,16 @@
 import base64
 import gzip
+import re
 import tempfile
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass
+from contextlib import suppress
+from dataclasses import dataclass, field
+from functools import lru_cache
 from io import BufferedReader
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, TypedDict, Union
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, TypedDict
 from urllib.parse import urlparse, urlunparse
 
 from apitally.client.logging import get_logger
@@ -19,6 +22,22 @@ MAX_BODY_SIZE = 100_000  # 100 KB (uncompressed)
 MAX_FILE_SIZE = 2_000_000  # 2 MB (compressed)
 REQUEST_BODY_TOO_LARGE = b"<Request body too large>"
 RESPONSE_BODY_TOO_LARGE = b"<Response body too large>"
+ALLOWED_CONTENT_TYPES = ["application/json", "text/plain"]
+EXCLUDE_PATH_PATTERNS = [
+    r"/_?healthz?$",
+    r"/_?health[_-]?checks?$",
+    r"/_?heart[_-]?beats?$",
+    r"/ping$",
+    r"/ready$",
+    r"/live$",
+]
+MASK_HEADER_PATTERNS = [
+    r"auth",
+    r"api-?key",
+    r"secret",
+    r"token",
+    r"cookie",
+]
 
 
 @dataclass
@@ -28,22 +47,25 @@ class RequestLoggingConfig:
 
     Attributes:
         enabled: Whether request logging is enabled
-        include_query_params: Whether to include query parameter values
-        include_request_headers: Whether to include request header values
-        include_request_body: Whether to include the request body
-        include_response_headers: Whether to include response header values
-        include_response_body: Whether to include the response body (only plain text or JSON)
+        log_query_params: Whether to log query parameter values
+        log_request_headers: Whether to log request header values
+        log_request_body: Whether to log the request body (only if JSON or plain text)
+        log_response_headers: Whether to log response header values
+        log_response_body: Whether to log the response body (only if JSON or plain text)
+        mask_query_params: Query parameter names to mask in logs. Expects regular expressions.
+        mask_headers: Header names to mask in logs. Expects regular expressions.
+        exclude_paths: Paths to exclude from logging. Expects regular expressions.
     """
 
     enabled: bool = False
-    include_query_params: bool = True
-    include_request_headers: bool = False
-    include_request_body: bool = False
-    include_response_headers: bool = True
-    include_response_body: bool = False
-    mask_query_params: Union[List[str], Callable[[str, str], Optional[bool]], None] = None
-    mask_headers: Union[List[str], Callable[[str, str], Optional[bool]], None] = None
-    mask_body: Union[List[str], Callable[[str, str], Optional[bool]], None] = None
+    log_query_params: bool = True
+    log_request_headers: bool = False
+    log_request_body: bool = False
+    log_response_headers: bool = True
+    log_response_body: bool = False
+    mask_query_params: List[str] = field(default_factory=list)
+    mask_headers: List[str] = field(default_factory=list)
+    exclude_paths: List[str] = field(default_factory=list)
 
 
 class RequestDict(TypedDict):
@@ -118,16 +140,23 @@ class RequestLogger:
     def log_request(self, request: RequestDict, response: ResponseDict) -> None:
         if not self.enabled:
             return
+        parsed_url = urlparse(request["url"])
+        if self._should_exclude_path(parsed_url.path) or (
+            request["path"] is not None
+            and request["path"] != parsed_url.path
+            and self._should_exclude_path(request["path"])
+        ):
+            return
 
-        if not self.config.include_query_params:
-            request["url"] = _strip_query_params(request["url"])
-        if not self.config.include_request_headers:
+        if not self.config.log_query_params:
+            request["url"] = urlunparse(parsed_url._replace(query=""))
+        if not self.config.log_request_headers:
             request["headers"] = []
-        if not self.config.include_request_body:
+        if not self.config.log_request_body or not self._has_supported_content_type(request["headers"]):
             request["body"] = None
-        if not self.config.include_response_headers:
+        if not self.config.log_response_headers:
             response["headers"] = []
-        if not self.config.include_response_body:
+        if not self.config.log_response_body or not self._has_supported_content_type(response["headers"]):
             response["body"] = None
 
         item = {
@@ -180,6 +209,23 @@ class RequestLogger:
         for file in self.file_deque:
             file.delete()
 
+    @lru_cache(maxsize=1000)
+    def _should_exclude_path(self, url_path: str) -> bool:
+        for pattern in self.config.exclude_paths + EXCLUDE_PATH_PATTERNS:
+            with suppress(re.error):
+                if re.search(pattern, url_path, re.I) is not None:
+                    return True
+        return False
+
+    @lru_cache(maxsize=100)
+    def _should_mask_header(self, header_name: str) -> bool:
+        return any(re.search(pattern, header_name, re.I) for pattern in self.config.mask_headers + MASK_HEADER_PATTERNS)
+
+    @staticmethod
+    def _has_supported_content_type(headers: List[Tuple[str, str]]) -> bool:
+        content_type = next((v for k, v in headers if k.lower() == "content-type"), None)
+        return content_type is not None and any(content_type.startswith(t) for t in ALLOWED_CONTENT_TYPES)
+
 
 def _check_writable_fs():
     try:
@@ -210,12 +256,6 @@ def _get_json_serializer() -> Callable[[Any], bytes]:
             return json.dumps(obj, separators=(",", ":"), default=default).encode()
 
         return json_dumps
-
-
-def _strip_query_params(url: str) -> str:
-    parsed = urlparse(url)
-    stripped = parsed._replace(query="")
-    return urlunparse(stripped)
 
 
 def _skip_empty_values(data: Mapping) -> Dict:

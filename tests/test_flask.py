@@ -34,8 +34,8 @@ def app(module_mocker: MockerFixture) -> Flask:
         env=ENV,
         request_logging_config=RequestLoggingConfig(
             enabled=True,
-            include_request_body=True,
-            include_response_body=True,
+            log_request_body=True,
+            log_response_body=True,
         ),
     )
 
