@@ -1,3 +1,5 @@
+from typing import Dict
+
 from django.http import HttpRequest
 from django.urls import path
 from ninja import NinjaAPI, Schema
@@ -12,7 +14,7 @@ def foo(request: HttpRequest) -> str:
 
 
 @api.get("/foo/{bar}")
-def foo_bar(request: HttpRequest, bar: int) -> dict[str, int]:
+def foo_bar(request: HttpRequest, bar: int) -> Dict[str, int]:
     return {"foo": bar}
 
 
@@ -21,7 +23,7 @@ class BarRequestBody(Schema):
 
 
 @api.post("/bar")
-def bar(request: HttpRequest, item: BarRequestBody) -> dict[str, str]:
+def bar(request: HttpRequest, item: BarRequestBody) -> Dict[str, str]:
     return {"bar": item.foo}
 
 
