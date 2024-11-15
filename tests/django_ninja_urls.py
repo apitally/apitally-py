@@ -1,6 +1,6 @@
 from django.http import HttpRequest
 from django.urls import path
-from ninja import NinjaAPI
+from ninja import NinjaAPI, Schema
 
 
 api = NinjaAPI()
@@ -12,13 +12,17 @@ def foo(request: HttpRequest) -> str:
 
 
 @api.get("/foo/{bar}")
-def foo_bar(request: HttpRequest, bar: int) -> str:
-    return f"foo: {bar}"
+def foo_bar(request: HttpRequest, bar: int) -> dict[str, int]:
+    return {"foo": bar}
+
+
+class BarRequestBody(Schema):
+    foo: str
 
 
 @api.post("/bar")
-def bar(request: HttpRequest) -> str:
-    return "bar"
+def bar(request: HttpRequest, item: BarRequestBody) -> dict[str, str]:
+    return {"bar": item.foo}
 
 
 @api.put("/baz")
