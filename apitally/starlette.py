@@ -17,7 +17,12 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
-from apitally.client.request_logging import RequestLoggingConfig
+from apitally.client.request_logging import (
+    MAX_BODY_SIZE,
+    REQUEST_BODY_TOO_LARGE,
+    RESPONSE_BODY_TOO_LARGE,
+    RequestLoggingConfig,
+)
 from apitally.common import get_versions, parse_int
 
 
@@ -43,6 +48,13 @@ class ApitallyMiddleware:
         self.delayed_set_startup_data(app_version, openapi_url)
         _register_shutdown_handler(app, self.client.handle_shutdown)
 
+        self.capture_request_body = (
+            self.client.request_logger.config.enabled and self.client.request_logger.config.include_request_body
+        )
+        self.capture_response_body = (
+            self.client.request_logger.config.enabled and self.client.request_logger.config.include_response_body
+        )
+
     def delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         self._delayed_set_startup_data_task = asyncio.create_task(
             self._delayed_set_startup_data(app_version, openapi_url)
@@ -58,14 +70,28 @@ class ApitallyMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http" and scope["method"] != "OPTIONS":
             request = Request(scope)
+            request_size = parse_int(request.headers.get("Content-Length"))
+            request_body = b""
+            request_body_too_large = request_size is not None and request_size > MAX_BODY_SIZE
             response_status = 0
             response_time: Optional[float] = None
             response_headers = Headers()
             response_body = b""
-            response_size = 0
+            response_body_too_large = False
+            response_size: Optional[int] = None
             response_chunked = False
             exception: Optional[BaseException] = None
             start_time = time.perf_counter()
+
+            async def receive_wrapper() -> Message:
+                nonlocal request_body, request_body_too_large
+                message = await receive()
+                if message["type"] == "http.request" and self.capture_request_body and not request_body_too_large:
+                    request_body += message.get("body", b"")
+                    if len(request_body) > MAX_BODY_SIZE:
+                        request_body_too_large = True
+                        request_body = b""
+                return message
 
             async def send_wrapper(message: Message) -> None:
                 nonlocal \
@@ -73,8 +99,9 @@ class ApitallyMiddleware:
                     response_status, \
                     response_headers, \
                     response_body, \
-                    response_size, \
-                    response_chunked
+                    response_body_too_large, \
+                    response_chunked, \
+                    response_size
                 if message["type"] == "http.response.start":
                     response_time = time.perf_counter() - start_time
                     response_status = message["status"]
@@ -83,15 +110,20 @@ class ApitallyMiddleware:
                         response_headers.get("Transfer-Encoding") == "chunked"
                         or "Content-Length" not in response_headers
                     )
+                    response_size = parse_int(response_headers.get("Content-Length")) if not response_chunked else 0
+                    response_body_too_large = response_size is not None and response_size > MAX_BODY_SIZE
                 elif message["type"] == "http.response.body":
-                    if response_chunked:
+                    if response_chunked and response_size is not None:
                         response_size += len(message.get("body", b""))
-                    if response_status == 422:
+                    if (self.capture_response_body or response_status == 422) and not response_body_too_large:
                         response_body += message.get("body", b"")
+                        if len(response_body) > MAX_BODY_SIZE:
+                            response_body_too_large = True
+                            response_body = b""
                 await send(message)
 
             try:
-                await self.app(scope, receive, send_wrapper)
+                await self.app(scope, receive_wrapper, send_wrapper)
             except BaseException as e:
                 exception = e
                 raise e from None
@@ -100,10 +132,12 @@ class ApitallyMiddleware:
                     response_time = time.perf_counter() - start_time
                 self.add_request(
                     request=request,
+                    request_body=request_body if not request_body_too_large else REQUEST_BODY_TOO_LARGE,
+                    request_size=request_size,
                     response_status=response_status,
                     response_time=response_time,
                     response_headers=response_headers,
-                    response_body=response_body,
+                    response_body=response_body if not response_body_too_large else RESPONSE_BODY_TOO_LARGE,
                     response_size=response_size,
                     exception=exception,
                 )
@@ -113,16 +147,16 @@ class ApitallyMiddleware:
     def add_request(
         self,
         request: Request,
+        request_body: bytes,
+        request_size: Optional[int],
         response_status: int,
         response_time: float,
         response_headers: Headers,
         response_body: bytes,
-        response_size: Optional[int] = None,
+        response_size: Optional[int],
         exception: Optional[BaseException] = None,
     ) -> None:
         path = self.get_path(request)
-        request_size = parse_int(request.headers.get("Content-Length"))
-        response_size = response_size or parse_int(response_headers.get("Content-Length"))
 
         consumer = self.get_consumer(request)
         consumer_identifier = consumer.identifier if consumer else None
@@ -165,15 +199,17 @@ class ApitallyMiddleware:
                     "method": request.method,
                     "path": path,
                     "url": str(request.url),
-                    "headers": dict(request.headers),
+                    "headers": request.headers.items(),
                     "size": request_size,
                     "consumer": consumer_identifier,
+                    "body": request_body,
                 },
                 response={
                     "status_code": response_status,
                     "response_time": response_time,
-                    "headers": dict(response_headers),
+                    "headers": response_headers.items(),
                     "size": response_size,
+                    "body": response_body,
                 },
             )
 

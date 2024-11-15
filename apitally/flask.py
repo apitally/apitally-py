@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from io import BytesIO
 from threading import Timer
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 from warnings import warn
@@ -13,7 +14,12 @@ from werkzeug.test import Client
 
 from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
-from apitally.client.request_logging import RequestLoggingConfig
+from apitally.client.request_logging import (
+    MAX_BODY_SIZE,
+    REQUEST_BODY_TOO_LARGE,
+    RESPONSE_BODY_TOO_LARGE,
+    RequestLoggingConfig,
+)
 from apitally.common import get_versions
 
 
@@ -42,6 +48,13 @@ class ApitallyMiddleware:
         self.client.start_sync_loop()
         self.delayed_set_startup_data(app_version, openapi_url)
 
+        self.capture_request_body = (
+            self.client.request_logger.config.enabled and self.client.request_logger.config.include_request_body
+        )
+        self.capture_response_body = (
+            self.client.request_logger.config.enabled and self.client.request_logger.config.include_response_body
+        )
+
     def delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         # Short delay to allow app routes to be registered first
         timer = Timer(
@@ -56,8 +69,8 @@ class ApitallyMiddleware:
         self.client.set_startup_data(data)
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
-        status_code = 200
         response_headers = Headers([])
+        status_code = 0
 
         def catching_start_response(status: str, headers: List[Tuple[str, str]], exc_info=None):
             nonlocal status_code, response_headers
@@ -65,14 +78,40 @@ class ApitallyMiddleware:
             response_headers = Headers(headers)
             return start_response(status, headers, exc_info)
 
-        start_time = time.perf_counter()
         with self.app.app_context():
+            request = Request(environ, populate_request=False, shallow=True)
+            request_size = request.content_length
+            request_body = b""
+            if self.capture_request_body:
+                request_body = (
+                    _read_request_body(environ)
+                    if request_size is not None and request_size <= MAX_BODY_SIZE
+                    else REQUEST_BODY_TOO_LARGE
+                )
+
+            start_time = time.perf_counter()
             response = self.wsgi_app(environ, catching_start_response)
+            response_time = time.perf_counter() - start_time
+
+            response_body = b""
+            if self.capture_response_body:
+                response_size = response_headers.get("Content-Length", type=int)
+                if response_size is not None and response_size > MAX_BODY_SIZE:
+                    response_body = RESPONSE_BODY_TOO_LARGE
+                else:
+                    for chunk in response:
+                        response_body += chunk
+                        if len(response_body) > MAX_BODY_SIZE:
+                            response_body = RESPONSE_BODY_TOO_LARGE
+                            break
+
             self.add_request(
-                environ=environ,
+                request=request,
+                request_body=request_body,
                 status_code=status_code,
-                response_time=time.perf_counter() - start_time,
+                response_time=response_time,
                 response_headers=response_headers,
+                response_body=response_body,
             )
         return response
 
@@ -87,13 +126,14 @@ class ApitallyMiddleware:
 
     def add_request(
         self,
-        environ: WSGIEnvironment,
+        request: Request,
+        request_body: bytes,
         status_code: int,
         response_time: float,
         response_headers: Headers,
+        response_body: bytes,
     ) -> None:
-        path = self.get_path(environ)
-        request = Request(environ, populate_request=False, shallow=True)
+        path = self.get_path(request.environ)
         response_size = response_headers.get("Content-Length", type=int)
 
         consumer = self.get_consumer()
@@ -124,15 +164,17 @@ class ApitallyMiddleware:
                     "method": request.method,
                     "path": path,
                     "url": request.url,
-                    "headers": dict(request.headers),
+                    "headers": list(request.headers.items()),
                     "size": request.content_length,
                     "consumer": consumer_identifier,
+                    "body": request_body,
                 },
                 response={
                     "status_code": status_code,
                     "response_time": response_time,
-                    "headers": dict(response_headers),
+                    "headers": list(response_headers.items()),
                     "size": response_size,
+                    "body": response_body,
                 },
             )
 
@@ -188,3 +230,10 @@ def _get_openapi(app: WSGIApplication, openapi_url: str) -> Optional[str]:
     if response.status_code != 200:
         return None
     return response.get_data(as_text=True)
+
+
+def _read_request_body(environ: WSGIEnvironment) -> bytes:
+    length = int(environ.get("CONTENT_LENGTH", "0"))
+    body = environ["wsgi.input"].read(length)
+    environ["wsgi.input"] = BytesIO(body)
+    return body

@@ -1,3 +1,4 @@
+import base64
 import gzip
 import tempfile
 import threading
@@ -6,14 +7,18 @@ from collections import deque
 from dataclasses import dataclass
 from io import BufferedReader
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, TypedDict, Union
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, TypedDict, Union
+from urllib.parse import urlparse, urlunparse
 
 from apitally.client.logging import get_logger
 
 
 logger = get_logger(__name__)
 
+MAX_BODY_SIZE = 100_000  # 100 KB (uncompressed)
 MAX_FILE_SIZE = 2_000_000  # 2 MB (compressed)
+REQUEST_BODY_TOO_LARGE = b"<Request body too large>"
+RESPONSE_BODY_TOO_LARGE = b"<Response body too large>"
 
 
 @dataclass
@@ -45,16 +50,18 @@ class RequestDict(TypedDict):
     method: str
     path: Optional[str]
     url: str
-    headers: Dict[str, str]
+    headers: List[Tuple[str, str]]
     size: Optional[int]
     consumer: Optional[str]
+    body: Optional[bytes]
 
 
 class ResponseDict(TypedDict):
     status_code: int
     response_time: float
-    headers: Dict[str, str]
+    headers: List[Tuple[str, str]]
     size: Optional[int]
+    body: Optional[bytes]
 
 
 class TempGzipFile:
@@ -97,8 +104,8 @@ class TempGzipFile:
 class RequestLogger:
     def __init__(self, config: Optional[RequestLoggingConfig]) -> None:
         self.config = config or RequestLoggingConfig()
-        self.enabled = self.config.enabled and self._check_writable_fs()
-        self.serialize = self._get_json_serializer()
+        self.enabled = self.config.enabled and _check_writable_fs()
+        self.serialize = _get_json_serializer()
         self.write_deque: deque[bytes] = deque([], 1000)
         self.file_deque: deque[TempGzipFile] = deque([])
         self.file: Optional[TempGzipFile] = None
@@ -111,10 +118,22 @@ class RequestLogger:
     def log_request(self, request: RequestDict, response: ResponseDict) -> None:
         if not self.enabled:
             return
+
+        if not self.config.include_query_params:
+            request["url"] = _strip_query_params(request["url"])
+        if not self.config.include_request_headers:
+            request["headers"] = []
+        if not self.config.include_request_body:
+            request["body"] = None
+        if not self.config.include_response_headers:
+            response["headers"] = []
+        if not self.config.include_response_body:
+            response["body"] = None
+
         item = {
             "time_ns": time.time_ns() - response["response_time"] * 1_000_000_000,
-            "request": {k: v for k, v in request.items() if v is not None},
-            "response": {k: v for k, v in response.items() if v is not None},
+            "request": _skip_empty_values(request),
+            "response": _skip_empty_values(response),
         }
         serialized_item = self.serialize(item)
         self.write_deque.append(serialized_item)
@@ -161,28 +180,45 @@ class RequestLogger:
         for file in self.file_deque:
             file.delete()
 
-    @staticmethod
-    def _check_writable_fs():
-        try:
-            with tempfile.TemporaryFile():
-                return True
-        except (IOError, OSError):
-            logger.error("Unable to create temporary file for request logging")
-            return False
 
-    @staticmethod
-    def _get_json_serializer() -> Callable[[Any], bytes]:
-        try:
-            import orjson  # type: ignore
+def _check_writable_fs():
+    try:
+        with tempfile.TemporaryFile():
+            return True
+    except (IOError, OSError):
+        logger.error("Unable to create temporary file for request logging")
+        return False
 
-            def orjson_dumps(obj: Any) -> bytes:
-                return orjson.dumps(obj)
 
-            return orjson_dumps
-        except ImportError:
-            import json
+def _get_json_serializer() -> Callable[[Any], bytes]:
+    def default(obj: Any) -> Any:
+        if isinstance(obj, bytes):
+            return base64.b64encode(obj).decode()
+        raise TypeError
 
-            def json_dumps(obj: Any) -> bytes:
-                return json.dumps(obj, separators=(",", ":")).encode()
+    try:
+        import orjson  # type: ignore
 
-            return json_dumps
+        def orjson_dumps(obj: Any) -> bytes:
+            return orjson.dumps(obj, default=default)
+
+        return orjson_dumps
+    except ImportError:
+        import json
+
+        def json_dumps(obj: Any) -> bytes:
+            return json.dumps(obj, separators=(",", ":"), default=default).encode()
+
+        return json_dumps
+
+
+def _strip_query_params(url: str) -> str:
+    parsed = urlparse(url)
+    stripped = parsed._replace(query="")
+    return urlunparse(stripped)
+
+
+def _skip_empty_values(data: Mapping) -> Dict:
+    return {
+        k: v for k, v in data.items() if v is not None and not (isinstance(v, (list, dict, bytes, str)) and len(v) == 0)
+    }

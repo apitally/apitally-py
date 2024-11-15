@@ -140,11 +140,11 @@ def test_middleware_request_logging(client: Client, mocker: MockerFixture):
     assert mock.call_args.kwargs["request"]["method"] == "GET"
     assert mock.call_args.kwargs["request"]["path"] == "/api/foo/{bar}"
     assert mock.call_args.kwargs["request"]["url"] == "http://testserver/api/foo/123?foo=bar"
-    assert mock.call_args.kwargs["request"]["headers"]["Test-Header"] == "test"
+    assert ("Test-Header", "test") in mock.call_args.kwargs["request"]["headers"]
     assert mock.call_args.kwargs["request"]["consumer"] == "test"
     assert mock.call_args.kwargs["response"]["status_code"] == 200
     assert mock.call_args.kwargs["response"]["response_time"] > 0
-    assert mock.call_args.kwargs["response"]["headers"]["Content-Type"] == "application/json; charset=utf-8"
+    assert ("Content-Type", "application/json; charset=utf-8") in mock.call_args.kwargs["response"]["headers"]
     assert mock.call_args.kwargs["response"]["size"] > 0
 
 
