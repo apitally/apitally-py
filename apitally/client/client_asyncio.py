@@ -6,6 +6,7 @@ import random
 import time
 from functools import partial
 from typing import Any, Dict, Iterable, Optional, Tuple
+from uuid import UUID
 
 import backoff
 import httpx
@@ -115,7 +116,7 @@ class ApitallyClient(ApitallyClientBase):
                 time.sleep(random.uniform(0.1, 0.3))
             try:
                 stream = log_file.stream_lines_compressed()
-                await self._send_log_data(client, stream)
+                await self._send_log_data(client, log_file.uuid, stream)
                 log_file.delete()
             except httpx.HTTPError:
                 self.request_logger.retry_file_later(log_file)
@@ -138,9 +139,9 @@ class ApitallyClient(ApitallyClientBase):
         response = await client.post(url="/sync", json=data)
         self._handle_hub_response(response)
 
-    async def _send_log_data(self, client: httpx.AsyncClient, stream: Iterable[bytes]) -> None:
+    async def _send_log_data(self, client: httpx.AsyncClient, uuid: UUID, stream: Iterable[bytes]) -> None:
         logger.debug("Streaming request log data to Apitally hub")
-        response = await client.post(url=f"{self.hub_url}/log?time_ns={time.time_ns()}", content=stream)
+        response = await client.post(url=f"{self.hub_url}/log?uuid={uuid}", content=stream)
         self._handle_hub_response(response)
 
     def _handle_hub_response(self, response: httpx.Response) -> None:

@@ -8,6 +8,7 @@ from io import BufferedReader
 from queue import Queue
 from threading import Event, Thread
 from typing import Any, Callable, Dict, Optional, Tuple
+from uuid import UUID
 
 import backoff
 import requests
@@ -135,7 +136,7 @@ class ApitallyClient(ApitallyClientBase):
                 time.sleep(random.uniform(0.1, 0.3))
             try:
                 with log_file.open_compressed() as fp:
-                    self._send_log_data(session, fp)
+                    self._send_log_data(session, log_file.uuid, fp)
                 log_file.delete()
             except requests.RequestException:
                 self.request_logger.retry_file_later(log_file)
@@ -158,9 +159,9 @@ class ApitallyClient(ApitallyClientBase):
         response = session.post(url=f"{self.hub_url}/sync", json=data, timeout=REQUEST_TIMEOUT)
         self._handle_hub_response(response)
 
-    def _send_log_data(self, session: requests.Session, fp: BufferedReader) -> None:
+    def _send_log_data(self, session: requests.Session, uuid: UUID, fp: BufferedReader) -> None:
         logger.debug("Streaming request log data to Apitally hub")
-        response = session.post(url=f"{self.hub_url}/log?time_ns={time.time_ns()}", data=fp, timeout=REQUEST_TIMEOUT)
+        response = session.post(url=f"{self.hub_url}/log?uuid={uuid}", data=fp, timeout=REQUEST_TIMEOUT)
         self._handle_hub_response(response)
 
     def _handle_hub_response(self, response: requests.Response) -> None:

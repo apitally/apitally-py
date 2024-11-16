@@ -12,6 +12,7 @@ from io import BufferedReader
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, TypedDict
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from uuid import uuid4
 
 from apitally.client.logging import get_logger
 
@@ -102,6 +103,7 @@ class ResponseDict(TypedDict):
 
 class TempGzipFile:
     def __init__(self) -> None:
+        self.uuid = uuid4()
         self.file = tempfile.NamedTemporaryFile(
             suffix=".gz",
             prefix="apitally-",
@@ -203,6 +205,7 @@ class RequestLogger:
 
         item = {
             "time_ns": time.time_ns() - response["response_time"] * 1_000_000_000,
+            "uuid": str(uuid4()),
             "request": _skip_empty_values(request),
             "response": _skip_empty_values(response),
         }
