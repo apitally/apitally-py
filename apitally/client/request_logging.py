@@ -165,33 +165,41 @@ class RequestLogger:
 
         if not self.config.log_request_body or not self._has_supported_content_type(request["headers"]):
             request["body"] = None
-        if not self.config.log_response_body or not self._has_supported_content_type(response["headers"]):
-            response["body"] = None
-
-        if request["body"] is not None and self.config.mask_request_body_callback is not None:
+        elif (
+            self.config.mask_request_body_callback is not None
+            and request["body"] is not None
+            and request["body"] != BODY_TOO_LARGE
+        ):
             try:
                 request["body"] = self.config.mask_request_body_callback(
                     request["method"], request["path"] or parsed_url.path, request["body"]
                 )
-            except Exception:
-                logger.exception("User-provided mask_request_body_callback raised an exception")
+            except Exception:  # pragma: no cover
+                logger.exception("User-provided mask_request_body_callback function raised an exception")
                 request["body"] = None
             if request["body"] is None:
                 request["body"] = BODY_MASKED
-            elif len(request["body"]) > MAX_BODY_SIZE:
-                request["body"] = BODY_TOO_LARGE
-        if response["body"] is not None and self.config.mask_response_body_callback is not None:
+        if request["body"] is not None and len(request["body"]) > MAX_BODY_SIZE:
+            request["body"] = BODY_TOO_LARGE
+
+        if not self.config.log_response_body or not self._has_supported_content_type(response["headers"]):
+            response["body"] = None
+        elif (
+            self.config.mask_response_body_callback is not None
+            and response["body"] is not None
+            and response["body"] != BODY_TOO_LARGE
+        ):
             try:
                 response["body"] = self.config.mask_response_body_callback(
                     request["method"], request["path"] or parsed_url.path, response["body"]
                 )
-            except Exception:
-                logger.exception("User-provided mask_response_body_callback raised an exception")
+            except Exception:  # pragma: no cover
+                logger.exception("User-provided mask_response_body_callback function raised an exception")
                 response["body"] = None
             if response["body"] is None:
                 response["body"] = BODY_MASKED
-            elif len(response["body"]) > MAX_BODY_SIZE:
-                response["body"] = BODY_TOO_LARGE
+        if response["body"] is not None and len(response["body"]) > MAX_BODY_SIZE:
+            response["body"] = BODY_TOO_LARGE
 
         item = {
             "time_ns": time.time_ns() - response["response_time"] * 1_000_000_000,
@@ -284,7 +292,7 @@ def _check_writable_fs():
     try:
         with tempfile.TemporaryFile():
             return True
-    except (IOError, OSError):
+    except (IOError, OSError):  # pragma: no cover
         logger.error("Unable to create temporary file for request logging")
         return False
 
@@ -293,7 +301,7 @@ def _get_json_serializer() -> Callable[[Any], bytes]:
     def default(obj: Any) -> Any:
         if isinstance(obj, bytes):
             return base64.b64encode(obj).decode()
-        raise TypeError
+        raise TypeError  # pragma: no cover
 
     try:
         import orjson  # type: ignore
