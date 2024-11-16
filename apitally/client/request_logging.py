@@ -169,17 +169,25 @@ class RequestLogger:
             response["body"] = None
 
         if request["body"] is not None and self.config.mask_request_body_callback is not None:
-            request["body"] = self.config.mask_request_body_callback(
-                request["method"], request["path"] or parsed_url.path, request["body"]
-            )
+            try:
+                request["body"] = self.config.mask_request_body_callback(
+                    request["method"], request["path"] or parsed_url.path, request["body"]
+                )
+            except Exception:
+                logger.exception("User-provided mask_request_body_callback raised an exception")
+                request["body"] = None
             if request["body"] is None:
                 request["body"] = BODY_MASKED
             elif len(request["body"]) > MAX_BODY_SIZE:
                 request["body"] = BODY_TOO_LARGE
         if response["body"] is not None and self.config.mask_response_body_callback is not None:
-            response["body"] = self.config.mask_response_body_callback(
-                request["method"], request["path"] or parsed_url.path, response["body"]
-            )
+            try:
+                response["body"] = self.config.mask_response_body_callback(
+                    request["method"], request["path"] or parsed_url.path, response["body"]
+                )
+            except Exception:
+                logger.exception("User-provided mask_response_body_callback raised an exception")
+                response["body"] = None
             if response["body"] is None:
                 response["body"] = BODY_MASKED
             elif len(response["body"]) > MAX_BODY_SIZE:
