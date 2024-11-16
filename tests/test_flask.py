@@ -108,7 +108,7 @@ def test_middleware_requests_unhandled(app: Flask, mocker: MockerFixture):
 
 
 def test_middleware_request_logging(app: Flask, mocker: MockerFixture):
-    from apitally.client.request_logging import REQUEST_BODY_TOO_LARGE, RESPONSE_BODY_TOO_LARGE
+    from apitally.client.request_logging import BODY_TOO_LARGE
 
     mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
     client = app.test_client()
@@ -141,8 +141,8 @@ def test_middleware_request_logging(app: Flask, mocker: MockerFixture):
     assert response.status_code == 200
     assert mock.call_count == 3
     assert mock.call_args is not None
-    assert mock.call_args.kwargs["request"]["body"] == REQUEST_BODY_TOO_LARGE
-    assert mock.call_args.kwargs["response"]["body"] == RESPONSE_BODY_TOO_LARGE
+    assert mock.call_args.kwargs["request"]["body"] == BODY_TOO_LARGE
+    assert mock.call_args.kwargs["response"]["body"] == BODY_TOO_LARGE
 
 
 def test_get_startup_data(app: Flask):

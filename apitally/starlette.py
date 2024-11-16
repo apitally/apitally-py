@@ -18,9 +18,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
 from apitally.client.request_logging import (
+    BODY_TOO_LARGE,
     MAX_BODY_SIZE,
-    REQUEST_BODY_TOO_LARGE,
-    RESPONSE_BODY_TOO_LARGE,
     RequestLoggingConfig,
 )
 from apitally.common import get_versions, parse_int
@@ -132,12 +131,12 @@ class ApitallyMiddleware:
                     response_time = time.perf_counter() - start_time
                 self.add_request(
                     request=request,
-                    request_body=request_body if not request_body_too_large else REQUEST_BODY_TOO_LARGE,
+                    request_body=request_body if not request_body_too_large else BODY_TOO_LARGE,
                     request_size=request_size,
                     response_status=response_status,
                     response_time=response_time,
                     response_headers=response_headers,
-                    response_body=response_body if not response_body_too_large else RESPONSE_BODY_TOO_LARGE,
+                    response_body=response_body if not response_body_too_large else BODY_TOO_LARGE,
                     response_size=response_size,
                     exception=exception,
                 )

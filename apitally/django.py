@@ -17,9 +17,8 @@ from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
 from apitally.client.logging import get_logger
 from apitally.client.request_logging import (
+    BODY_TOO_LARGE,
     MAX_BODY_SIZE,
-    REQUEST_BODY_TOO_LARGE,
-    RESPONSE_BODY_TOO_LARGE,
     RequestLoggingConfig,
 )
 from apitally.common import get_versions, parse_int
@@ -117,7 +116,7 @@ class ApitallyMiddleware:
                 request_body = (
                     request.body
                     if request_size is not None and request_size <= MAX_BODY_SIZE and len(request.body) <= MAX_BODY_SIZE
-                    else REQUEST_BODY_TOO_LARGE
+                    else BODY_TOO_LARGE
                 )
 
             start_time = time.perf_counter()
@@ -131,9 +130,7 @@ class ApitallyMiddleware:
             response_body = b""
             if self.capture_response_body and not response.streaming:
                 response_body = (
-                    response.content
-                    if response_size is not None and response_size <= MAX_BODY_SIZE
-                    else RESPONSE_BODY_TOO_LARGE
+                    response.content if response_size is not None and response_size <= MAX_BODY_SIZE else BODY_TOO_LARGE
                 )
 
             try:

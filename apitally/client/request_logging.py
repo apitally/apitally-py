@@ -21,9 +21,9 @@ logger = get_logger(__name__)
 MAX_BODY_SIZE = 100_000  # 100 KB (uncompressed)
 MAX_FILE_SIZE = 2_000_000  # 2 MB (compressed)
 MAX_REQUESTS_IN_DEQUE = 100  # Written to file every second, so limits logging to 100 rps
-REQUEST_BODY_TOO_LARGE = b"<request body too large>"
-RESPONSE_BODY_TOO_LARGE = b"<response body too large>"
-MASKED = "<masked>"
+BODY_TOO_LARGE = b"<body too large>"
+BODY_MASKED = b"<masked>"
+MASKED = "******"
 ALLOWED_CONTENT_TYPES = ["application/json", "text/plain"]
 EXCLUDE_PATH_PATTERNS = [
     r"/_?healthz?$",
@@ -173,17 +173,17 @@ class RequestLogger:
                 request["method"], request["path"] or parsed_url.path, request["body"]
             )
             if request["body"] is None:
-                request["body"] = MASKED.encode()
+                request["body"] = BODY_MASKED
             elif len(request["body"]) > MAX_BODY_SIZE:
-                request["body"] = REQUEST_BODY_TOO_LARGE
+                request["body"] = BODY_TOO_LARGE
         if response["body"] is not None and self.config.mask_response_body_callback is not None:
             response["body"] = self.config.mask_response_body_callback(
                 request["method"], request["path"] or parsed_url.path, response["body"]
             )
             if response["body"] is None:
-                response["body"] = MASKED.encode()
+                response["body"] = BODY_MASKED
             elif len(response["body"]) > MAX_BODY_SIZE:
-                response["body"] = RESPONSE_BODY_TOO_LARGE
+                response["body"] = BODY_TOO_LARGE
 
         item = {
             "time_ns": time.time_ns() - response["response_time"] * 1_000_000_000,

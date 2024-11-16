@@ -15,9 +15,8 @@ from werkzeug.test import Client
 from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
 from apitally.client.request_logging import (
+    BODY_TOO_LARGE,
     MAX_BODY_SIZE,
-    REQUEST_BODY_TOO_LARGE,
-    RESPONSE_BODY_TOO_LARGE,
     RequestLoggingConfig,
 )
 from apitally.common import get_versions
@@ -86,7 +85,7 @@ class ApitallyMiddleware:
                 request_body = (
                     _read_request_body(environ)
                     if request_size is not None and request_size <= MAX_BODY_SIZE
-                    else REQUEST_BODY_TOO_LARGE
+                    else BODY_TOO_LARGE
                 )
 
             start_time = time.perf_counter()
@@ -97,12 +96,12 @@ class ApitallyMiddleware:
             if self.capture_response_body:
                 response_size = response_headers.get("Content-Length", type=int)
                 if response_size is not None and response_size > MAX_BODY_SIZE:
-                    response_body = RESPONSE_BODY_TOO_LARGE
+                    response_body = BODY_TOO_LARGE
                 else:
                     for chunk in response:
                         response_body += chunk
                         if len(response_body) > MAX_BODY_SIZE:
-                            response_body = RESPONSE_BODY_TOO_LARGE
+                            response_body = BODY_TOO_LARGE
                             break
 
             self.add_request(

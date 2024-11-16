@@ -3,7 +3,8 @@ from __future__ import annotations
 import base64
 import gzip
 import json
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Iterator, Optional
+from urllib.parse import quote
 
 import pytest
 
@@ -97,12 +98,13 @@ def test_request_logger_end_to_end(
         assert base64.b64decode(item["response"]["body"]) == response_dict["body"]
 
 
-def test_config_include_mask(request_logger: RequestLogger, request_dict: RequestDict, response_dict: ResponseDict):
+def test_request_log_exclusion(request_logger: RequestLogger, request_dict: RequestDict, response_dict: ResponseDict):
     request_logger.config.log_query_params = False
     request_logger.config.log_request_headers = False
     request_logger.config.log_request_body = False
     request_logger.config.log_response_headers = False
     request_logger.config.log_response_body = False
+    request_logger.config.exclude_paths = ["/excluded$"]
 
     request_logger.log_request(request_dict, response_dict)
     assert len(request_logger.write_deque) == 1
@@ -112,3 +114,40 @@ def test_config_include_mask(request_logger: RequestLogger, request_dict: Reques
     assert "body" not in item["request"]
     assert "headers" not in item["response"]
     assert "body" not in item["response"]
+
+    request_dict["path"] = "/api/excluded"
+    request_logger.log_request(request_dict, response_dict)
+    assert len(request_logger.write_deque) == 1
+
+    request_dict["path"] = "/healthz"
+    request_logger.log_request(request_dict, response_dict)
+    assert len(request_logger.write_deque) == 1
+
+
+def test_request_log_masking(request_logger: RequestLogger, request_dict: RequestDict, response_dict: ResponseDict):
+    from apitally.client.request_logging import BODY_MASKED, MASKED
+
+    MASKED_QUOTED = quote(MASKED)
+
+    def callback(method: str, path: str, body: bytes) -> Optional[bytes]:
+        if method == "GET" and path == "/test":
+            return None
+        return body
+
+    request_logger.config.mask_headers = ["test"]
+    request_logger.config.mask_query_params = ["test"]
+    request_logger.config.mask_request_body_callback = callback
+    request_logger.config.mask_response_body_callback = callback
+    request_dict["url"] = "http://localhost/test?secret=123456&test=123456&other=abcdef"
+    request_dict["headers"] += [("Authorization", "Bearer 123456"), ("Test-Header", "123456")]
+    request_logger.log_request(request_dict, response_dict)
+
+    item = json.loads(request_logger.write_deque[0])
+    assert item["request"]["url"] == f"http://localhost/test?secret={MASKED_QUOTED}&test={MASKED_QUOTED}&other=abcdef"
+    assert ["Authorization", "Bearer 123456"] not in item["request"]["headers"]
+    assert ["Authorization", MASKED] in item["request"]["headers"]
+    assert ["Test-Header", "123456"] not in item["request"]["headers"]
+    assert ["Test-Header", MASKED] in item["request"]["headers"]
+    assert ["Accept", "text/plain"] in item["request"]["headers"]
+    assert item["request"]["body"] == base64.b64encode(BODY_MASKED).decode()
+    assert item["response"]["body"] == base64.b64encode(BODY_MASKED).decode()
