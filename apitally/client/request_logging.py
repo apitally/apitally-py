@@ -11,7 +11,7 @@ from functools import lru_cache
 from io import BufferedReader
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, TypedDict
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from apitally.client.logging import get_logger
 
@@ -20,8 +20,10 @@ logger = get_logger(__name__)
 
 MAX_BODY_SIZE = 100_000  # 100 KB (uncompressed)
 MAX_FILE_SIZE = 2_000_000  # 2 MB (compressed)
-REQUEST_BODY_TOO_LARGE = b"<Request body too large>"
-RESPONSE_BODY_TOO_LARGE = b"<Response body too large>"
+MAX_REQUESTS_IN_DEQUE = 100  # Written to file every second, so limits logging to 100 rps
+REQUEST_BODY_TOO_LARGE = b"<request body too large>"
+RESPONSE_BODY_TOO_LARGE = b"<response body too large>"
+MASKED = "<masked>"
 ALLOWED_CONTENT_TYPES = ["application/json", "text/plain"]
 EXCLUDE_PATH_PATTERNS = [
     r"/_?healthz?$",
@@ -30,6 +32,14 @@ EXCLUDE_PATH_PATTERNS = [
     r"/ping$",
     r"/ready$",
     r"/live$",
+]
+MASK_QUERY_PARAM_PATTERNS = [
+    r"auth",
+    r"api-?key",
+    r"secret",
+    r"token",
+    r"password",
+    r"pwd",
 ]
 MASK_HEADER_PATTERNS = [
     r"auth",
@@ -54,6 +64,8 @@ class RequestLoggingConfig:
         log_response_body: Whether to log the response body (only if JSON or plain text)
         mask_query_params: Query parameter names to mask in logs. Expects regular expressions.
         mask_headers: Header names to mask in logs. Expects regular expressions.
+        mask_request_body_callback: Callback to mask the request body. Expects (method, path, body) and returns the masked body as bytes or None.
+        mask_response_body_callback: Callback to mask the response body. Expects (method, path, body) and returns the masked body as bytes or None.
         exclude_paths: Paths to exclude from logging. Expects regular expressions.
     """
 
@@ -65,6 +77,8 @@ class RequestLoggingConfig:
     log_response_body: bool = False
     mask_query_params: List[str] = field(default_factory=list)
     mask_headers: List[str] = field(default_factory=list)
+    mask_request_body_callback: Optional[Callable[[str, str, bytes], Optional[bytes]]] = None
+    mask_response_body_callback: Optional[Callable[[str, str, bytes], Optional[bytes]]] = None
     exclude_paths: List[str] = field(default_factory=list)
 
 
@@ -128,7 +142,7 @@ class RequestLogger:
         self.config = config or RequestLoggingConfig()
         self.enabled = self.config.enabled and _check_writable_fs()
         self.serialize = _get_json_serializer()
-        self.write_deque: deque[bytes] = deque([], 1000)
+        self.write_deque: deque[bytes] = deque([], MAX_REQUESTS_IN_DEQUE)
         self.file_deque: deque[TempGzipFile] = deque([])
         self.file: Optional[TempGzipFile] = None
         self.lock = threading.Lock()
@@ -141,23 +155,35 @@ class RequestLogger:
         if not self.enabled:
             return
         parsed_url = urlparse(request["url"])
-        if self._should_exclude_path(parsed_url.path) or (
-            request["path"] is not None
-            and request["path"] != parsed_url.path
-            and self._should_exclude_path(request["path"])
-        ):
+        if self._should_exclude_path(request["path"] or parsed_url.path):
             return
 
-        if not self.config.log_query_params:
-            request["url"] = urlunparse(parsed_url._replace(query=""))
-        if not self.config.log_request_headers:
-            request["headers"] = []
+        query = self._mask_query_params(parsed_url.query) if self.config.log_query_params else ""
+        request["url"] = urlunparse(parsed_url._replace(query=query))
+        request["headers"] = self._mask_headers(request["headers"]) if self.config.log_request_headers else []
+        response["headers"] = self._mask_headers(response["headers"]) if self.config.log_response_headers else []
+
         if not self.config.log_request_body or not self._has_supported_content_type(request["headers"]):
             request["body"] = None
-        if not self.config.log_response_headers:
-            response["headers"] = []
         if not self.config.log_response_body or not self._has_supported_content_type(response["headers"]):
             response["body"] = None
+
+        if request["body"] is not None and self.config.mask_request_body_callback is not None:
+            request["body"] = self.config.mask_request_body_callback(
+                request["method"], request["path"] or parsed_url.path, request["body"]
+            )
+            if request["body"] is None:
+                request["body"] = MASKED.encode()
+            elif len(request["body"]) > MAX_BODY_SIZE:
+                request["body"] = REQUEST_BODY_TOO_LARGE
+        if response["body"] is not None and self.config.mask_response_body_callback is not None:
+            response["body"] = self.config.mask_response_body_callback(
+                request["method"], request["path"] or parsed_url.path, response["body"]
+            )
+            if response["body"] is None:
+                response["body"] = MASKED.encode()
+            elif len(response["body"]) > MAX_BODY_SIZE:
+                response["body"] = RESPONSE_BODY_TOO_LARGE
 
         item = {
             "time_ns": time.time_ns() - response["response_time"] * 1_000_000_000,
@@ -211,15 +237,34 @@ class RequestLogger:
 
     @lru_cache(maxsize=1000)
     def _should_exclude_path(self, url_path: str) -> bool:
-        for pattern in self.config.exclude_paths + EXCLUDE_PATH_PATTERNS:
-            with suppress(re.error):
-                if re.search(pattern, url_path, re.I) is not None:
-                    return True
-        return False
+        patterns = self.config.exclude_paths + EXCLUDE_PATH_PATTERNS
+        return self._match_patterns(url_path, patterns)
+
+    def _mask_query_params(self, query: str) -> str:
+        query_params = parse_qsl(query)
+        masked_query_params = [(k, v if not self._should_mask_query_param(k) else MASKED) for k, v in query_params]
+        return urlencode(masked_query_params)
+
+    def _mask_headers(self, headers: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+        return [(k, v if not self._should_mask_header(k) else MASKED) for k, v in headers]
+
+    @lru_cache(maxsize=100)
+    def _should_mask_query_param(self, query_param_name: str) -> bool:
+        patterns = self.config.mask_query_params + MASK_QUERY_PARAM_PATTERNS
+        return self._match_patterns(query_param_name, patterns)
 
     @lru_cache(maxsize=100)
     def _should_mask_header(self, header_name: str) -> bool:
-        return any(re.search(pattern, header_name, re.I) for pattern in self.config.mask_headers + MASK_HEADER_PATTERNS)
+        patterns = self.config.mask_headers + MASK_HEADER_PATTERNS
+        return self._match_patterns(header_name, patterns)
+
+    @staticmethod
+    def _match_patterns(value: str, patterns: List[str]) -> bool:
+        for pattern in patterns:
+            with suppress(re.error):
+                if re.search(pattern, value, re.I) is not None:
+                    return True
+        return False
 
     @staticmethod
     def _has_supported_content_type(headers: List[Tuple[str, str]]) -> bool:
