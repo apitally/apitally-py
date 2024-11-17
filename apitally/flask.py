@@ -68,6 +68,7 @@ class ApitallyMiddleware:
         self.client.set_startup_data(data)
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
+        timestamp = time.time()
         response_headers = Headers([])
         status_code = 0
 
@@ -105,6 +106,7 @@ class ApitallyMiddleware:
                             break
 
             self.add_request(
+                timestamp=timestamp,
                 request=request,
                 request_body=request_body,
                 status_code=status_code,
@@ -125,6 +127,7 @@ class ApitallyMiddleware:
 
     def add_request(
         self,
+        timestamp: float,
         request: Request,
         request_body: bytes,
         status_code: int,
@@ -160,6 +163,7 @@ class ApitallyMiddleware:
         if self.client.request_logger.enabled:
             self.client.request_logger.log_request(
                 request={
+                    "timestamp": timestamp,
                     "method": request.method,
                     "path": path,
                     "url": request.url,

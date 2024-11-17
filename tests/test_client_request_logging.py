@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import gzip
 import json
+import time
 from typing import TYPE_CHECKING, Iterator, Optional
 from urllib.parse import quote
 
@@ -33,6 +34,7 @@ def request_logger() -> Iterator[RequestLogger]:
 @pytest.fixture()
 def request_dict() -> RequestDict:
     return {
+        "timestamp": time.time(),
         "method": "GET",
         "path": "/test",
         "url": "http://localhost:8000/test?foo=bar",

@@ -3,7 +3,6 @@ import gzip
 import re
 import tempfile
 import threading
-import time
 from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -19,9 +18,10 @@ from apitally.client.logging import get_logger
 
 logger = get_logger(__name__)
 
-MAX_BODY_SIZE = 100_000  # 100 KB (uncompressed)
-MAX_FILE_SIZE = 2_000_000  # 2 MB (compressed)
+MAX_BODY_SIZE = 50_000  # 50 KB (uncompressed)
+MAX_FILE_SIZE = 1_000_000  # 1 MB (compressed)
 MAX_REQUESTS_IN_DEQUE = 100  # Written to file every second, so limits logging to 100 rps
+MAX_FILES_IN_DEQUE = 50
 BODY_TOO_LARGE = b"<body too large>"
 BODY_MASKED = b"<masked>"
 MASKED = "******"
@@ -84,6 +84,7 @@ class RequestLoggingConfig:
 
 
 class RequestDict(TypedDict):
+    timestamp: float
     method: str
     path: Optional[str]
     url: str
@@ -204,7 +205,6 @@ class RequestLogger:
             response["body"] = BODY_TOO_LARGE
 
         item = {
-            "time_ns": time.time_ns() - response["response_time"] * 1_000_000_000,
             "uuid": str(uuid4()),
             "request": _skip_empty_values(request),
             "response": _skip_empty_values(response),
@@ -244,7 +244,7 @@ class RequestLogger:
     def maybe_rotate_file(self) -> None:
         if self.current_file_size > MAX_FILE_SIZE:
             self.rotate_file()
-        while len(self.file_deque) > 50:
+        while len(self.file_deque) > MAX_FILES_IN_DEQUE:
             file = self.file_deque.popleft()
             file.delete()
 
@@ -293,7 +293,7 @@ class RequestLogger:
 
 def _check_writable_fs():
     try:
-        with tempfile.TemporaryFile():
+        with tempfile.NamedTemporaryFile():
             return True
     except (IOError, OSError):  # pragma: no cover
         logger.error("Unable to create temporary file for request logging")

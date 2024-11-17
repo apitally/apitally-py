@@ -80,6 +80,7 @@ class ApitallyPlugin(InitPluginProtocol):
     def middleware_factory(self, app: ASGIApp) -> ASGIApp:
         async def middleware(scope: Scope, receive: Receive, send: Send) -> None:
             if scope["type"] == "http" and scope["method"] != "OPTIONS":
+                timestamp = time.time()
                 request = Request(scope)
                 request_size = parse_int(request.headers.get("Content-Length"))
                 request_body = b""
@@ -134,6 +135,7 @@ class ApitallyPlugin(InitPluginProtocol):
 
                 await app(scope, receive_wrapper, send_wrapper)
                 self.add_request(
+                    timestamp=timestamp,
                     request=request,
                     request_body=request_body if not request_body_too_large else BODY_TOO_LARGE,
                     request_size=request_size,
@@ -150,6 +152,7 @@ class ApitallyPlugin(InitPluginProtocol):
 
     def add_request(
         self,
+        timestamp: float,
         request: Request,
         request_body: bytes,
         request_size: Optional[int],
@@ -217,6 +220,7 @@ class ApitallyPlugin(InitPluginProtocol):
         if self.client.request_logger.enabled:
             self.client.request_logger.log_request(
                 request={
+                    "timestamp": timestamp,
                     "method": request.method,
                     "path": path,
                     "url": str(request.url),

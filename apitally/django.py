@@ -110,6 +110,7 @@ class ApitallyMiddleware:
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
         if request.method is not None and request.method != "OPTIONS":
+            timestamp = time.time()
             request_size = parse_int(request.headers.get("Content-Length"))
             request_body = b""
             if self.capture_request_body:
@@ -189,6 +190,7 @@ class ApitallyMiddleware:
             if self.client.request_logger.enabled:
                 self.client.request_logger.log_request(
                     request={
+                        "timestamp": timestamp,
                         "method": request.method,
                         "path": path,
                         "url": request.build_absolute_uri(),

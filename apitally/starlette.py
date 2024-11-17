@@ -68,6 +68,7 @@ class ApitallyMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http" and scope["method"] != "OPTIONS":
+            timestamp = time.time()
             request = Request(scope)
             request_size = parse_int(request.headers.get("Content-Length"))
             request_body = b""
@@ -130,6 +131,7 @@ class ApitallyMiddleware:
                 if response_time is None:
                     response_time = time.perf_counter() - start_time
                 self.add_request(
+                    timestamp=timestamp,
                     request=request,
                     request_body=request_body if not request_body_too_large else BODY_TOO_LARGE,
                     request_size=request_size,
@@ -145,6 +147,7 @@ class ApitallyMiddleware:
 
     def add_request(
         self,
+        timestamp: float,
         request: Request,
         request_body: bytes,
         request_size: Optional[int],
@@ -195,6 +198,7 @@ class ApitallyMiddleware:
         if self.client.request_logger.enabled:
             self.client.request_logger.log_request(
                 request={
+                    "timestamp": timestamp,
                     "method": request.method,
                     "path": path,
                     "url": str(request.url),
