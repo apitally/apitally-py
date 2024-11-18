@@ -56,7 +56,7 @@ def response_dict() -> ResponseDict:
     }
 
 
-def test_request_logger_end_to_end(
+async def test_request_logger_end_to_end(
     request_logger: RequestLogger, request_dict: RequestDict, response_dict: ResponseDict
 ):
     for _ in range(3):
@@ -70,7 +70,7 @@ def test_request_logger_end_to_end(
     assert file is not None
 
     compressed_data1 = b""
-    for chunk in file.stream_lines_compressed():
+    async for chunk in file.stream_lines_compressed():
         compressed_data1 += chunk
     assert len(compressed_data1) > 0
 

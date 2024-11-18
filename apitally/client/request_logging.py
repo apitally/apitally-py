@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from io import BufferedReader
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, TypedDict
+from typing import Any, AsyncIterator, Callable, Dict, List, Mapping, Optional, Tuple, TypedDict
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
@@ -126,7 +126,7 @@ class TempGzipFile:
     def open_compressed(self) -> BufferedReader:
         return open(self.path, "rb")
 
-    def stream_lines_compressed(self) -> Iterator[bytes]:
+    async def stream_lines_compressed(self) -> AsyncIterator[bytes]:
         with open(self.path, "rb") as fp:
             for line in fp:
                 yield line

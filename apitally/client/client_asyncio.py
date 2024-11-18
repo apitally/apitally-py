@@ -5,7 +5,7 @@ import logging
 import random
 import time
 from functools import partial
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, Optional, Tuple
 from uuid import UUID
 
 import backoff
@@ -61,6 +61,11 @@ class ApitallyClient(ApitallyClientBase):
                     last_sync_time = now
                 except Exception:  # pragma: no cover
                     logger.exception("An error occurred during sync with Apitally hub")
+
+            try:
+                self.request_logger.maybe_rotate_file()
+            except Exception:  # pragma: no cover
+                logger.exception("An error occurred while rotating request log files")
 
             await asyncio.sleep(1)
 
@@ -139,7 +144,7 @@ class ApitallyClient(ApitallyClientBase):
         response = await client.post(url="/sync", json=data)
         self._handle_hub_response(response)
 
-    async def _send_log_data(self, client: httpx.AsyncClient, uuid: UUID, stream: Iterable[bytes]) -> None:
+    async def _send_log_data(self, client: httpx.AsyncClient, uuid: UUID, stream: AsyncIterator[bytes]) -> None:
         logger.debug("Streaming request log data to Apitally hub")
         response = await client.post(url=f"{self.hub_url}/log?uuid={uuid}", content=stream)
         self._handle_hub_response(response)
