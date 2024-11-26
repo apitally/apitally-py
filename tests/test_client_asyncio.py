@@ -124,7 +124,8 @@ async def test_send_log_data(client: ApitallyClient, httpx_mock: HTTPXMock):
     url_pattern = re.compile(rf"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/log\?uuid=[a-f0-9-]+$")
     requests = httpx_mock.get_requests(url=url_pattern)
     assert len(requests) == 1
-    json_lines = gzip.decompress(requests[0].content).strip().split(b"\n")
+    request_data = requests[0].read()
+    json_lines = gzip.decompress(request_data).strip().split(b"\n")
     assert len(json_lines) == 1
     json_data = json.loads(json_lines[0])
     assert json_data["request"]["path"] == "/test"
