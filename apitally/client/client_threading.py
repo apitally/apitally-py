@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import random
 import time
+from contextlib import suppress
 from functools import partial
 from io import BufferedReader
 from queue import Queue
@@ -80,11 +81,7 @@ class ApitallyClient(ApitallyClientBase):
                     except Exception:  # pragma: no cover
                         logger.exception("An error occurred during sync with Apitally hub")
 
-                try:
-                    self.request_logger.maybe_rotate_file()
-                except Exception:  # pragma: no cover
-                    logger.exception("An error occurred while rotating request log files")
-
+                self.request_logger.maintain()
                 time.sleep(1)
         finally:
             # Send any remaining data before exiting
@@ -162,6 +159,12 @@ class ApitallyClient(ApitallyClientBase):
     def _send_log_data(self, session: requests.Session, uuid: UUID, fp: BufferedReader) -> None:
         logger.debug("Streaming request log data to Apitally hub")
         response = session.post(url=f"{self.hub_url}/log?uuid={uuid}", data=fp, timeout=REQUEST_TIMEOUT)
+        if response.status_code == 402 and "Retry-After" in response.headers:
+            with suppress(ValueError):
+                retry_after = int(response.headers["Retry-After"])
+                self.request_logger.suspend_until = time.time() + retry_after
+                self.request_logger.clear()
+                return
         self._handle_hub_response(response)
 
     def _handle_hub_response(self, response: requests.Response) -> None:

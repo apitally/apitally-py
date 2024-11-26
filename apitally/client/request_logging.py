@@ -3,6 +3,7 @@ import gzip
 import re
 import tempfile
 import threading
+import time
 from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -149,13 +150,14 @@ class RequestLogger:
         self.file_deque: deque[TempGzipFile] = deque([])
         self.file: Optional[TempGzipFile] = None
         self.lock = threading.Lock()
+        self.suspend_until: Optional[float] = None
 
     @property
     def current_file_size(self) -> int:
         return self.file.size if self.file is not None else 0
 
     def log_request(self, request: RequestDict, response: ResponseDict) -> None:
-        if not self.enabled:
+        if not self.enabled or self.suspend_until is not None:
             return
         parsed_url = urlparse(request["url"])
         if self._should_exclude_path(request["path"] or parsed_url.path):
@@ -241,18 +243,25 @@ class RequestLogger:
                 self.file_deque.append(self.file)
                 self.file = None
 
-    def maybe_rotate_file(self) -> None:
+    def maintain(self) -> None:
         if self.current_file_size > MAX_FILE_SIZE:
             self.rotate_file()
         while len(self.file_deque) > MAX_FILES_IN_DEQUE:
             file = self.file_deque.popleft()
             file.delete()
+        if self.suspend_until is not None and self.suspend_until < time.time():
+            self.suspend_until = None
 
-    def close(self) -> None:
-        self.enabled = False
+    def clear(self) -> None:
+        self.write_deque.clear()
         self.rotate_file()
         for file in self.file_deque:
             file.delete()
+        self.file_deque.clear()
+
+    def close(self) -> None:
+        self.enabled = False
+        self.clear()
 
     @lru_cache(maxsize=1000)
     def _should_exclude_path(self, url_path: str) -> bool:
@@ -291,7 +300,7 @@ class RequestLogger:
         return content_type is not None and any(content_type.startswith(t) for t in ALLOWED_CONTENT_TYPES)
 
 
-def _check_writable_fs():
+def _check_writable_fs() -> bool:
     try:
         with tempfile.NamedTemporaryFile():
             return True
