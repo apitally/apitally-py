@@ -9,6 +9,7 @@ import time
 from typing import TYPE_CHECKING
 
 import pytest
+import pytest_httpx
 from pytest_httpx import HTTPXMock
 from pytest_mock import MockerFixture
 
@@ -125,6 +126,7 @@ async def test_send_log_data(client: ApitallyClient, httpx_mock: HTTPXMock):
     url_pattern = re.compile(rf"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/log\?uuid=[a-f0-9-]+$")
     request = httpx_mock.get_request(url=url_pattern)
     assert request is not None
+
     if sys.version_info >= (3, 9):
         # This doesn't work in Python 3.8 because of a bug in httpx
         json_lines = gzip.decompress(request.read()).strip().split(b"\n")
@@ -132,7 +134,11 @@ async def test_send_log_data(client: ApitallyClient, httpx_mock: HTTPXMock):
         json_data = json.loads(json_lines[0])
         assert json_data["request"]["path"] == "/test"
         assert json_data["response"]["status_code"] == 200
-    httpx_mock.reset()
+
+    if pytest_httpx.__version__ < "0.31.0":
+        httpx_mock.reset(True)  # type: ignore[call-arg]
+    else:
+        httpx_mock.reset()
 
     # Test 402 response with Retry-After header
     log_request(client)
