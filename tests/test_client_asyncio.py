@@ -4,6 +4,7 @@ import asyncio
 import gzip
 import json
 import re
+import sys
 import time
 from typing import TYPE_CHECKING
 
@@ -104,9 +105,9 @@ async def test_send_sync_data(client: ApitallyClient, httpx_mock: HTTPXMock):
     async with client.get_http_client() as http_client:
         await client.send_sync_data(client=http_client)
 
-    requests = httpx_mock.get_requests(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/sync")
-    assert len(requests) == 1
-    request_data = json.loads(requests[0].content)
+    request = httpx_mock.get_request(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/sync")
+    assert request is not None
+    request_data = json.loads(request.read())
     assert len(request_data["requests"]) == 2
     assert request_data["requests"][0]["request_count"] == 2
     assert len(request_data["validation_errors"]) == 1
@@ -122,14 +123,15 @@ async def test_send_log_data(client: ApitallyClient, httpx_mock: HTTPXMock):
         await client.send_log_data(client=http_client)
 
     url_pattern = re.compile(rf"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/log\?uuid=[a-f0-9-]+$")
-    requests = httpx_mock.get_requests(url=url_pattern)
-    assert len(requests) == 1
-    request_data = requests[0].read()
-    json_lines = gzip.decompress(request_data).strip().split(b"\n")
-    assert len(json_lines) == 1
-    json_data = json.loads(json_lines[0])
-    assert json_data["request"]["path"] == "/test"
-    assert json_data["response"]["status_code"] == 200
+    request = httpx_mock.get_request(url=url_pattern)
+    assert request is not None
+    if sys.version_info >= (3, 9):
+        # This doesn't work in Python 3.8 because of a bug in httpx
+        json_lines = gzip.decompress(request.read()).strip().split(b"\n")
+        assert len(json_lines) == 1
+        json_data = json.loads(json_lines[0])
+        assert json_data["request"]["path"] == "/test"
+        assert json_data["response"]["status_code"] == 200
     httpx_mock.reset()
 
     # Test 402 response with Retry-After header
@@ -137,8 +139,7 @@ async def test_send_log_data(client: ApitallyClient, httpx_mock: HTTPXMock):
     httpx_mock.add_response(status_code=402, headers={"Retry-After": "3600"})
     async with client.get_http_client() as http_client:
         await client.send_log_data(client=http_client)
-    requests = httpx_mock.get_requests(url=url_pattern)
-    assert len(requests) == 1
+    assert httpx_mock.get_request(url=url_pattern) is not None
     assert client.request_logger.suspend_until is not None
     assert client.request_logger.suspend_until > time.time() + 3590
 
@@ -157,8 +158,8 @@ async def test_set_startup_data(client: ApitallyClient, httpx_mock: HTTPXMock):
     client.set_startup_data(data)
     await asyncio.sleep(0.01)
 
-    requests = httpx_mock.get_requests(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/startup")
-    assert len(requests) == 1
-    request_data = json.loads(requests[0].content)
+    request = httpx_mock.get_request(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/startup")
+    assert request is not None
+    request_data = json.loads(request.read())
     assert request_data["paths"] == []
     assert request_data["client_version"] == "1.0.0"
