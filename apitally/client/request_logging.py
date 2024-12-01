@@ -52,38 +52,6 @@ MASK_HEADER_PATTERNS = [
 ]
 
 
-@dataclass
-class RequestLoggingConfig:
-    """
-    Configuration for request logging.
-
-    Attributes:
-        enabled: Whether request logging is enabled
-        log_query_params: Whether to log query parameter values
-        log_request_headers: Whether to log request header values
-        log_request_body: Whether to log the request body (only if JSON or plain text)
-        log_response_headers: Whether to log response header values
-        log_response_body: Whether to log the response body (only if JSON or plain text)
-        mask_query_params: Query parameter names to mask in logs. Expects regular expressions.
-        mask_headers: Header names to mask in logs. Expects regular expressions.
-        mask_request_body_callback: Callback to mask the request body. Expects (method, path, body) and returns the masked body as bytes or None.
-        mask_response_body_callback: Callback to mask the response body. Expects (method, path, body) and returns the masked body as bytes or None.
-        exclude_paths: Paths to exclude from logging. Expects regular expressions.
-    """
-
-    enabled: bool = False
-    log_query_params: bool = True
-    log_request_headers: bool = False
-    log_request_body: bool = False
-    log_response_headers: bool = True
-    log_response_body: bool = False
-    mask_query_params: List[str] = field(default_factory=list)
-    mask_headers: List[str] = field(default_factory=list)
-    mask_request_body_callback: Optional[Callable[[str, str, bytes], Optional[bytes]]] = None
-    mask_response_body_callback: Optional[Callable[[str, str, bytes], Optional[bytes]]] = None
-    exclude_paths: List[str] = field(default_factory=list)
-
-
 class RequestDict(TypedDict):
     timestamp: float
     method: str
@@ -101,6 +69,40 @@ class ResponseDict(TypedDict):
     headers: List[Tuple[str, str]]
     size: Optional[int]
     body: Optional[bytes]
+
+
+@dataclass
+class RequestLoggingConfig:
+    """
+    Configuration for request logging.
+
+    Attributes:
+        enabled: Whether request logging is enabled
+        log_query_params: Whether to log query parameter values
+        log_request_headers: Whether to log request header values
+        log_request_body: Whether to log the request body (only if JSON or plain text)
+        log_response_headers: Whether to log response header values
+        log_response_body: Whether to log the response body (only if JSON or plain text)
+        mask_query_params: Query parameter names to mask in logs. Expects regular expressions.
+        mask_headers: Header names to mask in logs. Expects regular expressions.
+        mask_request_body_callback: Callback to mask the request body. Expects (method, path, body) and returns the masked body as bytes or None.
+        mask_response_body_callback: Callback to mask the response body. Expects (method, path, body) and returns the masked body as bytes or None.
+        exclude_paths: Paths to exclude from logging. Expects regular expressions.
+        exclude_callback: Callback to exclude requests from logging. Should expect two arguments, `request: RequestDict` and `response: ResponseDict`, and return True to exclude the request.
+    """
+
+    enabled: bool = False
+    log_query_params: bool = True
+    log_request_headers: bool = False
+    log_request_body: bool = False
+    log_response_headers: bool = True
+    log_response_body: bool = False
+    mask_query_params: List[str] = field(default_factory=list)
+    mask_headers: List[str] = field(default_factory=list)
+    mask_request_body_callback: Optional[Callable[[str, str, bytes], Optional[bytes]]] = None
+    mask_response_body_callback: Optional[Callable[[str, str, bytes], Optional[bytes]]] = None
+    exclude_paths: List[str] = field(default_factory=list)
+    exclude_callback: Optional[Callable[[RequestDict, ResponseDict], bool]] = None
 
 
 class TempGzipFile:
@@ -160,7 +162,7 @@ class RequestLogger:
         if not self.enabled or self.suspend_until is not None:
             return
         parsed_url = urlparse(request["url"])
-        if self._should_exclude_path(request["path"] or parsed_url.path):
+        if self._should_exclude_path(request["path"] or parsed_url.path) or self._should_exclude(request, response):
             return
 
         query = self._mask_query_params(parsed_url.query) if self.config.log_query_params else ""
@@ -262,6 +264,11 @@ class RequestLogger:
     def close(self) -> None:
         self.enabled = False
         self.clear()
+
+    def _should_exclude(self, request: RequestDict, response: ResponseDict) -> bool:
+        if self.config.exclude_callback is not None:
+            return self.config.exclude_callback(request, response)
+        return False
 
     @lru_cache(maxsize=1000)
     def _should_exclude_path(self, url_path: str) -> bool:

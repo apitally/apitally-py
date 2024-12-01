@@ -107,6 +107,7 @@ def test_request_log_exclusion(request_logger: RequestLogger, request_dict: Requ
     request_logger.config.log_response_headers = False
     request_logger.config.log_response_body = False
     request_logger.config.exclude_paths = ["/excluded$"]
+    request_logger.config.exclude_callback = lambda _, response: response["status_code"] == 404
 
     request_logger.log_request(request_dict, response_dict)
     assert len(request_logger.write_deque) == 1
@@ -116,6 +117,11 @@ def test_request_log_exclusion(request_logger: RequestLogger, request_dict: Requ
     assert "body" not in item["request"]
     assert "headers" not in item["response"]
     assert "body" not in item["response"]
+
+    response_dict["status_code"] = 404
+    request_logger.log_request(request_dict, response_dict)
+    assert len(request_logger.write_deque) == 1
+    response_dict["status_code"] = 200
 
     request_dict["path"] = "/api/excluded"
     request_logger.log_request(request_dict, response_dict)
