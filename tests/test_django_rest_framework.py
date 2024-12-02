@@ -28,6 +28,8 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
     import django
     from django.conf import settings
 
+    from apitally.django_rest_framework import RequestLoggingConfig
+
     module_mocker.patch("apitally.client.client_threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_threading.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.client_threading.ApitallyClient.set_startup_data")
@@ -49,6 +51,11 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
         APITALLY_MIDDLEWARE={
             "client_id": "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9",
             "env": "dev",
+            "request_logging_config": RequestLoggingConfig(
+                enabled=True,
+                log_request_body=True,
+                log_response_body=True,
+            ),
             "urlconf": ["tests.django_rest_framework_urls"],
         },
     )
@@ -112,6 +119,44 @@ def test_middleware_requests_error(client: APIClient, mocker: MockerFixture):
     assert mock2.call_args is not None
     exception = mock2.call_args.kwargs["exception"]
     assert isinstance(exception, ValueError)
+
+
+def test_middleware_request_logging(client: APIClient, mocker: MockerFixture):
+    from apitally.client.request_logging import BODY_TOO_LARGE
+
+    mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
+
+    response = client.get("/foo/123/?foo=bar", HTTP_TEST_HEADER="test")
+    assert response.status_code == 200
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["request"]["method"] == "GET"
+    assert mock.call_args.kwargs["request"]["path"] == "/foo/{bar}/"
+    assert mock.call_args.kwargs["request"]["url"] == "http://testserver/foo/123/?foo=bar"
+    assert ("Test-Header", "test") in mock.call_args.kwargs["request"]["headers"]
+    assert mock.call_args.kwargs["request"]["consumer"] == "test"
+    assert mock.call_args.kwargs["response"]["status_code"] == 200
+    assert mock.call_args.kwargs["response"]["response_time"] > 0
+    assert ("Content-Type", "application/json") in mock.call_args.kwargs["response"]["headers"]
+    assert mock.call_args.kwargs["response"]["size"] > 0
+
+    response = client.post("/bar/", data={"foo": "foo"}, format="json")
+    assert response.status_code == 200
+    assert mock.call_count == 2
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["request"]["method"] == "POST"
+    assert mock.call_args.kwargs["request"]["path"] == "/bar/"
+    assert mock.call_args.kwargs["request"]["url"] == "http://testserver/bar/"
+    assert mock.call_args.kwargs["request"]["body"] == b'{"foo":"foo"}'
+    assert mock.call_args.kwargs["response"]["body"] == b'{"bar":"foo"}'
+
+    mocker.patch("apitally.django.MAX_BODY_SIZE", 2)
+    response = client.post("/bar/", data={"foo": "foo"}, format="json")
+    assert response.status_code == 200
+    assert mock.call_count == 3
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["request"]["body"] == BODY_TOO_LARGE
+    assert mock.call_args.kwargs["response"]["body"] == BODY_TOO_LARGE
 
 
 def test_get_startup_data():

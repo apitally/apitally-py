@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 from apitally.client.consumers import ConsumerRegistry
 from apitally.client.logging import get_logger
+from apitally.client.request_logging import RequestLogger, RequestLoggingConfig
 from apitally.client.requests import RequestCounter
 from apitally.client.server_errors import ServerErrorCounter
 from apitally.client.validation_errors import ValidationErrorCounter
@@ -39,7 +40,7 @@ class ApitallyClientBase(ABC):
                     cls._instance = super().__new__(cls)
         return cast(TApitallyClient, cls._instance)
 
-    def __init__(self, client_id: str, env: str) -> None:
+    def __init__(self, client_id: str, env: str, request_logging_config: Optional[RequestLoggingConfig] = None) -> None:
         if hasattr(self, "client_id"):
             raise RuntimeError("Apitally client is already initialized")  # pragma: no cover
         try:
@@ -56,6 +57,7 @@ class ApitallyClientBase(ABC):
         self.validation_error_counter = ValidationErrorCounter()
         self.server_error_counter = ServerErrorCounter()
         self.consumer_registry = ConsumerRegistry()
+        self.request_logger = RequestLogger(request_logging_config)
 
         self._startup_data: Optional[Dict[str, Any]] = None
         self._startup_data_sent = False

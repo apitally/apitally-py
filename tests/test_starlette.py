@@ -15,6 +15,7 @@ if find_spec("starlette") is None:
 else:
     # Need to import BackgroundTasks at package level to avoid NameError in FastAPI
     from starlette.background import BackgroundTasks
+    from starlette.requests import Request
 
 if TYPE_CHECKING:
     from starlette.applications import Starlette
@@ -38,11 +39,10 @@ async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlett
 
 def get_starlette_app() -> Starlette:
     from starlette.applications import Starlette
-    from starlette.requests import Request
     from starlette.responses import PlainTextResponse, StreamingResponse
     from starlette.routing import Route
 
-    from apitally.starlette import ApitallyMiddleware
+    from apitally.starlette import ApitallyConsumer, ApitallyMiddleware, RequestLoggingConfig
 
     def foo(request: Request):
         request.state.apitally_consumer = "test"
@@ -51,8 +51,9 @@ def get_starlette_app() -> Starlette:
     def foo_bar(request: Request):
         return PlainTextResponse(f"foo: {request.path_params['bar']}")
 
-    def bar(request: Request):
-        return PlainTextResponse("bar")
+    async def bar(request: Request):
+        body = await request.body()
+        return PlainTextResponse("bar: " + body.decode())
 
     def baz(request: Request):
         raise ValueError("baz")
@@ -75,6 +76,9 @@ def get_starlette_app() -> Starlette:
         tasks.add_task(task_func_with_error)
         return PlainTextResponse("ok", background=tasks)
 
+    def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
+        return ApitallyConsumer("test", name="Test")
+
     routes = [
         Route("/foo/", foo),
         Route("/foo/{bar}/", foo_bar),
@@ -85,21 +89,41 @@ def get_starlette_app() -> Starlette:
         Route("/task/", task, methods=["POST"]),
     ]
     app = Starlette(routes=routes)
-    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV)
+    app.add_middleware(
+        ApitallyMiddleware,
+        client_id=CLIENT_ID,
+        env=ENV,
+        request_logging_config=RequestLoggingConfig(
+            enabled=True,
+            log_request_body=True,
+            log_response_body=True,
+        ),
+        identify_consumer_callback=identify_consumer,
+    )
     return app
 
 
 def get_fastapi_app() -> Starlette:
-    from fastapi import FastAPI, Query, Request
-    from fastapi.responses import StreamingResponse
+    from fastapi import FastAPI, Query
+    from fastapi.responses import PlainTextResponse, StreamingResponse
 
-    from apitally.fastapi import ApitallyConsumer, ApitallyMiddleware
+    from apitally.fastapi import ApitallyConsumer, ApitallyMiddleware, RequestLoggingConfig
 
     def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
         return ApitallyConsumer("test", name="Test")
 
     app = FastAPI(title="Test App", description="A simple test app.", version="1.2.3")
-    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV, identify_consumer_callback=identify_consumer)
+    app.add_middleware(
+        ApitallyMiddleware,
+        client_id=CLIENT_ID,
+        env=ENV,
+        request_logging_config=RequestLoggingConfig(
+            enabled=True,
+            log_request_body=True,
+            log_response_body=True,
+        ),
+        identify_consumer_callback=identify_consumer,
+    )
 
     @app.get("/foo/")
     def foo():
@@ -107,11 +131,12 @@ def get_fastapi_app() -> Starlette:
 
     @app.get("/foo/{bar}/")
     def foo_bar(bar: str):
-        return f"foo: {bar}"
+        return PlainTextResponse(f"foo: {bar}")
 
     @app.post("/bar/")
-    def bar():
-        return "bar"
+    async def bar(request: Request):
+        body = await request.body()
+        return PlainTextResponse("bar: " + body.decode())
 
     @app.post("/baz/")
     def baz():
@@ -234,6 +259,48 @@ def test_middleware_validation_error(app: Starlette, mocker: MockerFixture):
         assert mock.call_args.kwargs["path"] == "/val/"
         assert len(mock.call_args.kwargs["detail"]) == 1
         assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
+
+
+def test_middleware_request_logging(app: Starlette, mocker: MockerFixture):
+    from starlette.testclient import TestClient
+
+    from apitally.client.request_logging import BODY_TOO_LARGE
+
+    mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
+    client = TestClient(app)
+
+    response = client.get("/foo/123/?foo=bar", headers={"Test-Header": "test"})
+    assert response.status_code == 200
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["request"]["method"] == "GET"
+    assert mock.call_args.kwargs["request"]["path"] == "/foo/{bar}/"
+    assert mock.call_args.kwargs["request"]["url"] == "http://testserver/foo/123/?foo=bar"
+    assert ("test-header", "test") in mock.call_args.kwargs["request"]["headers"]
+    assert mock.call_args.kwargs["request"]["consumer"] == "test"
+    assert mock.call_args.kwargs["response"]["status_code"] == 200
+    assert mock.call_args.kwargs["response"]["response_time"] > 0
+    assert ("content-type", "text/plain; charset=utf-8") in mock.call_args.kwargs["response"]["headers"]
+    assert mock.call_args.kwargs["response"]["size"] > 0
+    assert mock.call_args.kwargs["response"]["body"] == b"foo: 123"
+
+    response = client.post("/bar/", content=b"foo")
+    assert response.status_code == 200
+    assert mock.call_count == 2
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["request"]["method"] == "POST"
+    assert mock.call_args.kwargs["request"]["path"] == "/bar/"
+    assert mock.call_args.kwargs["request"]["url"] == "http://testserver/bar/"
+    assert mock.call_args.kwargs["request"]["body"] == b"foo"
+    assert mock.call_args.kwargs["response"]["body"] == b"bar: foo"
+
+    mocker.patch("apitally.starlette.MAX_BODY_SIZE", 2)
+    response = client.post("/bar/", content=b"foo")
+    assert response.status_code == 200
+    assert mock.call_count == 3
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["request"]["body"] == BODY_TOO_LARGE
+    assert mock.call_args.kwargs["response"]["body"] == BODY_TOO_LARGE
 
 
 def test_get_startup_data(app: Starlette, mocker: MockerFixture):

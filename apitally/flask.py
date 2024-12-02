@@ -1,18 +1,24 @@
 from __future__ import annotations
 
 import time
+from io import BytesIO
 from threading import Timer
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 from warnings import warn
 
 from flask import Flask, g
-from flask.wrappers import Response
+from flask.wrappers import Request, Response
 from werkzeug.datastructures import Headers
 from werkzeug.exceptions import NotFound
 from werkzeug.test import Client
 
 from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
+from apitally.client.request_logging import (
+    BODY_TOO_LARGE,
+    MAX_BODY_SIZE,
+    RequestLoggingConfig,
+)
 from apitally.common import get_versions
 
 
@@ -21,7 +27,7 @@ if TYPE_CHECKING:
     from werkzeug.routing.map import Map
 
 
-__all__ = ["ApitallyMiddleware", "ApitallyConsumer"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig"]
 
 
 class ApitallyMiddleware:
@@ -30,15 +36,23 @@ class ApitallyMiddleware:
         app: Flask,
         client_id: str,
         env: str = "dev",
+        request_logging_config: Optional[RequestLoggingConfig] = None,
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = None,
     ) -> None:
         self.app = app
         self.wsgi_app = app.wsgi_app
         self.patch_handle_exception()
-        self.client = ApitallyClient(client_id=client_id, env=env)
+        self.client = ApitallyClient(client_id=client_id, env=env, request_logging_config=request_logging_config)
         self.client.start_sync_loop()
         self.delayed_set_startup_data(app_version, openapi_url)
+
+        self.capture_request_body = (
+            self.client.request_logger.config.enabled and self.client.request_logger.config.log_request_body
+        )
+        self.capture_response_body = (
+            self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
+        )
 
     def delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         # Short delay to allow app routes to be registered first
@@ -54,8 +68,9 @@ class ApitallyMiddleware:
         self.client.set_startup_data(data)
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
-        status_code = 200
+        timestamp = time.time()
         response_headers = Headers([])
+        status_code = 0
 
         def catching_start_response(status: str, headers: List[Tuple[str, str]], exc_info=None):
             nonlocal status_code, response_headers
@@ -63,14 +78,41 @@ class ApitallyMiddleware:
             response_headers = Headers(headers)
             return start_response(status, headers, exc_info)
 
-        start_time = time.perf_counter()
         with self.app.app_context():
+            request = Request(environ, populate_request=False, shallow=True)
+            request_size = request.content_length
+            request_body = b""
+            if self.capture_request_body:
+                request_body = (
+                    _read_request_body(environ)
+                    if request_size is not None and request_size <= MAX_BODY_SIZE
+                    else BODY_TOO_LARGE
+                )
+
+            start_time = time.perf_counter()
             response = self.wsgi_app(environ, catching_start_response)
+            response_time = time.perf_counter() - start_time
+
+            response_body = b""
+            if self.capture_response_body:
+                response_size = response_headers.get("Content-Length", type=int)
+                if response_size is not None and response_size > MAX_BODY_SIZE:
+                    response_body = BODY_TOO_LARGE
+                else:
+                    for chunk in response:
+                        response_body += chunk
+                        if len(response_body) > MAX_BODY_SIZE:
+                            response_body = BODY_TOO_LARGE
+                            break
+
             self.add_request(
-                environ=environ,
+                timestamp=timestamp,
+                request=request,
+                request_body=request_body,
                 status_code=status_code,
-                response_time=time.perf_counter() - start_time,
+                response_time=response_time,
                 response_headers=response_headers,
+                response_body=response_body,
             )
         return response
 
@@ -85,41 +127,68 @@ class ApitallyMiddleware:
 
     def add_request(
         self,
-        environ: WSGIEnvironment,
+        timestamp: float,
+        request: Request,
+        request_body: bytes,
         status_code: int,
         response_time: float,
         response_headers: Headers,
+        response_body: bytes,
     ) -> None:
-        rule, is_handled_path = self.get_rule(environ)
-        if is_handled_path and environ["REQUEST_METHOD"] != "OPTIONS":
-            consumer = self.get_consumer()
-            consumer_identifier = consumer.identifier if consumer else None
-            self.client.consumer_registry.add_or_update_consumer(consumer)
+        path = self.get_path(request.environ)
+        response_size = response_headers.get("Content-Length", type=int)
+
+        consumer = self.get_consumer()
+        consumer_identifier = consumer.identifier if consumer else None
+        self.client.consumer_registry.add_or_update_consumer(consumer)
+
+        if path is not None and request.method != "OPTIONS":
             self.client.request_counter.add_request(
                 consumer=consumer_identifier,
-                method=environ["REQUEST_METHOD"],
-                path=rule,
+                method=request.method,
+                path=path,
                 status_code=status_code,
                 response_time=response_time,
-                request_size=environ.get("CONTENT_LENGTH"),
-                response_size=response_headers.get("Content-Length", type=int),
+                request_size=request.content_length,
+                response_size=response_size,
             )
             if status_code == 500 and "unhandled_exception" in g:
                 self.client.server_error_counter.add_server_error(
                     consumer=consumer_identifier,
-                    method=environ["REQUEST_METHOD"],
-                    path=rule,
+                    method=request.method,
+                    path=path,
                     exception=g.unhandled_exception,
                 )
 
-    def get_rule(self, environ: WSGIEnvironment) -> Tuple[str, bool]:
+        if self.client.request_logger.enabled:
+            self.client.request_logger.log_request(
+                request={
+                    "timestamp": timestamp,
+                    "method": request.method,
+                    "path": path,
+                    "url": request.url,
+                    "headers": list(request.headers.items()),
+                    "size": request.content_length,
+                    "consumer": consumer_identifier,
+                    "body": request_body,
+                },
+                response={
+                    "status_code": status_code,
+                    "response_time": response_time,
+                    "headers": list(response_headers.items()),
+                    "size": response_size,
+                    "body": response_body,
+                },
+            )
+
+    def get_path(self, environ: WSGIEnvironment) -> Optional[str]:
         url_adapter = self.app.url_map.bind_to_environ(environ)
         try:
             endpoint, _ = url_adapter.match()
             rule = self.app.url_map._rules_by_endpoint[endpoint][0]
-            return rule.rule, True
+            return rule.rule
         except NotFound:
-            return environ["PATH_INFO"], False
+            return None
 
     def get_consumer(self) -> Optional[ApitallyConsumer]:
         if "apitally_consumer" in g and g.apitally_consumer:
@@ -164,3 +233,10 @@ def _get_openapi(app: WSGIApplication, openapi_url: str) -> Optional[str]:
     if response.status_code != 200:
         return None
     return response.get_data(as_text=True)
+
+
+def _read_request_body(environ: WSGIEnvironment) -> bytes:
+    length = int(environ.get("CONTENT_LENGTH", "0"))
+    body = environ["wsgi.input"].read(length)
+    environ["wsgi.input"] = BytesIO(body)
+    return body

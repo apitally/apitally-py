@@ -28,7 +28,7 @@ async def app(module_mocker: MockerFixture) -> Litestar:
     from litestar.handlers import get, post
     from litestar.response import Stream
 
-    from apitally.litestar import ApitallyConsumer, ApitallyPlugin
+    from apitally.litestar import ApitallyConsumer, ApitallyPlugin, RequestLoggingConfig
 
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.start_sync_loop")
@@ -44,8 +44,9 @@ async def app(module_mocker: MockerFixture) -> Litestar:
         return f"foo: {bar}"
 
     @post("/bar")
-    async def bar() -> str:
-        return "bar"
+    async def bar(request: Request) -> str:
+        body = await request.body()
+        return "bar: " + body.decode()
 
     @post("/baz")
     async def baz() -> None:
@@ -71,6 +72,11 @@ async def app(module_mocker: MockerFixture) -> Litestar:
         env=ENV,
         app_version="1.2.3",
         identify_consumer_callback=identify_consumer,
+        request_logging_config=RequestLoggingConfig(
+            enabled=True,
+            log_request_body=True,
+            log_response_body=True,
+        ),
     )
     app = Litestar(
         route_handlers=[foo, foo_bar, bar, baz, val, stream],
@@ -164,6 +170,44 @@ def test_middleware_validation_error(client: TestClient, mocker: MockerFixture):
     assert mock.call_args.kwargs["path"] == "/val"
     assert len(mock.call_args.kwargs["detail"]) == 1
     assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
+
+
+def test_middleware_request_logging(client: TestClient, mocker: MockerFixture):
+    from apitally.client.request_logging import BODY_TOO_LARGE
+
+    mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
+
+    response = client.get("/foo/123?foo=bar", headers={"Test-Header": "test"})
+    assert response.status_code == 200
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["request"]["method"] == "GET"
+    assert mock.call_args.kwargs["request"]["path"] == "/foo/{bar:str}"
+    assert mock.call_args.kwargs["request"]["url"] == "http://testserver.local/foo/123?foo=bar"
+    assert ("test-header", "test") in mock.call_args.kwargs["request"]["headers"]
+    assert mock.call_args.kwargs["request"]["consumer"] == "test2"
+    assert mock.call_args.kwargs["response"]["status_code"] == 200
+    assert mock.call_args.kwargs["response"]["response_time"] > 0
+    assert ("content-type", "text/plain; charset=utf-8") in mock.call_args.kwargs["response"]["headers"]
+    assert mock.call_args.kwargs["response"]["size"] > 0
+
+    response = client.post("/bar", content=b"foo")
+    assert response.status_code == 201
+    assert mock.call_count == 2
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["request"]["method"] == "POST"
+    assert mock.call_args.kwargs["request"]["path"] == "/bar"
+    assert mock.call_args.kwargs["request"]["url"] == "http://testserver.local/bar"
+    assert mock.call_args.kwargs["request"]["body"] == b"foo"
+    assert mock.call_args.kwargs["response"]["body"] == b"bar: foo"
+
+    mocker.patch("apitally.litestar.MAX_BODY_SIZE", 2)
+    response = client.post("/bar", content=b"foo")
+    assert response.status_code == 201
+    assert mock.call_count == 3
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["request"]["body"] == BODY_TOO_LARGE
+    assert mock.call_args.kwargs["response"]["body"] == BODY_TOO_LARGE
 
 
 def test_get_startup_data(app: Litestar, mocker: MockerFixture):

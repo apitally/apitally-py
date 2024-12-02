@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import json
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from warnings import warn
 
 from httpx import HTTPStatusError
@@ -17,10 +17,15 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
-from apitally.common import get_versions
+from apitally.client.request_logging import (
+    BODY_TOO_LARGE,
+    MAX_BODY_SIZE,
+    RequestLoggingConfig,
+)
+from apitally.common import get_versions, parse_int
 
 
-__all__ = ["ApitallyMiddleware", "ApitallyConsumer"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig"]
 
 
 class ApitallyMiddleware:
@@ -29,17 +34,25 @@ class ApitallyMiddleware:
         app: ASGIApp,
         client_id: str,
         env: str = "dev",
+        request_logging_config: Optional[RequestLoggingConfig] = None,
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = "/openapi.json",
         identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
     ) -> None:
         self.app = app
         self.identify_consumer_callback = identify_consumer_callback
-        self.client = ApitallyClient(client_id=client_id, env=env)
+        self.client = ApitallyClient(client_id=client_id, env=env, request_logging_config=request_logging_config)
         self.client.start_sync_loop()
         self._delayed_set_startup_data_task: Optional[asyncio.Task] = None
         self.delayed_set_startup_data(app_version, openapi_url)
         _register_shutdown_handler(app, self.client.handle_shutdown)
+
+        self.capture_request_body = (
+            self.client.request_logger.config.enabled and self.client.request_logger.config.log_request_body
+        )
+        self.capture_response_body = (
+            self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
+        )
 
     def delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         self._delayed_set_startup_data_task = asyncio.create_task(
@@ -55,15 +68,30 @@ class ApitallyMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http" and scope["method"] != "OPTIONS":
+            timestamp = time.time()
             request = Request(scope)
+            request_size = parse_int(request.headers.get("Content-Length"))
+            request_body = b""
+            request_body_too_large = request_size is not None and request_size > MAX_BODY_SIZE
             response_status = 0
             response_time: Optional[float] = None
             response_headers = Headers()
             response_body = b""
-            response_size = 0
+            response_body_too_large = False
+            response_size: Optional[int] = None
             response_chunked = False
             exception: Optional[BaseException] = None
             start_time = time.perf_counter()
+
+            async def receive_wrapper() -> Message:
+                nonlocal request_body, request_body_too_large
+                message = await receive()
+                if message["type"] == "http.request" and self.capture_request_body and not request_body_too_large:
+                    request_body += message.get("body", b"")
+                    if len(request_body) > MAX_BODY_SIZE:
+                        request_body_too_large = True
+                        request_body = b""
+                return message
 
             async def send_wrapper(message: Message) -> None:
                 nonlocal \
@@ -71,8 +99,9 @@ class ApitallyMiddleware:
                     response_status, \
                     response_headers, \
                     response_body, \
-                    response_size, \
-                    response_chunked
+                    response_body_too_large, \
+                    response_chunked, \
+                    response_size
                 if message["type"] == "http.response.start":
                     response_time = time.perf_counter() - start_time
                     response_status = message["status"]
@@ -81,15 +110,20 @@ class ApitallyMiddleware:
                         response_headers.get("Transfer-Encoding") == "chunked"
                         or "Content-Length" not in response_headers
                     )
+                    response_size = parse_int(response_headers.get("Content-Length")) if not response_chunked else 0
+                    response_body_too_large = response_size is not None and response_size > MAX_BODY_SIZE
                 elif message["type"] == "http.response.body":
-                    if response_chunked:
+                    if response_chunked and response_size is not None:
                         response_size += len(message.get("body", b""))
-                    if response_status == 422:
+                    if (self.capture_response_body or response_status == 422) and not response_body_too_large:
                         response_body += message.get("body", b"")
+                        if len(response_body) > MAX_BODY_SIZE:
+                            response_body_too_large = True
+                            response_body = b""
                 await send(message)
 
             try:
-                await self.app(scope, receive, send_wrapper)
+                await self.app(scope, receive_wrapper, send_wrapper)
             except BaseException as e:
                 exception = e
                 raise e from None
@@ -97,11 +131,14 @@ class ApitallyMiddleware:
                 if response_time is None:
                     response_time = time.perf_counter() - start_time
                 self.add_request(
+                    timestamp=timestamp,
                     request=request,
+                    request_body=request_body if not request_body_too_large else BODY_TOO_LARGE,
+                    request_size=request_size,
                     response_status=response_status,
                     response_time=response_time,
                     response_headers=response_headers,
-                    response_body=response_body,
+                    response_body=response_body if not response_body_too_large else BODY_TOO_LARGE,
                     response_size=response_size,
                     exception=exception,
                 )
@@ -110,29 +147,34 @@ class ApitallyMiddleware:
 
     def add_request(
         self,
+        timestamp: float,
         request: Request,
+        request_body: bytes,
+        request_size: Optional[int],
         response_status: int,
         response_time: float,
         response_headers: Headers,
         response_body: bytes,
-        response_size: int = 0,
+        response_size: Optional[int],
         exception: Optional[BaseException] = None,
     ) -> None:
-        path_template, is_handled_path = self.get_path_template(request)
-        if is_handled_path:
-            consumer = self.get_consumer(request)
-            consumer_identifier = consumer.identifier if consumer else None
-            self.client.consumer_registry.add_or_update_consumer(consumer)
+        path = self.get_path(request)
+
+        consumer = self.get_consumer(request)
+        consumer_identifier = consumer.identifier if consumer else None
+        self.client.consumer_registry.add_or_update_consumer(consumer)
+
+        if path is not None:
             if response_status == 0 and exception is not None:
                 response_status = 500
             self.client.request_counter.add_request(
                 consumer=consumer_identifier,
                 method=request.method,
-                path=path_template,
+                path=path,
                 status_code=response_status,
                 response_time=response_time,
-                request_size=request.headers.get("Content-Length"),
-                response_size=response_size or response_headers.get("Content-Length"),
+                request_size=request_size,
+                response_size=response_size,
             )
             if response_status == 422 and response_body and response_headers.get("Content-Type") == "application/json":
                 with contextlib.suppress(json.JSONDecodeError):
@@ -142,24 +184,45 @@ class ApitallyMiddleware:
                         self.client.validation_error_counter.add_validation_errors(
                             consumer=consumer_identifier,
                             method=request.method,
-                            path=path_template,
+                            path=path,
                             detail=body["detail"],
                         )
             if response_status == 500 and exception is not None:
                 self.client.server_error_counter.add_server_error(
                     consumer=consumer_identifier,
                     method=request.method,
-                    path=path_template,
+                    path=path,
                     exception=exception,
                 )
 
+        if self.client.request_logger.enabled:
+            self.client.request_logger.log_request(
+                request={
+                    "timestamp": timestamp,
+                    "method": request.method,
+                    "path": path,
+                    "url": str(request.url),
+                    "headers": request.headers.items(),
+                    "size": request_size,
+                    "consumer": consumer_identifier,
+                    "body": request_body,
+                },
+                response={
+                    "status_code": response_status,
+                    "response_time": response_time,
+                    "headers": response_headers.items(),
+                    "size": response_size,
+                    "body": response_body,
+                },
+            )
+
     @staticmethod
-    def get_path_template(request: Request) -> Tuple[str, bool]:
+    def get_path(request: Request) -> Optional[str]:
         for route in request.app.routes:
             match, _ = route.matches(request.scope)
             if match == Match.FULL:
-                return route.path, True
-        return request.url.path, False
+                return route.path
+        return None
 
     def get_consumer(self, request: Request) -> Optional[ApitallyConsumer]:
         if hasattr(request.state, "apitally_consumer") and request.state.apitally_consumer:

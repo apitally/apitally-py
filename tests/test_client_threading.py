@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from typing import TYPE_CHECKING
 
@@ -17,9 +18,13 @@ if TYPE_CHECKING:
 
 @pytest.fixture(scope="module")
 def client() -> ApitallyClient:
-    from apitally.client.client_threading import ApitallyClient
+    from apitally.client.client_threading import ApitallyClient, RequestLoggingConfig
 
-    client = ApitallyClient(client_id=CLIENT_ID, env=ENV)
+    client = ApitallyClient(
+        client_id=CLIENT_ID,
+        env=ENV,
+        request_logging_config=RequestLoggingConfig(enabled=True),
+    )
     client.request_counter.add_request(
         consumer=None,
         method="GET",
@@ -56,6 +61,29 @@ def client() -> ApitallyClient:
     return client
 
 
+def log_request(client: ApitallyClient) -> None:
+    client.request_logger.log_request(
+        request={
+            "timestamp": time.time(),
+            "method": "GET",
+            "path": "/test",
+            "url": "http://testserver/test",
+            "headers": [],
+            "size": 0,
+            "consumer": None,
+            "body": None,
+        },
+        response={
+            "status_code": 200,
+            "response_time": 0.105,
+            "headers": [],
+            "size": 0,
+            "body": None,
+        },
+    )
+    client.request_logger.write_to_file()
+
+
 def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
     send_sync_data_mock = mocker.patch("apitally.client.client_threading.ApitallyClient.send_sync_data")
     mocker.patch("apitally.client.client_base.INITIAL_SYNC_INTERVAL", 0.05)
@@ -80,6 +108,37 @@ def test_send_sync_data(client: ApitallyClient, requests_mock: Mocker):
     assert request_data["requests"][0]["request_count"] == 2
     assert len(request_data["validation_errors"]) == 1
     assert request_data["validation_errors"][0]["error_count"] == 1
+
+
+def test_send_log_data(client: ApitallyClient, requests_mock: Mocker):
+    from apitally.client.client_base import HUB_BASE_URL, HUB_VERSION
+
+    log_request(client)
+    url_pattern = re.compile(rf"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/log\?uuid=[a-f0-9-]+$")
+    mock = requests_mock.register_uri("POST", url_pattern)
+    with requests.Session() as session:
+        client.send_log_data(session)
+
+    assert len(mock.request_history) == 1
+    # Ideally we'd also check the request body for correctness, but the following issue prevents us from doing so:
+    # https://github.com/jamielennox/requests-mock/issues/243
+    requests_mock.reset()
+
+    # Test 402 response with Retry-After header
+    log_request(client)
+    mock = requests_mock.register_uri("POST", url_pattern, status_code=402, headers={"Retry-After": "3600"})
+    with requests.Session() as session:
+        client.send_log_data(session)
+
+    assert len(mock.request_history) == 1
+    assert client.request_logger.suspend_until is not None
+    assert client.request_logger.suspend_until > time.time() + 3590
+
+    # Ensure not logging requests anymore
+    log_request(client)
+    assert client.request_logger.file is None
+    assert len(client.request_logger.write_deque) == 0
+    assert len(client.request_logger.file_deque) == 0
 
 
 def test_set_startup_data(client: ApitallyClient, requests_mock: Mocker):

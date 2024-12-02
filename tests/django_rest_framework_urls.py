@@ -15,12 +15,12 @@ class FooView(APIView):
 class FooBarView(APIView):
     def get(self, request: Request, bar: int) -> Response:
         request._request.apitally_consumer = "test"  # type: ignore[attr-defined]
-        return Response(f"foo: {bar}")
+        return Response({"foo": bar})
 
 
 @api_view(["POST"])
 def bar(request: Request) -> Response:
-    return Response("bar")
+    return Response({"bar": request.data["foo"]})
 
 
 @api_view(["PUT"])
