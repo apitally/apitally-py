@@ -137,25 +137,30 @@ def test_request_log_masking(request_logger: RequestLogger, request_dict: Reques
 
     MASKED_QUOTED = quote(MASKED)
 
-    def callback(method: str, path: str, body: bytes) -> Optional[bytes]:
-        if method == "GET" and path == "/test":
+    def mask_request_body_callback(request: RequestDict) -> Optional[bytes]:
+        if request["method"] == "GET" and request["path"] == "/test":
             return None
-        return body
+        return request["body"]
+
+    def mask_response_body_callback(request: RequestDict, response: ResponseDict) -> Optional[bytes]:
+        if request["method"] == "GET" and request["path"] == "/test":
+            return None
+        return response["body"]
 
     request_logger.config.mask_headers = ["test"]
     request_logger.config.mask_query_params = ["test"]
-    request_logger.config.mask_request_body_callback = callback
-    request_logger.config.mask_response_body_callback = callback
+    request_logger.config.mask_request_body_callback = mask_request_body_callback
+    request_logger.config.mask_response_body_callback = mask_response_body_callback
     request_dict["url"] = "http://localhost/test?secret=123456&test=123456&other=abcdef"
-    request_dict["headers"] += [("Authorization", "Bearer 123456"), ("Test-Header", "123456")]
+    request_dict["headers"] += [("Authorization", "Bearer 123456"), ("X-Test", "123456")]
     request_logger.log_request(request_dict, response_dict)
 
     item = json.loads(request_logger.write_deque[0])
     assert item["request"]["url"] == f"http://localhost/test?secret={MASKED_QUOTED}&test={MASKED_QUOTED}&other=abcdef"
     assert ["Authorization", "Bearer 123456"] not in item["request"]["headers"]
     assert ["Authorization", MASKED] in item["request"]["headers"]
-    assert ["Test-Header", "123456"] not in item["request"]["headers"]
-    assert ["Test-Header", MASKED] in item["request"]["headers"]
+    assert ["X-Test", "123456"] not in item["request"]["headers"]
+    assert ["X-Test", MASKED] in item["request"]["headers"]
     assert ["Accept", "text/plain"] in item["request"]["headers"]
     assert item["request"]["body"] == base64.b64encode(BODY_MASKED).decode()
     assert item["response"]["body"] == base64.b64encode(BODY_MASKED).decode()

@@ -99,8 +99,8 @@ class RequestLoggingConfig:
     log_response_body: bool = False
     mask_query_params: List[str] = field(default_factory=list)
     mask_headers: List[str] = field(default_factory=list)
-    mask_request_body_callback: Optional[Callable[[str, str, bytes], Optional[bytes]]] = None
-    mask_response_body_callback: Optional[Callable[[str, str, bytes], Optional[bytes]]] = None
+    mask_request_body_callback: Optional[Callable[[RequestDict], Optional[bytes]]] = None
+    mask_response_body_callback: Optional[Callable[[RequestDict, ResponseDict], Optional[bytes]]] = None
     exclude_paths: List[str] = field(default_factory=list)
     exclude_callback: Optional[Callable[[RequestDict, ResponseDict], bool]] = None
 
@@ -178,9 +178,7 @@ class RequestLogger:
             and request["body"] != BODY_TOO_LARGE
         ):
             try:
-                request["body"] = self.config.mask_request_body_callback(
-                    request["method"], request["path"] or parsed_url.path, request["body"]
-                )
+                request["body"] = self.config.mask_request_body_callback(request)
             except Exception:  # pragma: no cover
                 logger.exception("User-provided mask_request_body_callback function raised an exception")
                 request["body"] = None
@@ -197,9 +195,7 @@ class RequestLogger:
             and response["body"] != BODY_TOO_LARGE
         ):
             try:
-                response["body"] = self.config.mask_response_body_callback(
-                    request["method"], request["path"] or parsed_url.path, response["body"]
-                )
+                response["body"] = self.config.mask_response_body_callback(request, response)
             except Exception:  # pragma: no cover
                 logger.exception("User-provided mask_response_body_callback function raised an exception")
                 response["body"] = None
