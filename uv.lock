@@ -35,7 +35,7 @@ wheels = [
 
 [[package]]
 name = "apitally"
-version = "0.14.0rc2.dev1+gc268101"
+version = "0.14.0rc2.dev2+g29e3d58"
 source = { editable = "." }
 dependencies = [
     { name = "backoff" },
