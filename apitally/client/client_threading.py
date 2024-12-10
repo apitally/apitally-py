@@ -47,8 +47,15 @@ except NameError:
 
 
 class ApitallyClient(ApitallyClientBase):
-    def __init__(self, client_id: str, env: str, request_logging_config: Optional[RequestLoggingConfig] = None) -> None:
+    def __init__(
+        self,
+        client_id: str,
+        env: str,
+        request_logging_config: Optional[RequestLoggingConfig] = None,
+        proxy: Optional[str] = None,
+    ) -> None:
         super().__init__(client_id=client_id, env=env, request_logging_config=request_logging_config)
+        self.proxies = {"https": proxy} if proxy else None
         self._thread: Optional[Thread] = None
         self._stop_sync_loop = Event()
         self._sync_data_queue: Queue[Tuple[float, Dict[str, Any]]] = Queue()
@@ -145,7 +152,12 @@ class ApitallyClient(ApitallyClientBase):
     @retry(raise_on_giveup=False)
     def _send_startup_data(self, session: requests.Session, data: Dict[str, Any]) -> None:
         logger.debug("Sending startup data to Apitally hub")
-        response = session.post(url=f"{self.hub_url}/startup", json=data, timeout=REQUEST_TIMEOUT)
+        response = session.post(
+            url=f"{self.hub_url}/startup",
+            json=data,
+            timeout=REQUEST_TIMEOUT,
+            proxies=self.proxies,
+        )
         self._handle_hub_response(response)
         self._startup_data_sent = True
         self._startup_data = None
@@ -153,12 +165,22 @@ class ApitallyClient(ApitallyClientBase):
     @retry()
     def _send_sync_data(self, session: requests.Session, data: Dict[str, Any]) -> None:
         logger.debug("Synchronizing data with Apitally hub")
-        response = session.post(url=f"{self.hub_url}/sync", json=data, timeout=REQUEST_TIMEOUT)
+        response = session.post(
+            url=f"{self.hub_url}/sync",
+            json=data,
+            timeout=REQUEST_TIMEOUT,
+            proxies=self.proxies,
+        )
         self._handle_hub_response(response)
 
     def _send_log_data(self, session: requests.Session, uuid: UUID, fp: BufferedReader) -> None:
         logger.debug("Streaming request log data to Apitally hub")
-        response = session.post(url=f"{self.hub_url}/log?uuid={uuid}", data=fp, timeout=REQUEST_TIMEOUT)
+        response = session.post(
+            url=f"{self.hub_url}/log?uuid={uuid}",
+            data=fp,
+            timeout=REQUEST_TIMEOUT,
+            proxies=self.proxies,
+        )
         if response.status_code == 402 and "Retry-After" in response.headers:
             with suppress(ValueError):
                 retry_after = int(response.headers["Retry-After"])

@@ -41,6 +41,7 @@ class ApitallyMiddlewareConfig:
     app_version: Optional[str]
     identify_consumer_callback: Optional[Callable[[HttpRequest], Union[str, ApitallyConsumer, None]]]
     urlconfs: List[Optional[str]]
+    proxy: Optional[str]
 
 
 class ApitallyMiddleware:
@@ -71,6 +72,7 @@ class ApitallyMiddleware:
             client_id=self.config.client_id,
             env=self.config.env,
             request_logging_config=self.config.request_logging_config,
+            proxy=self.config.proxy,
         )
         self.client.start_sync_loop()
         self.client.set_startup_data(
@@ -96,6 +98,7 @@ class ApitallyMiddleware:
         app_version: Optional[str] = None,
         identify_consumer_callback: Optional[str] = None,
         urlconf: Optional[Union[List[Optional[str]], str]] = None,
+        proxy: Optional[str] = None,
     ) -> None:
         cls.config = ApitallyMiddlewareConfig(
             client_id=client_id,
@@ -106,6 +109,7 @@ class ApitallyMiddleware:
             if identify_consumer_callback
             else None,
             urlconfs=[urlconf] if urlconf is None or isinstance(urlconf, str) else urlconf,
+            proxy=proxy,
         )
 
     def __call__(self, request: HttpRequest) -> HttpResponse:

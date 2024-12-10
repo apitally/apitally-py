@@ -39,11 +39,17 @@ class ApitallyMiddleware:
         request_logging_config: Optional[RequestLoggingConfig] = None,
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = None,
+        proxy: Optional[str] = None,
     ) -> None:
         self.app = app
         self.wsgi_app = app.wsgi_app
         self.patch_handle_exception()
-        self.client = ApitallyClient(client_id=client_id, env=env, request_logging_config=request_logging_config)
+        self.client = ApitallyClient(
+            client_id=client_id,
+            env=env,
+            request_logging_config=request_logging_config,
+            proxy=proxy,
+        )
         self.client.start_sync_loop()
         self.delayed_set_startup_data(app_version, openapi_url)
 

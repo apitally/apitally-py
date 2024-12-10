@@ -4,6 +4,7 @@ import time
 from typing import Callable, Dict, List, Optional, Union
 from warnings import warn
 
+from httpx import Proxy
 from litestar.app import DEFAULT_OPENAPI_CONFIG, Litestar
 from litestar.config.app import AppConfig
 from litestar.connection import Request
@@ -35,8 +36,14 @@ class ApitallyPlugin(InitPluginProtocol):
         app_version: Optional[str] = None,
         filter_openapi_paths: bool = True,
         identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
+        proxy: Optional[Union[str, Proxy]] = None,
     ) -> None:
-        self.client = ApitallyClient(client_id=client_id, env=env, request_logging_config=request_logging_config)
+        self.client = ApitallyClient(
+            client_id=client_id,
+            env=env,
+            request_logging_config=request_logging_config,
+            proxy=proxy,
+        )
         self.app_version = app_version
         self.filter_openapi_paths = filter_openapi_paths
         self.identify_consumer_callback = identify_consumer_callback

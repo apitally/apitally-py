@@ -6,7 +6,7 @@ import random
 import time
 from contextlib import suppress
 from functools import partial
-from typing import Any, AsyncIterator, Dict, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, Optional, Tuple, Union
 from uuid import UUID
 
 import backoff
@@ -29,15 +29,22 @@ retry = partial(
 
 
 class ApitallyClient(ApitallyClientBase):
-    def __init__(self, client_id: str, env: str, request_logging_config: Optional[RequestLoggingConfig] = None) -> None:
+    def __init__(
+        self,
+        client_id: str,
+        env: str,
+        request_logging_config: Optional[RequestLoggingConfig] = None,
+        proxy: Optional[Union[str, httpx.Proxy]] = None,
+    ) -> None:
         super().__init__(client_id=client_id, env=env, request_logging_config=request_logging_config)
+        self.proxy = proxy
         self._stop_sync_loop = False
         self._sync_loop_task: Optional[asyncio.Task] = None
         self._sync_data_queue: asyncio.Queue[Tuple[float, Dict[str, Any]]] = asyncio.Queue()
         self._set_startup_data_task: Optional[asyncio.Task] = None
 
     def get_http_client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(base_url=self.hub_url, timeout=REQUEST_TIMEOUT)
+        return httpx.AsyncClient(base_url=self.hub_url, timeout=REQUEST_TIMEOUT, proxy=self.proxy)
 
     def start_sync_loop(self) -> None:
         self._stop_sync_loop = False

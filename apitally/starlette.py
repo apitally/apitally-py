@@ -7,7 +7,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Union
 from warnings import warn
 
-from httpx import HTTPStatusError
+from httpx import HTTPStatusError, Proxy
 from starlette.datastructures import Headers
 from starlette.requests import Request
 from starlette.routing import BaseRoute, Match, Router
@@ -38,10 +38,16 @@ class ApitallyMiddleware:
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = "/openapi.json",
         identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
+        proxy: Optional[Union[str, Proxy]] = None,
     ) -> None:
         self.app = app
         self.identify_consumer_callback = identify_consumer_callback
-        self.client = ApitallyClient(client_id=client_id, env=env, request_logging_config=request_logging_config)
+        self.client = ApitallyClient(
+            client_id=client_id,
+            env=env,
+            request_logging_config=request_logging_config,
+            proxy=proxy,
+        )
         self.client.start_sync_loop()
         self._delayed_set_startup_data_task: Optional[asyncio.Task] = None
         self.delayed_set_startup_data(app_version, openapi_url)
