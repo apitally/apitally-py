@@ -6,9 +6,9 @@
   </picture>
 </p>
 
-<p align="center"><b>API monitoring made easy.</b></p>
+<p align="center"><b>Analytics, logging & monitoring for REST APIs.</b></p>
 
-<p align="center"><i>Apitally is a simple API monitoring & analytics tool with a focus on data privacy.<br>It is super easy to use for API projects in Python or Node.js and never collects sensitive data.</i></p>
+<p align="center"><i>Apitally helps you understand how your APIs are being used and alerts you when things go wrong.<br>It's super easy to use and designed to protect your data privacy.</i></p>
 
 <p align="center">🔗 <b><a href="https://apitally.io" target="_blank">apitally.io</a></b></p>
 
@@ -38,7 +38,7 @@ the 📚 [documentation](https://docs.apitally.io).
 ## Key features
 
 - Middleware for different frameworks to capture metadata about API endpoints,
-  requests and responses (no sensitive data is captured)
+  requests and responses
 - Non-blocking clients that aggregate and send captured data to Apitally in
   regular intervals
 
