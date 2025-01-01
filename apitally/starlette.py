@@ -222,12 +222,18 @@ class ApitallyMiddleware:
                 },
             )
 
-    @staticmethod
-    def get_path(request: Request) -> Optional[str]:
-        for route in request.app.routes:
-            match, _ = route.matches(request.scope)
-            if match == Match.FULL:
-                return request.scope.get("root_path", "") + route.path
+    def get_path(self, request: Request, routes: Optional[list[BaseRoute]] = None) -> Optional[str]:
+        if routes is None:
+            routes = request.app.routes
+        for route in routes:
+            if hasattr(route, "routes"):
+                path = self.get_path(request, routes=route.routes)
+                if path is not None:
+                    return path
+            elif hasattr(route, "path"):
+                match, _ = route.matches(request.scope)
+                if match == Match.FULL:
+                    return request.scope.get("root_path", "") + route.path
         return None
 
     def get_consumer(self, request: Request) -> Optional[ApitallyConsumer]:

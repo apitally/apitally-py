@@ -91,8 +91,13 @@ def get_starlette_app() -> Starlette:
     app = Starlette(
         routes=[
             Mount("/api", sub_app),
+            Mount(
+                "/test",
+                routes=[
+                    Route("/task", task, methods=["POST"]),
+                ],
+            ),
             Route("/stream", stream),
-            Route("/task", task, methods=["POST"]),
         ]
     )
     app.add_middleware(
@@ -162,7 +167,7 @@ def get_fastapi_app() -> Starlette:
 
         return StreamingResponse(stream_response())
 
-    @app.post("/task")
+    @app.post("/test/task")
     def task(background_tasks: BackgroundTasks):
         def task_func_with_error():
             raise ValueError("task")
@@ -181,7 +186,7 @@ def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.requests.RequestCounter.add_request")
     client = TestClient(app)
 
-    response = client.get("/api/foo/")
+    response = client.get("/api/foo")
     assert response.status_code == 200
     mock.assert_called_once()
     assert mock.call_args is not None
@@ -191,19 +196,19 @@ def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
     assert mock.call_args.kwargs["status_code"] == 200
     assert mock.call_args.kwargs["response_time"] > 0
 
-    response = client.get("/api/foo/123/")
+    response = client.get("/api/foo/123")
     assert response.status_code == 200
     assert mock.call_count == 2
     assert mock.call_args is not None
     assert mock.call_args.kwargs["path"] == "/api/foo/{bar}"
 
-    response = client.post("/api/bar/")
+    response = client.post("/api/bar")
     assert response.status_code == 200
     assert mock.call_count == 3
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "POST"
 
-    response = client.get("/stream/")
+    response = client.get("/stream")
     assert response.status_code == 200
     assert mock.call_count == 4
     assert mock.call_args is not None
@@ -232,7 +237,7 @@ def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
     assert isinstance(exception, ValueError)
 
     # Throws a ValueError in a background task, but returns 200
-    response = client.post("/task")
+    response = client.post("/test/task")
     assert response.status_code == 200
     assert mock1.call_count == 2
     assert mock1.call_args is not None
