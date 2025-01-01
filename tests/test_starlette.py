@@ -328,6 +328,7 @@ def test_get_startup_data(app: Starlette, mocker: MockerFixture):
     data = _get_startup_data(app=app.middleware_stack, app_version="1.2.3", openapi_url=None)
     assert len(data["paths"]) == 7
     assert {"method": "get", "path": "/api/foo"} in data["paths"]
+    assert {"method": "post", "path": "/test/task"} in data["paths"]
     assert {"method": "get", "path": "/stream"} in data["paths"]
     assert data["versions"]["starlette"]
     assert data["versions"]["app"] == "1.2.3"
