@@ -227,7 +227,7 @@ class ApitallyMiddleware:
         for route in request.app.routes:
             match, _ = route.matches(request.scope)
             if match == Match.FULL:
-                return route.path
+                return request.scope.get("root_path", "") + route.path
         return None
 
     def get_consumer(self, request: Request) -> Optional[ApitallyConsumer]:
