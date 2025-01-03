@@ -57,7 +57,7 @@ wheels = [
 
 [[package]]
 name = "apitally"
-version = "0.14.4.dev1+gcdf0f1f"
+version = "0.14.4.dev2+g16999c8"
 source = { editable = "." }
 dependencies = [
     { name = "backoff" },
@@ -817,15 +817,15 @@ wheels = [
 
 [[package]]
 name = "faker"
-version = "33.1.2"
+version = "33.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-dateutil" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/65/64/679e72c0c0fbeedb60889e6259a42c1d5e8f22273d61211682874d6cce15/faker-33.1.2.tar.gz", hash = "sha256:4f44747f8007dbf097c845d4adb58d68f759b70abb6870250f891b5040e7d1a7", size = 1851274 }
+sdist = { url = "https://files.pythonhosted.org/packages/7c/80/ba358dbfa20b0dfb5d499d5bce4018da027c8eebfcccb687f31a6bcb9393/faker-33.2.0.tar.gz", hash = "sha256:32353a0c8cb1b230b29d3603ceb905da34e944d3320393f0fcfa9c2db2350b02", size = 1853684 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/03/c4e11a1118b8f1fea3338fb27dc95a9b94ba862f6438cba4010651e52f17/Faker-33.1.2-py3-none-any.whl", hash = "sha256:1ab0adcb83d66f558ed23df8ef41eacd5924b2813ef166c34f476511f9f82a69", size = 1889779 },
+    { url = "https://files.pythonhosted.org/packages/4e/c0/1f99da45d9d1aa07d0418c72725e57ea5ac1d6a63b300619601f39cd40a7/Faker-33.2.0-py3-none-any.whl", hash = "sha256:86314377ffee82bf94005b9f15975b3b7b8cbe8137bc58bff5bce149005f2dd2", size = 1892829 },
 ]
 
 [[package]]
