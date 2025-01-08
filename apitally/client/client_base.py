@@ -89,6 +89,7 @@ class ApitallyClientBase(ABC):
 
     def get_sync_data(self) -> Dict[str, Any]:
         data = {
+            "timestamp": time.time(),
             "requests": self.request_counter.get_and_reset_requests(),
             "validation_errors": self.validation_error_counter.get_and_reset_validation_errors(),
             "server_errors": self.server_error_counter.get_and_reset_server_errors(),

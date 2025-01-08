@@ -8,7 +8,7 @@ from functools import partial
 from io import BufferedReader
 from queue import Queue
 from threading import Event, Thread
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 from uuid import UUID
 
 import backoff
@@ -58,7 +58,7 @@ class ApitallyClient(ApitallyClientBase):
         self.proxies = {"https": proxy} if proxy else None
         self._thread: Optional[Thread] = None
         self._stop_sync_loop = Event()
-        self._sync_data_queue: Queue[Tuple[float, Dict[str, Any]]] = Queue()
+        self._sync_data_queue: Queue[Dict[str, Any]] = Queue()
 
     def start_sync_loop(self) -> None:
         self._stop_sync_loop.clear()
@@ -114,20 +114,19 @@ class ApitallyClient(ApitallyClientBase):
 
     def send_sync_data(self, session: requests.Session) -> None:
         data = self.get_sync_data()
-        self._sync_data_queue.put_nowait((time.time(), data))
+        self._sync_data_queue.put_nowait(data)
 
         i = 0
         while not self._sync_data_queue.empty():
-            timestamp, data = self._sync_data_queue.get_nowait()
+            data = self._sync_data_queue.get_nowait()
             try:
-                if (time_offset := time.time() - timestamp) <= MAX_QUEUE_TIME:
+                if time.time() - data["timestamp"] <= MAX_QUEUE_TIME:
                     if i > 0:
-                        time.sleep(random.uniform(0.1, 0.3))
-                    data["time_offset"] = time_offset
+                        time.sleep(random.uniform(0.1, 0.5))
                     self._send_sync_data(session, data)
                     i += 1
             except requests.RequestException:
-                self._sync_data_queue.put_nowait((timestamp, data))
+                self._sync_data_queue.put_nowait(data)
                 break
             finally:
                 self._sync_data_queue.task_done()
