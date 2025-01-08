@@ -6,7 +6,7 @@ import random
 import time
 from contextlib import suppress
 from functools import partial
-from typing import Any, AsyncIterator, Dict, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, Optional, Union
 from uuid import UUID
 
 import backoff
@@ -40,7 +40,7 @@ class ApitallyClient(ApitallyClientBase):
         self.proxy = proxy
         self._stop_sync_loop = False
         self._sync_loop_task: Optional[asyncio.Task] = None
-        self._sync_data_queue: asyncio.Queue[Tuple[float, Dict[str, Any]]] = asyncio.Queue()
+        self._sync_data_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
         self._set_startup_data_task: Optional[asyncio.Task] = None
 
     def get_http_client(self) -> httpx.AsyncClient:
@@ -103,20 +103,19 @@ class ApitallyClient(ApitallyClientBase):
 
     async def send_sync_data(self, client: httpx.AsyncClient) -> None:
         data = self.get_sync_data()
-        self._sync_data_queue.put_nowait((time.time(), data))
+        self._sync_data_queue.put_nowait(data)
 
         i = 0
         while not self._sync_data_queue.empty():
-            timestamp, data = self._sync_data_queue.get_nowait()
+            data = self._sync_data_queue.get_nowait()
             try:
-                if (time_offset := time.time() - timestamp) <= MAX_QUEUE_TIME:
+                if time.time() - data["timestamp"] <= MAX_QUEUE_TIME:
                     if i > 0:
                         await asyncio.sleep(random.uniform(0.1, 0.3))
-                    data["time_offset"] = time_offset
                     await self._send_sync_data(client, data)
                     i += 1
             except httpx.HTTPError:
-                self._sync_data_queue.put_nowait((timestamp, data))
+                self._sync_data_queue.put_nowait(data)
                 break
             finally:
                 self._sync_data_queue.task_done()
