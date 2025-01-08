@@ -122,7 +122,7 @@ class ApitallyClient(ApitallyClientBase):
             try:
                 if time.time() - data["timestamp"] <= MAX_QUEUE_TIME:
                     if i > 0:
-                        time.sleep(random.uniform(0.1, 0.3))
+                        time.sleep(random.uniform(0.1, 0.5))
                     self._send_sync_data(session, data)
                     i += 1
             except requests.RequestException:

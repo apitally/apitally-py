@@ -111,7 +111,7 @@ class ApitallyClient(ApitallyClientBase):
             try:
                 if time.time() - data["timestamp"] <= MAX_QUEUE_TIME:
                     if i > 0:
-                        await asyncio.sleep(random.uniform(0.1, 0.3))
+                        await asyncio.sleep(random.uniform(0.1, 0.5))
                     await self._send_sync_data(client, data)
                     i += 1
             except httpx.HTTPError:
