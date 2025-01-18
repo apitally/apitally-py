@@ -1,5 +1,5 @@
 default_language_version:
-  python: "3.12"
+  python: "3.13"
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -13,3 +13,7 @@ repos:
       - id: ruff
         args: ["--fix", "--exit-non-zero-on-fix"]
       - id: ruff-format
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.5.21
+    hooks:
+      - id: uv-lock
