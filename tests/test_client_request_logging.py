@@ -121,13 +121,18 @@ def test_request_log_exclusion(request_logger: RequestLogger, request_dict: Requ
     response_dict["status_code"] = 404
     request_logger.log_request(request_dict, response_dict)
     assert len(request_logger.write_deque) == 1
-    response_dict["status_code"] = 200
 
+    response_dict["status_code"] = 200
     request_dict["path"] = "/api/excluded"
     request_logger.log_request(request_dict, response_dict)
     assert len(request_logger.write_deque) == 1
 
     request_dict["path"] = "/healthz"
+    request_logger.log_request(request_dict, response_dict)
+    assert len(request_logger.write_deque) == 1
+
+    request_dict["path"] = "/"
+    request_dict["headers"] = [("User-Agent", "ELB-HealthChecker/2.0")]
     request_logger.log_request(request_dict, response_dict)
     assert len(request_logger.write_deque) == 1
 

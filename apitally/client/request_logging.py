@@ -5,7 +5,6 @@ import tempfile
 import threading
 import time
 from collections import deque
-from contextlib import suppress
 from dataclasses import dataclass, field
 from functools import lru_cache
 from io import BufferedReader
@@ -29,14 +28,14 @@ MASKED = "******"
 ALLOWED_CONTENT_TYPES = ["application/json", "text/plain"]
 EXCLUDE_PATH_PATTERNS = [
     r"/_?healthz?$",
-    r"/_?health[_-]?checks?$",
-    r"/_?heart[_-]?beats?$",
+    r"/_?health[\-_]?checks?$",
+    r"/_?heart[\-_]?beats?$",
     r"/ping$",
     r"/ready$",
     r"/live$",
 ]
 EXCLUDE_USER_AGENT_PATTERNS = [
-    r"health[_- ]?check",
+    r"health[\-_ ]?check",
     r"microsoft-azure-application-lb",
     r"googlehc",
     r"kube-probe",
@@ -307,9 +306,8 @@ class RequestLogger:
     @staticmethod
     def _match_patterns(value: str, patterns: List[str]) -> bool:
         for pattern in patterns:
-            with suppress(re.error):
-                if re.search(pattern, value, re.I) is not None:
-                    return True
+            if re.search(pattern, value, re.I) is not None:
+                return True
         return False
 
     @staticmethod
