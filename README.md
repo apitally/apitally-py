@@ -27,10 +27,10 @@ This client library for Apitally currently supports the following Python web
 frameworks:
 
 - [FastAPI](https://docs.apitally.io/frameworks/fastapi)
-- [Starlette](https://docs.apitally.io/frameworks/starlette)
-- [Flask](https://docs.apitally.io/frameworks/flask)
-- [Django Ninja](https://docs.apitally.io/frameworks/django-ninja)
 - [Django REST Framework](https://docs.apitally.io/frameworks/django-rest-framework)
+- [Django Ninja](https://docs.apitally.io/frameworks/django-ninja)
+- [Flask](https://docs.apitally.io/frameworks/flask)
+- [Starlette](https://docs.apitally.io/frameworks/starlette)
 - [Litestar](https://docs.apitally.io/frameworks/litestar)
 
 Learn more about Apitally on our 🌎 [website](https://apitally.io) or check out
@@ -78,6 +78,25 @@ app.add_middleware(
 )
 ```
 
+### Django
+
+This is an example of how to add the Apitally middleware to a Django Ninja or
+Django REST Framework application. For further instructions, see our
+[setup guide for Django](https://docs.apitally.io/frameworks/django).
+
+In your Django `settings.py` file:
+
+```python
+MIDDLEWARE = [
+    "apitally.django.ApitallyMiddleware",
+    # Other middleware ...
+]
+APITALLY_MIDDLEWARE = {
+    "client_id": "your-client-id",
+    "env": "dev",  # or "prod" etc.
+}
+```
+
 ### Flask
 
 This is an example of how to add the Apitally middleware to a Flask application.
@@ -96,23 +115,22 @@ app.wsgi_app = ApitallyMiddleware(
 )
 ```
 
-### Django
+### Starlette
 
-This is an example of how to add the Apitally middleware to a Django Ninja or
-Django REST Framework application. For further instructions, see our
-[setup guide for Django](https://docs.apitally.io/frameworks/django).
-
-In your Django `settings.py` file:
+This is an example of how to add the Apitally middle to a Starlette application.
+For further instructions, see our
+[setup guide for Starlette](https://docs.apitally.io/frameworks/starlette).
 
 ```python
-MIDDLEWARE = [
-    "apitally.django.ApitallyMiddleware",
-    # Other middleware ...
-]
-APITALLY_MIDDLEWARE = {
-    "client_id": "your-client-id",
-    "env": "dev",  # or "prod" etc.
-}
+from starlette.applications import Starlette
+from apitally.starlette import ApitallyMiddleware
+
+app = Starlette(routes=[...])
+app.add_middleware(
+    ApitallyMiddleware,
+    client_id="your-client-id",
+    env="dev",  # or "prod" etc.
+)
 ```
 
 ### Litestar
