@@ -1,16 +1,17 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://assets.apitally.io/logos/logo-vertical-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://assets.apitally.io/logos/logo-vertical-light.png">
-    <img alt="Apitally logo" src="https://assets.apitally.io/logos/logo-vertical-light.png" width="150">
-  </picture>
+  <a href="https://apitally.io" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://assets.apitally.io/logos/logo-vertical-dark.png">
+      <source media="(prefers-color-scheme: light)" srcset="https://assets.apitally.io/logos/logo-vertical-light.png">
+      <img alt="Apitally logo" src="https://assets.apitally.io/logos/logo-vertical-light.png" width="150">
+    </picture>
+  </a>
 </p>
 
-<p align="center"><b>Analytics, logging & monitoring for REST APIs.</b></p>
+<p align="center"><b>Simple, privacy-focused API monitoring & analytics</b></p>
 
-<p align="center"><i>Apitally helps you understand how your APIs are being used and alerts you when things go wrong.<br>It's super easy to use and designed to protect your data privacy.</i></p>
-
-<p align="center">🔗 <b><a href="https://apitally.io" target="_blank">apitally.io</a></b></p>
+<p align="center"><i>Apitally helps you understand how your APIs are being used and alerts you when things go wrong.<br>Just add two lines of code to your project to get started.</i></p>
+<br>
 
 ![Apitally screenshots](https://assets.apitally.io/screenshots/overview.png)
 
