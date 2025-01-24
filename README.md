@@ -48,7 +48,7 @@ Understand which validation rules in your endpoints cause client errors. Capture
 
 ### Request logging
 
-Drill down from insights to individual requests or use powerful filtering to understand how consumers have interacted with your API. Configure extactly what is included in the logs to meet your requirements.
+Drill down from insights to individual requests or use powerful filtering to understand how consumers have interacted with your API. Configure exactly what is included in the logs to meet your requirements.
 
 ### API monitoring & alerting
 
