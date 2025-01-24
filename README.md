@@ -38,10 +38,21 @@ the 📚 [documentation](https://docs.apitally.io).
 
 ## Key features
 
-- Middleware for different frameworks to capture metadata about API endpoints,
-  requests and responses
-- Non-blocking clients that aggregate and send captured data to Apitally in
-  regular intervals
+### API analytics
+
+Track traffic, error and performance metrics for your API, each endpoint and individual API consumers, allowing you to make informed, data-driven engineering and product decisions.
+
+### Error tracking
+
+Understand which validation rules in your endpoints cause client errors. Capture error details and stack traces for 500 error responses, and have them linked to Sentry issues automatically.
+
+### Request logging
+
+Drill down from insights to individual requests or use powerful filtering to understand how consumers have interacted with your API. Configure extactly what is included in the logs to meet your requirements.
+
+### API monitoring & alerting
+
+Get notified immediately if something isn't right using custom alerts, synthetic uptime checks and heartbeat monitoring. Notifications can be delivered via email, Slack or Microsoft Teams.
 
 ## Install
 
@@ -117,7 +128,7 @@ app.wsgi_app = ApitallyMiddleware(
 
 ### Starlette
 
-This is an example of how to add the Apitally middle to a Starlette application.
+This is an example of how to add the Apitally middleware to a Starlette application.
 For further instructions, see our
 [setup guide for Starlette](https://docs.apitally.io/frameworks/starlette).
 
