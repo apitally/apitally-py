@@ -73,7 +73,7 @@ class ApitallyMiddleware:
         self.client.set_startup_data(data)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and scope["method"] != "OPTIONS":
+        if self.client.enabled and scope["type"] == "http" and scope["method"] != "OPTIONS":
             timestamp = time.time()
             request = Request(scope)
             request_size = parse_int(request.headers.get("Content-Length"))

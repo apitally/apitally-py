@@ -81,6 +81,7 @@ class ApitallyClient(ApitallyClientBase):
         self._stop_sync_loop = True
 
     async def handle_shutdown(self) -> None:
+        self.enabled = False
         if self._sync_loop_task is not None:
             self._sync_loop_task.cancel()
         # Send any remaining data before exiting
@@ -164,6 +165,7 @@ class ApitallyClient(ApitallyClientBase):
 
     def _handle_hub_response(self, response: httpx.Response) -> None:
         if response.status_code == 404:
+            self.enabled = False
             self.stop_sync_loop()
             logger.error("Invalid Apitally client ID: %s", self.client_id)
         elif response.status_code == 422:

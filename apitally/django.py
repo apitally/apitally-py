@@ -113,7 +113,7 @@ class ApitallyMiddleware:
         )
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
-        if request.method is not None and request.method != "OPTIONS":
+        if self.client.enabled and request.method is not None and request.method != "OPTIONS":
             timestamp = time.time()
             request_size = parse_int(request.headers.get("Content-Length"))
             request_body = b""

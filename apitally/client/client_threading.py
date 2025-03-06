@@ -190,6 +190,7 @@ class ApitallyClient(ApitallyClientBase):
 
     def _handle_hub_response(self, response: requests.Response) -> None:
         if response.status_code == 404:
+            self.enabled = False
             self.stop_sync_loop()
             logger.error("Invalid Apitally client ID: %s", self.client_id)
         elif response.status_code == 422:

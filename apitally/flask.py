@@ -74,6 +74,9 @@ class ApitallyMiddleware:
         self.client.set_startup_data(data)
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
+        if not self.client.enabled:
+            return self.wsgi_app(environ, start_response)
+
         timestamp = time.time()
         response_headers = Headers([])
         status_code = 0
