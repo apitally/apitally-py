@@ -86,7 +86,7 @@ class ApitallyPlugin(InitPluginProtocol):
 
     def middleware_factory(self, app: ASGIApp) -> ASGIApp:
         async def middleware(scope: Scope, receive: Receive, send: Send) -> None:
-            if scope["type"] == "http" and scope["method"] != "OPTIONS":
+            if self.client.enabled and scope["type"] == "http" and scope["method"] != "OPTIONS":
                 timestamp = time.time()
                 request = Request(scope)
                 request_size = parse_int(request.headers.get("Content-Length"))

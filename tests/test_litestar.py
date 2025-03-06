@@ -30,9 +30,15 @@ async def app(module_mocker: MockerFixture) -> Litestar:
 
     from apitally.litestar import ApitallyConsumer, ApitallyPlugin, RequestLoggingConfig
 
+    async def mocked_handle_shutdown(_):
+        # Empty function instead of Mock to avoid the following error in Python 3.10:
+        # TypeError: 'Mock' object is not subscriptable
+        pass
+
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.set_startup_data")
+    module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.handle_shutdown", mocked_handle_shutdown)
 
     @get("/foo")
     async def foo() -> str:

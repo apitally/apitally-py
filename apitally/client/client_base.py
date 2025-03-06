@@ -52,6 +52,7 @@ class ApitallyClientBase(ABC):
 
         self.client_id = client_id
         self.env = env
+        self.enabled = True
         self.instance_uuid = str(uuid4())
         self.request_counter = RequestCounter()
         self.validation_error_counter = ValidationErrorCounter()
