@@ -42,12 +42,12 @@ def app(module_mocker: MockerFixture) -> Flask:
     @app.route("/foo/<bar>")
     def foo_bar(bar: int):
         g.apitally_consumer = "test"
-        return f"foo: {bar}"
+        return f"foo: {bar}", {"Content-Type": "text/plain"}
 
     @app.route("/bar", methods=["POST"])
     def bar():
         body = request.get_data()
-        return "bar: " + body.decode()
+        return "bar: " + body.decode(), {"Content-Type": "text/plain"}
 
     @app.route("/baz", methods=["PUT"])
     def baz():
@@ -123,7 +123,7 @@ def test_middleware_request_logging(app: Flask, mocker: MockerFixture):
     assert ("Test-Header", "test") in mock.call_args.kwargs["request"]["headers"]
     assert mock.call_args.kwargs["response"]["status_code"] == 200
     assert mock.call_args.kwargs["response"]["response_time"] > 0
-    assert ("Content-Type", "text/html; charset=utf-8") in mock.call_args.kwargs["response"]["headers"]
+    assert ("Content-Type", "text/plain") in mock.call_args.kwargs["response"]["headers"]
     assert mock.call_args.kwargs["response"]["size"] > 0
 
     response = client.post("/bar", data=b"foo")

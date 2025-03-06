@@ -17,6 +17,7 @@ from apitally.client.consumers import Consumer as ApitallyConsumer
 from apitally.client.request_logging import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
+    RequestLogger,
     RequestLoggingConfig,
 )
 from apitally.common import get_versions
@@ -103,7 +104,8 @@ class ApitallyMiddleware:
             response_time = time.perf_counter() - start_time
 
             response_body = b""
-            if self.capture_response_body:
+            response_content_type = response_headers.get("Content-Type")
+            if self.capture_response_body and RequestLogger.is_supported_content_type(response_content_type):
                 response_size = response_headers.get("Content-Length", type=int)
                 if response_size is not None and response_size > MAX_BODY_SIZE:
                     response_body = BODY_TOO_LARGE
