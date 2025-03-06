@@ -177,8 +177,6 @@ class RequestLogger:
 
         query = self._mask_query_params(parsed_url.query) if self.config.log_query_params else ""
         request["url"] = urlunparse(parsed_url._replace(query=query))
-        request["headers"] = self._mask_headers(request["headers"]) if self.config.log_request_headers else []
-        response["headers"] = self._mask_headers(response["headers"]) if self.config.log_response_headers else []
 
         if not self.config.log_request_body or not self._has_supported_content_type(request["headers"]):
             request["body"] = None
@@ -213,6 +211,9 @@ class RequestLogger:
                 response["body"] = BODY_MASKED
         if response["body"] is not None and len(response["body"]) > MAX_BODY_SIZE:
             response["body"] = BODY_TOO_LARGE
+
+        request["headers"] = self._mask_headers(request["headers"]) if self.config.log_request_headers else []
+        response["headers"] = self._mask_headers(response["headers"]) if self.config.log_response_headers else []
 
         item = {
             "uuid": str(uuid4()),
