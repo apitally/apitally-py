@@ -19,6 +19,7 @@ from apitally.client.logging import get_logger
 from apitally.client.request_logging import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
+    RequestLogger,
     RequestLoggingConfig,
 )
 from apitally.common import get_versions, parse_int
@@ -133,7 +134,12 @@ class ApitallyMiddleware:
                 else (len(response.content) if not response.streaming else None)
             )
             response_body = b""
-            if self.capture_response_body and not response.streaming:
+            response_content_type = response.get("Content-Type")
+            if (
+                self.capture_response_body
+                and not response.streaming
+                and RequestLogger.is_supported_content_type(response_content_type)
+            ):
                 response_body = (
                     response.content if response_size is not None and response_size <= MAX_BODY_SIZE else BODY_TOO_LARGE
                 )

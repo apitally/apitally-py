@@ -312,13 +312,17 @@ class RequestLogger:
         return False
 
     @staticmethod
-    def _has_supported_content_type(headers: List[Tuple[str, str]]) -> bool:
-        content_type = next((v for k, v in headers if k.lower() == "content-type"), None)
-        return content_type is not None and any(content_type.startswith(t) for t in ALLOWED_CONTENT_TYPES)
-
-    @staticmethod
     def _get_user_agent(headers: List[Tuple[str, str]]) -> Optional[str]:
         return next((v for k, v in headers if k.lower() == "user-agent"), None)
+
+    @staticmethod
+    def _has_supported_content_type(headers: List[Tuple[str, str]]) -> bool:
+        content_type = next((v for k, v in headers if k.lower() == "content-type"), None)
+        return RequestLogger.is_supported_content_type(content_type)
+
+    @staticmethod
+    def is_supported_content_type(content_type: Optional[str]) -> bool:
+        return content_type is not None and any(content_type.startswith(t) for t in ALLOWED_CONTENT_TYPES)
 
 
 def _check_writable_fs() -> bool:

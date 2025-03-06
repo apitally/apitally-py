@@ -20,6 +20,7 @@ from apitally.client.consumers import Consumer as ApitallyConsumer
 from apitally.client.request_logging import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
+    RequestLogger,
     RequestLoggingConfig,
 )
 from apitally.common import get_versions, parse_int
@@ -86,6 +87,7 @@ class ApitallyMiddleware:
             response_body_too_large = False
             response_size: Optional[int] = None
             response_chunked = False
+            response_content_type: Optional[str] = None
             exception: Optional[BaseException] = None
             start_time = time.perf_counter()
 
@@ -107,6 +109,7 @@ class ApitallyMiddleware:
                     response_body, \
                     response_body_too_large, \
                     response_chunked, \
+                    response_content_type, \
                     response_size
                 if message["type"] == "http.response.start":
                     response_time = time.perf_counter() - start_time
@@ -116,12 +119,17 @@ class ApitallyMiddleware:
                         response_headers.get("Transfer-Encoding") == "chunked"
                         or "Content-Length" not in response_headers
                     )
+                    response_content_type = response_headers.get("Content-Type")
                     response_size = parse_int(response_headers.get("Content-Length")) if not response_chunked else 0
                     response_body_too_large = response_size is not None and response_size > MAX_BODY_SIZE
                 elif message["type"] == "http.response.body":
                     if response_chunked and response_size is not None:
                         response_size += len(message.get("body", b""))
-                    if (self.capture_response_body or response_status == 422) and not response_body_too_large:
+                    if (
+                        (self.capture_response_body or response_status == 422)
+                        and RequestLogger.is_supported_content_type(response_content_type)
+                        and not response_body_too_large
+                    ):
                         response_body += message.get("body", b"")
                         if len(response_body) > MAX_BODY_SIZE:
                             response_body_too_large = True
