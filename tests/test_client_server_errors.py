@@ -29,7 +29,11 @@ def test_server_error_counter():
 
 
 def test_exception_truncation(mocker: MockerFixture):
-    from apitally.client.server_errors import ServerErrorCounter
+    from apitally.client.server_errors import (
+        get_exception_type,
+        get_truncated_exception_msg,
+        get_truncated_exception_traceback,
+    )
 
     mocker.patch("apitally.client.server_errors.MAX_EXCEPTION_MSG_LENGTH", 32)
     mocker.patch("apitally.client.server_errors.MAX_EXCEPTION_TRACEBACK_LENGTH", 128)
@@ -37,9 +41,11 @@ def test_exception_truncation(mocker: MockerFixture):
     try:
         raise ValueError("a" * 88)
     except ValueError as e:
-        msg = ServerErrorCounter._get_truncated_exception_msg(e)
-        tb = ServerErrorCounter._get_truncated_exception_traceback(e)
+        type_ = get_exception_type(e)
+        msg = get_truncated_exception_msg(e)
+        tb = get_truncated_exception_traceback(e)
 
+    assert type_ == "builtins.ValueError"
     assert len(msg) == 32
     assert msg.endswith("... (truncated)")
     assert len(tb) <= 128

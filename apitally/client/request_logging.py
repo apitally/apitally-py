@@ -14,6 +14,11 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
 from apitally.client.logging import get_logger
+from apitally.client.server_errors import (
+    get_exception_type,
+    get_truncated_exception_msg,
+    get_truncated_exception_traceback,
+)
 
 
 logger = get_logger(__name__)
@@ -163,7 +168,9 @@ class RequestLogger:
     def current_file_size(self) -> int:
         return self.file.size if self.file is not None else 0
 
-    def log_request(self, request: RequestDict, response: ResponseDict) -> None:
+    def log_request(
+        self, request: RequestDict, response: ResponseDict, exception: Optional[BaseException] = None
+    ) -> None:
         if not self.enabled or self.suspend_until is not None:
             return
         parsed_url = urlparse(request["url"])
@@ -219,6 +226,13 @@ class RequestLogger:
             "uuid": str(uuid4()),
             "request": _skip_empty_values(request),
             "response": _skip_empty_values(response),
+            "exception": {
+                "type": get_exception_type(exception),
+                "message": get_truncated_exception_msg(exception),
+                "traceback": get_truncated_exception_traceback(exception),
+            }
+            if exception is not None
+            else None,
         }
         serialized_item = self.serialize(item)
         self.write_deque.append(serialized_item)

@@ -228,6 +228,7 @@ class ApitallyMiddleware:
                     "size": response_size,
                     "body": response_body,
                 },
+                exception=exception,
             )
 
     def get_path(self, request: Request, routes: Optional[list[BaseRoute]] = None) -> Optional[str]:

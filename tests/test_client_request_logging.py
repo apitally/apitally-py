@@ -60,7 +60,7 @@ async def test_request_logger_end_to_end(
     request_logger: RequestLogger, request_dict: RequestDict, response_dict: ResponseDict
 ):
     for _ in range(3):
-        request_logger.log_request(request_dict, response_dict)
+        request_logger.log_request(request_dict, response_dict, RuntimeError("test"))
 
     request_logger.write_to_file()
     assert request_logger.current_file_size > 0
@@ -98,6 +98,8 @@ async def test_request_logger_end_to_end(
         assert item["response"]["size"] == response_dict["size"]
         assert base64.b64decode(item["request"]["body"]) == request_dict["body"]
         assert base64.b64decode(item["response"]["body"]) == response_dict["body"]
+        assert item["exception"]["type"] == "builtins.RuntimeError"
+        assert item["exception"]["message"] == "test"
 
 
 def test_request_log_exclusion(request_logger: RequestLogger, request_dict: RequestDict, response_dict: ResponseDict):

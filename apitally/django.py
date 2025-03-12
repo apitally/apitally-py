@@ -216,6 +216,7 @@ class ApitallyMiddleware:
                         "size": response_size,
                         "body": response_body,
                     },
+                    exception=getattr(request, "unhandled_exception", None),
                 )
         else:
             response = self.get_response(request)

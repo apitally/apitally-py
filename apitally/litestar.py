@@ -251,6 +251,7 @@ class ApitallyPlugin(InitPluginProtocol):
                     "size": response_size,
                     "body": response_body,
                 },
+                exception=request.state["exception"] if "exception" in request.state else None,
             )
 
     def get_path(self, request: Request) -> Optional[str]:

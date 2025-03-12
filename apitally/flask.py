@@ -190,6 +190,7 @@ class ApitallyMiddleware:
                     "size": response_size,
                     "body": response_body,
                 },
+                exception=g.unhandled_exception if "unhandled_exception" in g else None,
             )
 
     def get_path(self, environ: WSGIEnvironment) -> Optional[str]:
