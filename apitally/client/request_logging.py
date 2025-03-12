@@ -93,6 +93,7 @@ class RequestLoggingConfig:
         log_request_body: Whether to log the request body (only if JSON or plain text)
         log_response_headers: Whether to log response header values
         log_response_body: Whether to log the response body (only if JSON or plain text)
+        log_exception: Whether to log unhandled exceptions in case of server errors
         mask_query_params: Query parameter names to mask in logs. Expects regular expressions.
         mask_headers: Header names to mask in logs. Expects regular expressions.
         mask_request_body_callback: Callback to mask the request body. Expects (method, path, body) and returns the masked body as bytes or None.
@@ -107,6 +108,7 @@ class RequestLoggingConfig:
     log_request_body: bool = False
     log_response_headers: bool = True
     log_response_body: bool = False
+    log_exception: bool = True
     mask_query_params: List[str] = field(default_factory=list)
     mask_headers: List[str] = field(default_factory=list)
     mask_request_body_callback: Optional[Callable[[RequestDict], Optional[bytes]]] = None
@@ -231,7 +233,7 @@ class RequestLogger:
                 "message": get_truncated_exception_msg(exception),
                 "traceback": get_truncated_exception_traceback(exception),
             }
-            if exception is not None
+            if exception is not None and self.config.log_exception
             else None,
         }
         serialized_item = self.serialize(item)
