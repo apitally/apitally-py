@@ -14,6 +14,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
 from apitally.client.logging import get_logger
+from apitally.client.sentry import get_sentry_event_id_async
 from apitally.client.server_errors import (
     get_exception_type,
     get_truncated_exception_msg,
@@ -160,7 +161,7 @@ class RequestLogger:
         self.config = config or RequestLoggingConfig()
         self.enabled = self.config.enabled and _check_writable_fs()
         self.serialize = _get_json_serializer()
-        self.write_deque: deque[bytes] = deque([], MAX_REQUESTS_IN_DEQUE)
+        self.write_deque: deque[Dict[str, Any]] = deque([], MAX_REQUESTS_IN_DEQUE)
         self.file_deque: deque[TempGzipFile] = deque([])
         self.file: Optional[TempGzipFile] = None
         self.lock = threading.Lock()
@@ -224,20 +225,19 @@ class RequestLogger:
         request["headers"] = self._mask_headers(request["headers"]) if self.config.log_request_headers else []
         response["headers"] = self._mask_headers(response["headers"]) if self.config.log_response_headers else []
 
-        item = {
+        item: Dict[str, Any] = {
             "uuid": str(uuid4()),
             "request": _skip_empty_values(request),
             "response": _skip_empty_values(response),
-            "exception": {
+        }
+        if exception is not None and self.config.log_exception:
+            item["exception"] = {
                 "type": get_exception_type(exception),
                 "message": get_truncated_exception_msg(exception),
                 "traceback": get_truncated_exception_traceback(exception),
             }
-            if exception is not None and self.config.log_exception
-            else None,
-        }
-        serialized_item = self.serialize(item)
-        self.write_deque.append(serialized_item)
+            get_sentry_event_id_async(lambda event_id: item["exception"].update({"sentry_event_id": event_id}))
+        self.write_deque.append(item)
 
     def write_to_file(self) -> None:
         if not self.enabled or len(self.write_deque) == 0:
@@ -248,7 +248,7 @@ class RequestLogger:
             while True:
                 try:
                     item = self.write_deque.popleft()
-                    self.file.write_line(item)
+                    self.file.write_line(self.serialize(item))
                 except IndexError:
                     break
 

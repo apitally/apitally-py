@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import sys
 import threading
 import traceback
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set
+
+from apitally.client.sentry import get_sentry_event_id_async
 
 
 MAX_EXCEPTION_MSG_LENGTH = 2048
@@ -44,38 +45,7 @@ class ServerErrorCounter:
                 traceback=get_truncated_exception_traceback(exception),
             )
             self.error_counts[server_error] += 1
-            self.capture_sentry_event_id(server_error)
-
-    def capture_sentry_event_id(self, server_error: ServerError) -> None:
-        try:
-            from sentry_sdk.hub import Hub
-            from sentry_sdk.scope import Scope
-        except ImportError:
-            return  # pragma: no cover
-        if not hasattr(Scope, "get_isolation_scope") or not hasattr(Scope, "_last_event_id"):
-            # sentry-sdk < 2.2.0 is not supported
-            return  # pragma: no cover
-        if Hub.current.client is None:
-            return  # sentry-sdk not initialized
-
-        scope = Scope.get_isolation_scope()
-        if event_id := scope._last_event_id:
-            self.sentry_event_ids[server_error] = event_id
-            return
-
-        async def _wait_for_sentry_event_id(scope: Scope) -> None:
-            i = 0
-            while not (event_id := scope._last_event_id) and i < 100:
-                i += 1
-                await asyncio.sleep(0.001)
-            if event_id:
-                self.sentry_event_ids[server_error] = event_id
-
-        with contextlib.suppress(RuntimeError):  # ignore no running loop
-            loop = asyncio.get_running_loop()
-            task = loop.create_task(_wait_for_sentry_event_id(scope))
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
+        get_sentry_event_id_async(lambda event_id: self.sentry_event_ids.update({server_error: event_id}))
 
     def get_and_reset_server_errors(self) -> List[Dict[str, Any]]:
         data: List[Dict[str, Any]] = []
