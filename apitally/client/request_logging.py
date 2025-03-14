@@ -14,6 +14,12 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
 from apitally.client.logging import get_logger
+from apitally.client.sentry import get_sentry_event_id_async
+from apitally.client.server_errors import (
+    get_exception_type,
+    get_truncated_exception_msg,
+    get_truncated_exception_traceback,
+)
 
 
 logger = get_logger(__name__)
@@ -88,6 +94,7 @@ class RequestLoggingConfig:
         log_request_body: Whether to log the request body (only if JSON or plain text)
         log_response_headers: Whether to log response header values
         log_response_body: Whether to log the response body (only if JSON or plain text)
+        log_exception: Whether to log unhandled exceptions in case of server errors
         mask_query_params: Query parameter names to mask in logs. Expects regular expressions.
         mask_headers: Header names to mask in logs. Expects regular expressions.
         mask_request_body_callback: Callback to mask the request body. Expects (method, path, body) and returns the masked body as bytes or None.
@@ -102,6 +109,7 @@ class RequestLoggingConfig:
     log_request_body: bool = False
     log_response_headers: bool = True
     log_response_body: bool = False
+    log_exception: bool = True
     mask_query_params: List[str] = field(default_factory=list)
     mask_headers: List[str] = field(default_factory=list)
     mask_request_body_callback: Optional[Callable[[RequestDict], Optional[bytes]]] = None
@@ -153,7 +161,7 @@ class RequestLogger:
         self.config = config or RequestLoggingConfig()
         self.enabled = self.config.enabled and _check_writable_fs()
         self.serialize = _get_json_serializer()
-        self.write_deque: deque[bytes] = deque([], MAX_REQUESTS_IN_DEQUE)
+        self.write_deque: deque[Dict[str, Any]] = deque([], MAX_REQUESTS_IN_DEQUE)
         self.file_deque: deque[TempGzipFile] = deque([])
         self.file: Optional[TempGzipFile] = None
         self.lock = threading.Lock()
@@ -163,7 +171,9 @@ class RequestLogger:
     def current_file_size(self) -> int:
         return self.file.size if self.file is not None else 0
 
-    def log_request(self, request: RequestDict, response: ResponseDict) -> None:
+    def log_request(
+        self, request: RequestDict, response: ResponseDict, exception: Optional[BaseException] = None
+    ) -> None:
         if not self.enabled or self.suspend_until is not None:
             return
         parsed_url = urlparse(request["url"])
@@ -215,13 +225,19 @@ class RequestLogger:
         request["headers"] = self._mask_headers(request["headers"]) if self.config.log_request_headers else []
         response["headers"] = self._mask_headers(response["headers"]) if self.config.log_response_headers else []
 
-        item = {
+        item: Dict[str, Any] = {
             "uuid": str(uuid4()),
             "request": _skip_empty_values(request),
             "response": _skip_empty_values(response),
         }
-        serialized_item = self.serialize(item)
-        self.write_deque.append(serialized_item)
+        if exception is not None and self.config.log_exception:
+            item["exception"] = {
+                "type": get_exception_type(exception),
+                "message": get_truncated_exception_msg(exception),
+                "traceback": get_truncated_exception_traceback(exception),
+            }
+            get_sentry_event_id_async(lambda event_id: item["exception"].update({"sentry_event_id": event_id}))
+        self.write_deque.append(item)
 
     def write_to_file(self) -> None:
         if not self.enabled or len(self.write_deque) == 0:
@@ -232,7 +248,7 @@ class RequestLogger:
             while True:
                 try:
                     item = self.write_deque.popleft()
-                    self.file.write_line(item)
+                    self.file.write_line(self.serialize(item))
                 except IndexError:
                     break
 

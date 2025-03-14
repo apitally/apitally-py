@@ -60,7 +60,7 @@ async def test_request_logger_end_to_end(
     request_logger: RequestLogger, request_dict: RequestDict, response_dict: ResponseDict
 ):
     for _ in range(3):
-        request_logger.log_request(request_dict, response_dict)
+        request_logger.log_request(request_dict, response_dict, RuntimeError("test"))
 
     request_logger.write_to_file()
     assert request_logger.current_file_size > 0
@@ -98,6 +98,8 @@ async def test_request_logger_end_to_end(
         assert item["response"]["size"] == response_dict["size"]
         assert base64.b64decode(item["request"]["body"]) == request_dict["body"]
         assert base64.b64decode(item["response"]["body"]) == response_dict["body"]
+        assert item["exception"]["type"] == "builtins.RuntimeError"
+        assert item["exception"]["message"] == "test"
 
 
 def test_request_log_exclusion(request_logger: RequestLogger, request_dict: RequestDict, response_dict: ResponseDict):
@@ -111,7 +113,7 @@ def test_request_log_exclusion(request_logger: RequestLogger, request_dict: Requ
 
     request_logger.log_request(request_dict, response_dict)
     assert len(request_logger.write_deque) == 1
-    item = json.loads(request_logger.write_deque[0])
+    item = request_logger.write_deque[0]
     assert item["request"]["url"] == "http://localhost:8000/test"
     assert "headers" not in item["request"]
     assert "body" not in item["request"]
@@ -160,12 +162,12 @@ def test_request_log_masking(request_logger: RequestLogger, request_dict: Reques
     request_dict["headers"] += [("Authorization", "Bearer 123456"), ("X-Test", "123456")]
     request_logger.log_request(request_dict, response_dict)
 
-    item = json.loads(request_logger.write_deque[0])
+    item = request_logger.write_deque[0]
     assert item["request"]["url"] == f"http://localhost/test?secret={MASKED_QUOTED}&test={MASKED_QUOTED}&other=abcdef"
-    assert ["Authorization", "Bearer 123456"] not in item["request"]["headers"]
-    assert ["Authorization", MASKED] in item["request"]["headers"]
-    assert ["X-Test", "123456"] not in item["request"]["headers"]
-    assert ["X-Test", MASKED] in item["request"]["headers"]
-    assert ["Accept", "text/plain"] in item["request"]["headers"]
-    assert item["request"]["body"] == base64.b64encode(BODY_MASKED).decode()
-    assert item["response"]["body"] == base64.b64encode(BODY_MASKED).decode()
+    assert ("Authorization", "Bearer 123456") not in item["request"]["headers"]
+    assert ("Authorization", MASKED) in item["request"]["headers"]
+    assert ("X-Test", "123456") not in item["request"]["headers"]
+    assert ("X-Test", MASKED) in item["request"]["headers"]
+    assert ("Accept", "text/plain") in item["request"]["headers"]
+    assert item["request"]["body"] == BODY_MASKED
+    assert item["response"]["body"] == BODY_MASKED
