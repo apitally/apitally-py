@@ -1,6 +1,8 @@
+import gzip
+import json
 import sys
 from importlib.metadata import PackageNotFoundError, version
-from typing import Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 
 def parse_int(x: Union[str, int, None]) -> Optional[int]:
@@ -9,6 +11,18 @@ def parse_int(x: Union[str, int, None]) -> Optional[int]:
     try:
         return int(x)
     except ValueError:
+        return None
+
+
+def try_json_loads(s: bytes, encoding: Optional[str] = None) -> Any:
+    if encoding is not None and encoding.lower() == "gzip":
+        try:
+            s = gzip.decompress(s)
+        except Exception:
+            pass
+    try:
+        return json.loads(s)
+    except Exception:
         return None
 
 

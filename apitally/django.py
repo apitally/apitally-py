@@ -22,7 +22,7 @@ from apitally.client.request_logging import (
     RequestLogger,
     RequestLoggingConfig,
 )
-from apitally.common import get_versions, parse_int
+from apitally.common import get_versions, parse_int, try_json_loads
 
 
 if TYPE_CHECKING:
@@ -173,16 +173,15 @@ class ApitallyMiddleware:
                     and content_type.startswith("application/json")
                 ):
                     try:
-                        with contextlib.suppress(json.JSONDecodeError):
-                            body = json.loads(response.content)
-                            if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
-                                # Log Django Ninja / Pydantic validation errors
-                                self.client.validation_error_counter.add_validation_errors(
-                                    consumer=consumer_identifier,
-                                    method=request.method,
-                                    path=path,
-                                    detail=body["detail"],
-                                )
+                        body = try_json_loads(response.content, encoding=response.get("Content-Encoding"))
+                        if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
+                            # Log Django Ninja / Pydantic validation errors
+                            self.client.validation_error_counter.add_validation_errors(
+                                consumer=consumer_identifier,
+                                method=request.method,
+                                path=path,
+                                detail=body["detail"],
+                            )
                     except Exception:  # pragma: no cover
                         logger.exception("Failed to log validation errors")
 
