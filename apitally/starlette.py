@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import json
 import time
 from typing import Any, Callable, Dict, List, Optional, Union
 from warnings import warn
@@ -23,7 +21,7 @@ from apitally.client.request_logging import (
     RequestLogger,
     RequestLoggingConfig,
 )
-from apitally.common import get_versions, parse_int
+from apitally.common import get_versions, parse_int, try_json_loads
 
 
 __all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig"]
@@ -191,16 +189,15 @@ class ApitallyMiddleware:
                 response_size=response_size,
             )
             if response_status == 422 and response_body and response_headers.get("Content-Type") == "application/json":
-                with contextlib.suppress(json.JSONDecodeError):
-                    body = json.loads(response_body)
-                    if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
-                        # Log FastAPI / Pydantic validation errors
-                        self.client.validation_error_counter.add_validation_errors(
-                            consumer=consumer_identifier,
-                            method=request.method,
-                            path=path,
-                            detail=body["detail"],
-                        )
+                body = try_json_loads(response_body, encoding=response_headers.get("Content-Encoding"))
+                if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
+                    # Log FastAPI / Pydantic validation errors
+                    self.client.validation_error_counter.add_validation_errors(
+                        consumer=consumer_identifier,
+                        method=request.method,
+                        path=path,
+                        detail=body["detail"],
+                    )
             if response_status == 500 and exception is not None:
                 self.client.server_error_counter.add_server_error(
                     consumer=consumer_identifier,

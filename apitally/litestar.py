@@ -1,4 +1,3 @@
-import contextlib
 import json
 import time
 from typing import Callable, Dict, List, Optional, Union
@@ -22,7 +21,7 @@ from apitally.client.request_logging import (
     RequestLogger,
     RequestLoggingConfig,
 )
-from apitally.common import get_versions, parse_int
+from apitally.common import get_versions, parse_int, try_json_loads
 
 
 __all__ = ["ApitallyPlugin", "ApitallyConsumer", "RequestLoggingConfig"]
@@ -199,30 +198,29 @@ class ApitallyPlugin(InitPluginProtocol):
             )
 
             if response_status == 400 and response_body and len(response_body) < 4096:
-                with contextlib.suppress(json.JSONDecodeError):
-                    parsed_body = json.loads(response_body)
-                    if (
-                        isinstance(parsed_body, dict)
-                        and "detail" in parsed_body
-                        and isinstance(parsed_body["detail"], str)
-                        and "validation" in parsed_body["detail"].lower()
-                        and "extra" in parsed_body
-                        and isinstance(parsed_body["extra"], list)
-                    ):
-                        self.client.validation_error_counter.add_validation_errors(
-                            consumer=consumer_identifier,
-                            method=request.method,
-                            path=path,
-                            detail=[
-                                {
-                                    "loc": [error.get("source", "body")] + error["key"].split("."),
-                                    "msg": error["message"],
-                                    "type": "",
-                                }
-                                for error in parsed_body["extra"]
-                                if "key" in error and "message" in error
-                            ],
-                        )
+                body = try_json_loads(response_body, encoding=response_headers.get("Content-Encoding"))
+                if (
+                    isinstance(body, dict)
+                    and "detail" in body
+                    and isinstance(body["detail"], str)
+                    and "validation" in body["detail"].lower()
+                    and "extra" in body
+                    and isinstance(body["extra"], list)
+                ):
+                    self.client.validation_error_counter.add_validation_errors(
+                        consumer=consumer_identifier,
+                        method=request.method,
+                        path=path,
+                        detail=[
+                            {
+                                "loc": [error.get("source", "body")] + error["key"].split("."),
+                                "msg": error["message"],
+                                "type": "",
+                            }
+                            for error in body["extra"]
+                            if "key" in error and "message" in error
+                        ],
+                    )
 
             if response_status == 500 and "exception" in request.state:
                 self.client.server_error_counter.add_server_error(
