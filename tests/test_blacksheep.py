@@ -28,15 +28,15 @@ async def app(module_mocker: MockerFixture) -> Application:
 
 
 def get_app() -> Application:
-    from blacksheep import Router, StreamedContent, text
+    from blacksheep import StreamedContent, get, post, text
 
     from apitally.blacksheep import ApitallyConsumer, RequestLoggingConfig, use_apitally
 
     def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
         return ApitallyConsumer("test", name="Test")
 
-    router = Router(prefix="/api")
-    app = Application(show_error_details=True, router=router)
+    app = Application(show_error_details=True)
+
     use_apitally(
         app,
         client_id=CLIENT_ID,
@@ -49,24 +49,24 @@ def get_app() -> Application:
         identify_consumer_callback=identify_consumer,
     )
 
-    @router.get("/foo")
+    @get("/api/foo")
     def foo() -> Response:
         return text("foo")
 
-    @router.get("/foo/{bar}")
+    @get("/api/foo/{bar}")
     def foo_bar(bar: str) -> Response:
         return text(f"foo: {bar}")
 
-    @router.post("/bar")
+    @post("/api/bar")
     async def bar(request: Request) -> Response:
         body = await request.text()
         return text("bar: " + body)
 
-    @router.post("/baz")
+    @post("/api/baz")
     def baz():
         raise ValueError("baz")
 
-    @router.get("/stream")
+    @get("/api/stream")
     async def stream() -> Response:
         async def stream_response():
             yield b"foo"
