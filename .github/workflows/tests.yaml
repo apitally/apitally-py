@@ -70,8 +70,9 @@ jobs:
           - blacksheep
           - blacksheep==2.2.0
           - blacksheep==2.1.0
-          - blacksheep==2.0.8
         exclude:
+          - python: "3.8"
+            deps: blacksheep
           - python: "3.8"
             deps: blacksheep==2.2.0
           - python: "3.8"
