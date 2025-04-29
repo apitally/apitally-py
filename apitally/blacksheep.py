@@ -119,13 +119,14 @@ class ApitallyMiddleware:
             consumer_identifier = consumer.identifier if consumer else None
             self.client.consumer_registry.add_or_update_consumer(consumer)
 
-            response_status = response.status if response else 500
             route_pattern = getattr(request, "_route_pattern", None)
             request_size = parse_int(request.get_first_header(b"Content-Length"))
-            response_size = parse_int(response.get_first_header(b"Content-Length")) if response else None
             request_content_type = (request.content_type() or b"").decode()
-            response_content_type = (response.content_type() or b"").decode() if response else None
             request_body = b""
+
+            response_status = response.status if response else 500
+            response_size: Optional[int] = None
+            response_headers = Headers()
             response_body = b""
 
             if self.capture_request_body and RequestLogger.is_supported_content_type(request_content_type):
@@ -136,17 +137,27 @@ class ApitallyMiddleware:
                     if request_size is None:
                         request_size = len(request_body)
 
-            if (
-                response is not None
-                and self.capture_response_body
-                and RequestLogger.is_supported_content_type(response_content_type)
-            ):
-                if response_size is not None and response_size > MAX_BODY_SIZE:
-                    response_body = BODY_TOO_LARGE
-                else:
-                    response_body = await response.read() or b""
-                    if response_size is None:
-                        response_size = len(response_body)
+            if response is not None:
+                response_size = (
+                    response.content.length
+                    if response.content
+                    else parse_int(response.get_first_header(b"Content-Length"))
+                )
+                response_content_type = (response.content_type() or b"").decode()
+
+                response_headers = response.headers.clone()
+                if not response_headers.contains(b"Content-Type") and response.content:
+                    response_headers.set(b"Content-Type", response.content.type)
+                if not response_headers.contains(b"Content-Length") and response.content:
+                    response_headers.set(b"Content-Length", str(response.content.length).encode())
+
+                if self.capture_response_body and RequestLogger.is_supported_content_type(response_content_type):
+                    if response_size is not None and response_size > MAX_BODY_SIZE:
+                        response_body = BODY_TOO_LARGE
+                    else:
+                        response_body = await response.read() or b""
+                        if response_size is None:
+                            response_size = len(response_body)
 
             if route_pattern and request.method.upper() != "OPTIONS":
                 self.client.request_counter.add_request(
@@ -182,7 +193,7 @@ class ApitallyMiddleware:
                     response={
                         "status_code": response_status,
                         "response_time": response_time,
-                        "headers": _transform_headers(response.headers) if response else [],
+                        "headers": _transform_headers(response_headers),
                         "size": response_size,
                         "body": response_body,
                     },
