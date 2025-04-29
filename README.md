@@ -185,6 +185,7 @@ from apitally.blacksheep import use_apitally
 
 app = Application()
 use_apitally(
+    app,
     client_id="your-client-id",
     env="dev",  # or "prod" etc.
 )
