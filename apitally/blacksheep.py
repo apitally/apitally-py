@@ -3,8 +3,7 @@ import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
 from blacksheep import Application, Headers, Request, Response
-from blacksheep.server.openapi.v3 import OpenAPIHandler
-from openapidocs.v3 import Info, Operation  # type: ignore
+from blacksheep.server.openapi.v3 import Info, OpenAPIHandler, Operation
 
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
