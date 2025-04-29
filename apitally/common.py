@@ -5,7 +5,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Dict, Optional, Union
 
 
-def parse_int(x: Union[str, int, None]) -> Optional[int]:
+def parse_int(x: Union[str, bytes, int, None]) -> Optional[int]:
     if x is None:
         return None
     try:
