@@ -4,6 +4,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
 from blacksheep import Application, Headers, Request, Response
 from blacksheep.server.openapi.v3 import Info, OpenAPIHandler, Operation
+from blacksheep.server.routing import RouteMatch
 
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
@@ -27,6 +28,16 @@ def use_apitally(
     app_version: Optional[str] = None,
     identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
 ) -> None:
+    original_get_match = app.router.get_match
+
+    def _wrapped_router_get_match(request: Request) -> Optional[RouteMatch]:
+        match = original_get_match(request)
+        if match is not None:
+            setattr(request, "_route_pattern", match.pattern.decode())
+        return match
+
+    app.router.get_match = _wrapped_router_get_match  # type: ignore[assignment,method-assign]
+
     middleware = ApitallyMiddleware(
         app,
         client_id,
@@ -72,10 +83,7 @@ class ApitallyMiddleware:
 
     async def _delayed_set_startup_data(self, app_version: Optional[str] = None) -> None:
         await asyncio.sleep(1.0)  # Short delay to allow app routes to be registered first
-        data: Dict[str, Any] = {}
-        data["paths"] = _get_paths(self.app)
-        data["versions"] = get_versions("blacksheep", app_version=app_version)
-        data["client"] = "python:blacksheep"
+        data = _get_startup_data(self.app, app_version=app_version)
         self.client.set_startup_data(data)
 
     async def on_stop(self, application: Application) -> None:
@@ -96,57 +104,108 @@ class ApitallyMiddleware:
 
         timestamp = time.time()
         start_time = time.perf_counter()
-        response = await handler(request)
-        response_time = time.perf_counter() - start_time
+        response: Optional[Response] = None
+        exception: Optional[BaseException] = None
 
-        consumer = self.get_consumer(request)
-        consumer_identifier = consumer.identifier if consumer else None
-        self.client.consumer_registry.add_or_update_consumer(consumer)
+        try:
+            response = await handler(request)
+        except BaseException as e:
+            exception = e
+            raise e from None
+        finally:
+            response_time = time.perf_counter() - start_time
 
-        request_size = parse_int(request.get_first_header(b"Content-Length"))
-        response_size = parse_int(response.get_first_header(b"Content-Length"))
+            consumer = self.get_consumer(request)
+            consumer_identifier = consumer.identifier if consumer else None
+            self.client.consumer_registry.add_or_update_consumer(consumer)
 
-        if request.method.upper() != "OPTIONS":
-            self.client.request_counter.add_request(
-                consumer=consumer_identifier,
-                method=request.method.upper(),
-                path=request.path,
-                status_code=response.status,
-                response_time=response_time,
-                request_size=request_size,
-                response_size=response_size,
-            )
-
-        if self.client.request_logger.enabled:
+            response_status = response.status if response else 500
+            route_pattern = getattr(request, "_route_pattern", None)
+            request_size = parse_int(request.get_first_header(b"Content-Length"))
+            response_size = parse_int(response.get_first_header(b"Content-Length")) if response else None
+            request_content_type = (request.content_type() or b"").decode()
+            response_content_type = (response.content_type() or b"").decode() if response else None
+            request_body = b""
             response_body = b""
-            if self.capture_response_body and RequestLogger.is_supported_content_type(response.content_type().decode()):
+
+            if self.capture_request_body and RequestLogger.is_supported_content_type(request_content_type):
+                if request_size is not None and request_size > MAX_BODY_SIZE:
+                    request_body = BODY_TOO_LARGE
+                else:
+                    request_body = await request.read() or b""
+                    if request_size is None:
+                        request_size = len(request_body)
+
+            if (
+                response is not None
+                and self.capture_response_body
+                and RequestLogger.is_supported_content_type(response_content_type)
+            ):
                 if response_size is not None and response_size > MAX_BODY_SIZE:
                     response_body = BODY_TOO_LARGE
                 else:
                     response_body = await response.read() or b""
+                    if response_size is None:
+                        response_size = len(response_body)
 
-            self.client.request_logger.log_request(
-                request={
-                    "timestamp": timestamp,
-                    "method": request.method.upper(),
-                    "path": request.path,
-                    "url": str(request.url),
-                    "headers": _transform_headers(request.headers),
-                    "size": request_size,
-                    "consumer": consumer_identifier,
-                    "body": b"",
-                },
-                response={
-                    "status_code": response.status,
-                    "response_time": response_time,
-                    "headers": _transform_headers(response.headers),
-                    "size": response_size,
-                    "body": response_body,
-                },
-                # exception=exception,
-            )
+            if route_pattern and request.method.upper() != "OPTIONS":
+                self.client.request_counter.add_request(
+                    consumer=consumer_identifier,
+                    method=request.method.upper(),
+                    path=route_pattern,
+                    status_code=response_status,
+                    response_time=response_time,
+                    request_size=request_size,
+                    response_size=response_size,
+                )
+
+                if response_status == 500 and exception is not None:
+                    self.client.server_error_counter.add_server_error(
+                        consumer=consumer_identifier,
+                        method=request.method.upper(),
+                        path=route_pattern,
+                        exception=exception,
+                    )
+
+            if self.client.request_logger.enabled:
+                self.client.request_logger.log_request(
+                    request={
+                        "timestamp": timestamp,
+                        "method": request.method.upper(),
+                        "path": route_pattern,
+                        "url": _get_full_url(request),
+                        "headers": _transform_headers(request.headers),
+                        "size": request_size,
+                        "consumer": consumer_identifier,
+                        "body": request_body,
+                    },
+                    response={
+                        "status_code": response_status,
+                        "response_time": response_time,
+                        "headers": _transform_headers(response.headers) if response else [],
+                        "size": response_size,
+                        "body": response_body,
+                    },
+                    exception=exception,
+                )
 
         return response
+
+
+def _get_full_url(request: Request) -> str:
+    return f"{request.scheme}://{request.host}/{str(request.url).lstrip('/')}"
+
+
+def _transform_headers(headers: Headers) -> List[Tuple[str, str]]:
+    return [(key.decode(), value.decode()) for key, value in headers.items()]
+
+
+def _get_startup_data(app: Application, app_version: Optional[str] = None) -> Dict[str, Any]:
+    return {
+        "paths": _get_paths(app),
+        "versions": get_versions("blacksheep", app_version=app_version),
+        "client": "python:blacksheep",
+    }
 
 
 def _get_paths(app: Application) -> List[Dict[str, str]]:
@@ -164,7 +223,3 @@ def _get_paths(app: Application) -> List[Dict[str, str]]:
                     item["description"] = operation.description
                 paths.append(item)
     return paths
-
-
-def _transform_headers(headers: Headers) -> List[Tuple[str, str]]:
-    return [(key.decode(), value.decode()) for key, value in headers.items()]
