@@ -21,7 +21,6 @@ async def app(module_mocker: MockerFixture) -> Application:
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.set_startup_data")
-    module_mocker.patch("apitally.blacksheep.ApitallyMiddleware.delayed_set_startup_data")
     app = get_app()
     await app.start()
     return app
@@ -46,6 +45,7 @@ def get_app() -> Application:
             log_request_body=True,
             log_response_body=True,
         ),
+        app_version="1.2.3",
         identify_consumer_callback=identify_consumer,
     )
 

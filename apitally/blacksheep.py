@@ -1,4 +1,3 @@
-import asyncio
 import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
@@ -60,15 +59,14 @@ class ApitallyMiddleware:
         identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
     ) -> None:
         self.app = app
+        self.app_version = app_version
         self.identify_consumer_callback = identify_consumer_callback
         self.client = ApitallyClient(
             client_id=client_id,
             env=env,
             request_logging_config=request_logging_config,
         )
-        self.client.start_sync_loop()
-        self._delayed_set_startup_data_task: Optional[asyncio.Task] = None
-        self.delayed_set_startup_data(app_version)
+        self.app.on_start += self.after_start
         self.app.on_stop += self.on_stop
 
         self.capture_request_body = (
@@ -78,13 +76,10 @@ class ApitallyMiddleware:
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
-    def delayed_set_startup_data(self, app_version: Optional[str] = None) -> None:
-        self._delayed_set_startup_data_task = asyncio.create_task(self._delayed_set_startup_data(app_version))
-
-    async def _delayed_set_startup_data(self, app_version: Optional[str] = None) -> None:
-        await asyncio.sleep(1.0)  # Short delay to allow app routes to be registered first
-        data = _get_startup_data(self.app, app_version=app_version)
+    async def after_start(self, application: Application) -> None:
+        data = _get_startup_data(application, app_version=self.app_version)
         self.client.set_startup_data(data)
+        self.client.start_sync_loop()
 
     async def on_stop(self, application: Application) -> None:
         await self.client.handle_shutdown()
