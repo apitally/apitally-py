@@ -49,15 +49,17 @@ class RequestCounter:
             if request_size is not None:
                 with contextlib.suppress(ValueError):
                     request_size = int(request_size)
-                    request_size_kb_bin = request_size // 1000  # In KB, rounded down to nearest 1KB
-                    self.request_size_sums[request_info] += request_size
-                    self.request_sizes.setdefault(request_info, Counter())[request_size_kb_bin] += 1
+                    if request_size >= 0:
+                        request_size_kb_bin = request_size // 1000  # In KB, rounded down to nearest 1KB
+                        self.request_size_sums[request_info] += request_size
+                        self.request_sizes.setdefault(request_info, Counter())[request_size_kb_bin] += 1
             if response_size is not None:
                 with contextlib.suppress(ValueError):
                     response_size = int(response_size)
-                    response_size_kb_bin = response_size // 1000  # In KB, rounded down to nearest 1KB
-                    self.response_size_sums[request_info] += response_size
-                    self.response_sizes.setdefault(request_info, Counter())[response_size_kb_bin] += 1
+                    if response_size >= 0:
+                        response_size_kb_bin = response_size // 1000  # In KB, rounded down to nearest 1KB
+                        self.response_size_sums[request_info] += response_size
+                        self.response_sizes.setdefault(request_info, Counter())[response_size_kb_bin] += 1
 
     def get_and_reset_requests(self) -> List[Dict[str, Any]]:
         data: List[Dict[str, Any]] = []

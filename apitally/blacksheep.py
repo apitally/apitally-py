@@ -119,9 +119,9 @@ class ApitallyMiddleware:
             consumer_identifier = consumer.identifier if consumer else None
             self.client.consumer_registry.add_or_update_consumer(consumer)
 
-            route_pattern = getattr(request, "_route_pattern", None)
+            route_pattern: Optional[str] = getattr(request, "_route_pattern", None)
             request_size = parse_int(request.get_first_header(b"Content-Length"))
-            request_content_type = (request.content_type() or b"").decode()
+            request_content_type = (request.content_type() or b"").decode() or None
             request_body = b""
 
             response_status = response.status if response else 500
@@ -156,7 +156,7 @@ class ApitallyMiddleware:
                         response_body = BODY_TOO_LARGE
                     else:
                         response_body = await response.read() or b""
-                        if response_size is None:
+                        if response_size is None or response_size < 0:
                             response_size = len(response_body)
 
             if route_pattern and request.method.upper() != "OPTIONS":

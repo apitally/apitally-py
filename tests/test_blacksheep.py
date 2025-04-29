@@ -28,7 +28,7 @@ async def app(module_mocker: MockerFixture) -> Application:
 
 
 def get_app() -> Application:
-    from blacksheep import Router, text
+    from blacksheep import Router, StreamedContent, text
 
     from apitally.blacksheep import ApitallyConsumer, RequestLoggingConfig, use_apitally
 
@@ -36,7 +36,7 @@ def get_app() -> Application:
         return ApitallyConsumer("test", name="Test")
 
     router = Router(prefix="/api")
-    app = Application(router=router)
+    app = Application(show_error_details=True, router=router)
     use_apitally(
         app,
         client_id=CLIENT_ID,
@@ -65,6 +65,14 @@ def get_app() -> Application:
     @router.post("/baz")
     def baz():
         raise ValueError("baz")
+
+    @router.get("/stream")
+    async def stream() -> Response:
+        async def stream_response():
+            yield b"foo"
+            yield b"bar"
+
+        return Response(200, content=StreamedContent(b"text/plain", stream_response))
 
     return app
 
@@ -96,6 +104,12 @@ async def test_middleware_requests_ok(app: Application, mocker: MockerFixture):
     assert mock.call_count == 3
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "POST"
+
+    response = await client.get("/api/stream")
+    assert response.status == 200
+    assert mock.call_count == 4
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["response_size"] == 6
 
 
 async def test_middleware_requests_error(app: Application, mocker: MockerFixture):
@@ -178,11 +192,12 @@ def test_get_startup_data(app: Application, mocker: MockerFixture):
     mocker.patch("apitally.blacksheep.ApitallyClient")
 
     data = _get_startup_data(app, app_version="1.2.3")
-    assert len(data["paths"]) == 4
+    assert len(data["paths"]) == 5
     assert {"method": "GET", "path": "/api/foo"} in data["paths"]
     assert {"method": "GET", "path": "/api/foo/{bar}"} in data["paths"]
     assert {"method": "POST", "path": "/api/bar"} in data["paths"]
     assert {"method": "POST", "path": "/api/baz"} in data["paths"]
+    assert {"method": "GET", "path": "/api/stream"} in data["paths"]
     assert data["versions"]["blacksheep"]
     assert data["versions"]["app"] == "1.2.3"
     assert data["client"] == "python:blacksheep"

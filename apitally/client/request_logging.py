@@ -225,6 +225,11 @@ class RequestLogger:
         request["headers"] = self._mask_headers(request["headers"]) if self.config.log_request_headers else []
         response["headers"] = self._mask_headers(response["headers"]) if self.config.log_response_headers else []
 
+        if request["size"] is not None and request["size"] < 0:
+            request["size"] = None
+        if response["size"] is not None and response["size"] < 0:
+            response["size"] = None
+
         item: Dict[str, Any] = {
             "uuid": str(uuid4()),
             "request": _skip_empty_values(request),
