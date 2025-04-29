@@ -1,9 +1,7 @@
 [project]
 name = "apitally"
-description = "Simple API monitoring & analytics for REST APIs built with FastAPI, Flask, Django, Starlette and Litestar."
-authors = [
-    { name = "Apitally", email = "hello@apitally.io" },
-]
+description = "Simple API monitoring & analytics for REST APIs built with FastAPI, Flask, Django, Starlette, Litestar and BlackSheep."
+authors = [{ name = "Apitally", email = "hello@apitally.io" }]
 readme = "README.md"
 license = { text = "MIT License" }
 classifiers = [
@@ -23,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Internet",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Internet :: WWW/HTTP :: WSGI :: Middleware",
@@ -31,12 +30,11 @@ classifiers = [
     "Typing :: Typed",
 ]
 requires-python = ">=3.8,<4.0"
-dependencies = [
-    "backoff>=2.0.0",
-]
+dependencies = ["backoff>=2.0.0"]
 dynamic = ["version"]
 
 [project.optional-dependencies]
+blacksheep = ["blacksheep>=2", "httpx>=0.22.0"]
 django_ninja = [
     "django>=2.2,<5; python_version<'3.10'",
     "django>=2.2; python_version>='3.10'",
@@ -47,30 +45,15 @@ django_rest_framework = [
     "django>=2.2,<5; python_version<'3.10'",
     "django>=2.2; python_version>='3.10'",
     "djangorestframework>=3.10.0",
-    "uritemplate>=3.0.0", # required for schema generation
-    "inflection>=0.5.1", # required for schema generation
+    "uritemplate>=3.0.0",                    # required for schema generation
+    "inflection>=0.5.1",                     # required for schema generation
     "requests>=2.26.0",
 ]
-fastapi = [
-    "fastapi>=0.88.0",
-    "starlette>=0.22.0,<1.0.0",
-    "httpx>=0.22.0",
-]
-flask = [
-    "flask>=2.0.0",
-    "requests>=2.26.0",
-]
-litestar = [
-    "litestar>=2.0.0",
-    "httpx>=0.22.0",
-]
-sentry = [
-    "sentry-sdk>=2.2.0",
-]
-starlette = [
-    "starlette>=0.21.0,<1.0.0",
-    "httpx>=0.22.0",
-]
+fastapi = ["fastapi>=0.88.0", "starlette>=0.22.0,<1.0.0", "httpx>=0.22.0"]
+flask = ["flask>=2.0.0", "requests>=2.26.0"]
+litestar = ["litestar>=2.0.0", "httpx>=0.22.0"]
+sentry = ["sentry-sdk>=2.2.0"]
+starlette = ["starlette>=0.21.0,<1.0.0", "httpx>=0.22.0"]
 
 [project.urls]
 Homepage = "https://apitally.io"

@@ -67,7 +67,16 @@ jobs:
           - litestar==2.6.1
           - litestar==2.3.0
           - litestar==2.0.1
+          - blacksheep
+          - blacksheep==2.2.0
+          - blacksheep==2.1.0
         exclude:
+          - python: "3.8"
+            deps: blacksheep
+          - python: "3.8"
+            deps: blacksheep==2.2.0
+          - python: "3.8"
+            deps: blacksheep==2.1.0
           - python: "3.12"
             deps: fastapi==0.100.1 starlette
           - python: "3.12"

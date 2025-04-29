@@ -31,6 +31,7 @@ This SDK for Apitally currently supports the following Python web frameworks:
 - [Flask](https://docs.apitally.io/frameworks/flask)
 - [Starlette](https://docs.apitally.io/frameworks/starlette)
 - [Litestar](https://docs.apitally.io/frameworks/litestar)
+- [BlackSheep](https://docs.apitally.io/frameworks/blacksheep)
 
 Learn more about Apitally on our 🌎 [website](https://apitally.io) or check out
 the 📚 [documentation](https://docs.apitally.io).
@@ -169,6 +170,24 @@ app = Litestar(
             env="dev",  # or "prod" etc.
         ),
     ]
+)
+```
+
+### BlackSheep
+
+This is an example of how to add the Apitally middleware to a BlackSheep
+application. For further instructions, see our
+[setup guide for BlackSheep](https://docs.apitally.io/frameworks/blacksheep).
+
+```python
+from blacksheep import Application
+from apitally.blacksheep import use_apitally
+
+app = Application()
+use_apitally(
+    app,
+    client_id="your-client-id",
+    env="dev",  # or "prod" etc.
 )
 ```
 
