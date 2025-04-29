@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from importlib.util import find_spec
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 import pytest
 from pytest_mock import MockerFixture
@@ -9,14 +9,11 @@ from pytest_mock import MockerFixture
 from .constants import CLIENT_ID, ENV
 
 
-if find_spec("starlette") is None:
-    pytest.skip("starlette is not available", allow_module_level=True)
+if find_spec("blacksheep") is None:
+    pytest.skip("blacksheep is not available", allow_module_level=True)
 else:
     # Need to import these at package level to avoid NameError in BlackSheep
-    from blacksheep import Request, Response
-
-if TYPE_CHECKING:
-    from blacksheep import Application
+    from blacksheep import Application, Request, Response
 
 
 @pytest.fixture(scope="module")
@@ -31,7 +28,7 @@ async def app(module_mocker: MockerFixture) -> Application:
 
 
 def get_app() -> Application:
-    from blacksheep import Application, Router, text
+    from blacksheep import Router, text
 
     from apitally.blacksheep import ApitallyConsumer, RequestLoggingConfig, use_apitally
 
