@@ -28,7 +28,6 @@ if TYPE_CHECKING:
 async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlette:
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.set_startup_data")
     if request.param == "starlette":
         return get_starlette_app()
     elif request.param == "fastapi":

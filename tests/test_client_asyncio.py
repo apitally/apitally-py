@@ -156,13 +156,14 @@ async def test_send_log_data(client: ApitallyClient, httpx_mock: HTTPXMock):
     assert len(client.request_logger.file_deque) == 0
 
 
-async def test_set_startup_data(client: ApitallyClient, httpx_mock: HTTPXMock):
+async def test_send_startup_data(client: ApitallyClient, httpx_mock: HTTPXMock):
     from apitally.client.client_base import HUB_BASE_URL, HUB_VERSION
 
     httpx_mock.add_response()
     data = {"paths": [], "client_version": "1.0.0", "starlette_version": "0.28.0", "python_version": "3.11.4"}
     client.set_startup_data(data)
-    await asyncio.sleep(0.01)
+    async with client.get_http_client() as http_client:
+        await client.send_startup_data(client=http_client)
 
     request = httpx_mock.get_request(url=f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/startup")
     assert request is not None

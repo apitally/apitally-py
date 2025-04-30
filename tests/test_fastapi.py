@@ -30,7 +30,6 @@ def app(module_mocker: MockerFixture) -> FastAPI:
 
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.set_startup_data")
 
     def identify_consumer(request: Request) -> Optional[str]:
         if consumer := request.query_params.get("consumer"):

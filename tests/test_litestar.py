@@ -37,7 +37,6 @@ async def app(module_mocker: MockerFixture) -> Litestar:
 
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.start_sync_loop")
-    module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.set_startup_data")
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.handle_shutdown", mocked_handle_shutdown)
 
     @get("/foo")
