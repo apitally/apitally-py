@@ -80,7 +80,7 @@ class ApitallyClient(ApitallyClientBase):
                 if (now - last_sync_time) >= self.sync_interval:
                     try:
                         with requests.Session() as session:
-                            if not self._startup_data_sent and last_sync_time > 0:  # not on first sync
+                            if not self._startup_data_sent:
                                 self.send_startup_data(session)
                             self.send_sync_data(session)
                             self.send_log_data(session)
@@ -105,8 +105,6 @@ class ApitallyClient(ApitallyClientBase):
     def set_startup_data(self, data: Dict[str, Any]) -> None:
         self._startup_data_sent = False
         self._startup_data = self.add_uuids_to_data(data)
-        with requests.Session() as session:
-            self.send_startup_data(session)
 
     def send_startup_data(self, session: requests.Session) -> None:
         if self._startup_data is not None:

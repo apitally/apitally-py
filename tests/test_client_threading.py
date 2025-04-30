@@ -141,12 +141,14 @@ def test_send_log_data(client: ApitallyClient, requests_mock: Mocker):
     assert len(client.request_logger.file_deque) == 0
 
 
-def test_set_startup_data(client: ApitallyClient, requests_mock: Mocker):
+def test_send_startup_data(client: ApitallyClient, requests_mock: Mocker):
     from apitally.client.client_base import HUB_BASE_URL, HUB_VERSION
 
     mock = requests_mock.register_uri("POST", f"{HUB_BASE_URL}/{HUB_VERSION}/{CLIENT_ID}/{ENV}/startup")
     data = {"paths": [], "client_version": "1.0.0", "starlette_version": "0.28.0", "python_version": "3.11.4"}
     client.set_startup_data(data)
+    with requests.Session() as session:
+        client.send_startup_data(session)
 
     assert len(mock.request_history) == 1
     request_data = mock.request_history[0].json()

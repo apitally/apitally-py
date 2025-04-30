@@ -51,7 +51,6 @@ class ApitallyMiddleware:
             request_logging_config=request_logging_config,
             proxy=proxy,
         )
-        self.client.start_sync_loop()
         self.delayed_set_startup_data(app_version, openapi_url)
 
         self.capture_request_body = (
@@ -73,6 +72,7 @@ class ApitallyMiddleware:
     def _delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         data = _get_startup_data(self.app, app_version, openapi_url)
         self.client.set_startup_data(data)
+        self.client.start_sync_loop()
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
         if not self.client.enabled:
