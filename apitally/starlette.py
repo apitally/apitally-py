@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import time
 from typing import Any, Callable, Dict, List, Optional, Union
 from warnings import warn
@@ -40,6 +39,8 @@ class ApitallyMiddleware:
         proxy: Optional[Union[str, Proxy]] = None,
     ) -> None:
         self.app = app
+        self.app_version = app_version
+        self.openapi_url = openapi_url
         self.identify_consumer_callback = identify_consumer_callback
         self.client = ApitallyClient(
             client_id=client_id,
@@ -47,10 +48,6 @@ class ApitallyMiddleware:
             request_logging_config=request_logging_config,
             proxy=proxy,
         )
-        self.client.start_sync_loop()
-        self._delayed_set_startup_data_task: Optional[asyncio.Task] = None
-        self.delayed_set_startup_data(app_version, openapi_url)
-        _register_shutdown_handler(app, self.client.handle_shutdown)
 
         self.capture_request_body = (
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_request_body
@@ -59,17 +56,13 @@ class ApitallyMiddleware:
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
-    def delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
-        self._delayed_set_startup_data_task = asyncio.create_task(
-            self._delayed_set_startup_data(app_version, openapi_url)
-        )
+        _register_event_handler(app, "startup", self.on_startup)
+        _register_event_handler(app, "shutdown", self.client.handle_shutdown)
 
-    async def _delayed_set_startup_data(
-        self, app_version: Optional[str] = None, openapi_url: Optional[str] = None
-    ) -> None:
-        await asyncio.sleep(1.0)  # Short delay to allow app routes to be registered first
-        data = _get_startup_data(self.app, app_version, openapi_url)
+    def on_startup(self) -> None:
+        data = _get_startup_data(self.app, app_version=self.app_version, openapi_url=self.openapi_url)
         self.client.set_startup_data(data)
+        self.client.start_sync_loop()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if self.client.enabled and scope["type"] == "http" and scope["method"] != "OPTIONS":
@@ -296,8 +289,8 @@ def _get_routes(app: Union[ASGIApp, Router]) -> List[BaseRoute]:
     return []  # pragma: no cover
 
 
-def _register_shutdown_handler(app: Union[ASGIApp, Router], shutdown_handler: Callable[[], Any]) -> None:
+def _register_event_handler(app: Union[ASGIApp, Router], event: str, handler: Callable[[], Any]) -> None:
     if isinstance(app, Router):
-        app.add_event_handler("shutdown", shutdown_handler)
+        app.add_event_handler(event, handler)
     elif hasattr(app, "app"):
-        _register_shutdown_handler(app.app, shutdown_handler)
+        _register_event_handler(app.app, event, handler)
