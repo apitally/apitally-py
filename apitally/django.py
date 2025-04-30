@@ -75,13 +75,13 @@ class ApitallyMiddleware:
             request_logging_config=self.config.request_logging_config,
             proxy=self.config.proxy,
         )
-        self.client.start_sync_loop()
         self.client.set_startup_data(
             _get_startup_data(
                 app_version=self.config.app_version,
                 urlconfs=self.config.urlconfs,
             )
         )
+        self.client.start_sync_loop()
 
         self.capture_request_body = (
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_request_body

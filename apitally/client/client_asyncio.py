@@ -41,7 +41,6 @@ class ApitallyClient(ApitallyClientBase):
         self._stop_sync_loop = False
         self._sync_loop_task: Optional[asyncio.Task] = None
         self._sync_data_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
-        self._set_startup_data_task: Optional[asyncio.Task] = None
 
     def get_http_client(self) -> httpx.AsyncClient:
         if httpx.__version__ >= "0.26.0":
@@ -67,7 +66,7 @@ class ApitallyClient(ApitallyClientBase):
                 try:
                     async with self.get_http_client() as client:
                         tasks = [self.send_sync_data(client), self.send_log_data(client)]
-                        if not self._startup_data_sent and last_sync_time > 0:  # not on first sync
+                        if not self._startup_data_sent:
                             tasks.append(self.send_startup_data(client))
                         await asyncio.gather(*tasks)
                     last_sync_time = now
@@ -92,11 +91,6 @@ class ApitallyClient(ApitallyClientBase):
     def set_startup_data(self, data: Dict[str, Any]) -> None:
         self._startup_data_sent = False
         self._startup_data = self.add_uuids_to_data(data)
-        self._set_startup_data_task = asyncio.create_task(self._set_startup_data())
-
-    async def _set_startup_data(self) -> None:
-        async with self.get_http_client() as client:
-            await self.send_startup_data(client)
 
     async def send_startup_data(self, client: httpx.AsyncClient) -> None:
         if self._startup_data is not None:
