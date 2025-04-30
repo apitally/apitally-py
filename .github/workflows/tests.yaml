@@ -48,10 +48,7 @@ jobs:
       matrix:
         python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
         deps:
-          - starlette
           - fastapi starlette
-          - fastapi==0.109.0 starlette
-          - fastapi==0.100.1 starlette
           - fastapi==0.88.0 starlette
           - flask
           - flask==2.3.*
@@ -61,14 +58,10 @@ jobs:
           - djangorestframework==3.12.* django==3.2.* uritemplate
           - djangorestframework==3.10.* django==2.2.* uritemplate
           - django-ninja django
-          - django-ninja==0.22.* django
           - django-ninja==0.18.0 django
           - litestar
-          - litestar==2.6.1
-          - litestar==2.3.0
           - litestar==2.0.1
           - blacksheep
-          - blacksheep==2.2.0
           - blacksheep==2.1.0
         exclude:
           - python: "3.8"
