@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlette:
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.start_sync_loop")
+    module_mocker.patch("apitally.client.client_asyncio.ApitallyClient.handle_shutdown")
     if request.param == "starlette":
         return get_starlette_app()
     elif request.param == "fastapi":
@@ -182,35 +183,35 @@ def test_middleware_requests_ok(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
     mock = mocker.patch("apitally.client.requests.RequestCounter.add_request")
-    client = TestClient(app)
 
-    response = client.get("/api/foo")
-    assert response.status_code == 200
-    mock.assert_called_once()
-    assert mock.call_args is not None
-    assert mock.call_args.kwargs["consumer"] == "test"
-    assert mock.call_args.kwargs["method"] == "GET"
-    assert mock.call_args.kwargs["path"] == "/api/foo"
-    assert mock.call_args.kwargs["status_code"] == 200
-    assert mock.call_args.kwargs["response_time"] > 0
+    with TestClient(app) as client:
+        response = client.get("/api/foo")
+        assert response.status_code == 200
+        mock.assert_called_once()
+        assert mock.call_args is not None
+        assert mock.call_args.kwargs["consumer"] == "test"
+        assert mock.call_args.kwargs["method"] == "GET"
+        assert mock.call_args.kwargs["path"] == "/api/foo"
+        assert mock.call_args.kwargs["status_code"] == 200
+        assert mock.call_args.kwargs["response_time"] > 0
 
-    response = client.get("/api/foo/123")
-    assert response.status_code == 200
-    assert mock.call_count == 2
-    assert mock.call_args is not None
-    assert mock.call_args.kwargs["path"] == "/api/foo/{bar}"
+        response = client.get("/api/foo/123")
+        assert response.status_code == 200
+        assert mock.call_count == 2
+        assert mock.call_args is not None
+        assert mock.call_args.kwargs["path"] == "/api/foo/{bar}"
 
-    response = client.post("/api/bar")
-    assert response.status_code == 200
-    assert mock.call_count == 3
-    assert mock.call_args is not None
-    assert mock.call_args.kwargs["method"] == "POST"
+        response = client.post("/api/bar")
+        assert response.status_code == 200
+        assert mock.call_count == 3
+        assert mock.call_args is not None
+        assert mock.call_args.kwargs["method"] == "POST"
 
-    response = client.get("/stream")
-    assert response.status_code == 200
-    assert mock.call_count == 4
-    assert mock.call_args is not None
-    assert mock.call_args.kwargs["response_size"] == 6
+        response = client.get("/stream")
+        assert response.status_code == 200
+        assert mock.call_count == 4
+        assert mock.call_args is not None
+        assert mock.call_args.kwargs["response_size"] == 6
 
 
 def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
@@ -218,60 +219,60 @@ def test_middleware_requests_error(app: Starlette, mocker: MockerFixture):
 
     mock1 = mocker.patch("apitally.client.requests.RequestCounter.add_request")
     mock2 = mocker.patch("apitally.client.server_errors.ServerErrorCounter.add_server_error")
-    client = TestClient(app, raise_server_exceptions=False)
 
-    response = client.post("/api/baz")
-    assert response.status_code == 500
-    mock1.assert_called_once()
-    assert mock1.call_args is not None
-    assert mock1.call_args.kwargs["method"] == "POST"
-    assert mock1.call_args.kwargs["path"] == "/api/baz"
-    assert mock1.call_args.kwargs["status_code"] == 500
-    assert mock1.call_args.kwargs["response_time"] > 0
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/api/baz")
+        assert response.status_code == 500
+        mock1.assert_called_once()
+        assert mock1.call_args is not None
+        assert mock1.call_args.kwargs["method"] == "POST"
+        assert mock1.call_args.kwargs["path"] == "/api/baz"
+        assert mock1.call_args.kwargs["status_code"] == 500
+        assert mock1.call_args.kwargs["response_time"] > 0
 
-    mock2.assert_called_once()
-    assert mock2.call_args is not None
-    exception = mock2.call_args.kwargs["exception"]
-    assert isinstance(exception, ValueError)
+        mock2.assert_called_once()
+        assert mock2.call_args is not None
+        exception = mock2.call_args.kwargs["exception"]
+        assert isinstance(exception, ValueError)
 
-    # Throws a ValueError in a background task, but returns 200
-    response = client.post("/test/task")
-    assert response.status_code == 200
-    assert mock1.call_count == 2
-    assert mock1.call_args is not None
-    assert mock1.call_args.kwargs["status_code"] == 200
-    mock2.assert_called_once()  # Not called again
+        # Throws a ValueError in a background task, but returns 200
+        response = client.post("/test/task")
+        assert response.status_code == 200
+        assert mock1.call_count == 2
+        assert mock1.call_args is not None
+        assert mock1.call_args.kwargs["status_code"] == 200
+        mock2.assert_called_once()  # Not called again
 
 
 def test_middleware_requests_unhandled(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
     mock = mocker.patch("apitally.client.requests.RequestCounter.add_request")
-    client = TestClient(app)
 
-    response = client.post("/xxx")
-    assert response.status_code == 404
-    mock.assert_not_called()
+    with TestClient(app) as client:
+        response = client.post("/xxx")
+        assert response.status_code == 404
+        mock.assert_not_called()
 
 
 def test_middleware_validation_error(app: Starlette, mocker: MockerFixture):
     from starlette.testclient import TestClient
 
     mock = mocker.patch("apitally.client.validation_errors.ValidationErrorCounter.add_validation_errors")
-    client = TestClient(app)
 
-    # Validation error as foo must be an integer
-    response = client.get("/api/val?foo=bar")
-    assert response.status_code == 422
+    with TestClient(app) as client:
+        # Validation error as foo must be an integer
+        response = client.get("/api/val?foo=bar")
+        assert response.status_code == 422
 
-    # FastAPI only
-    if response.headers["Content-Type"] == "application/json":
-        mock.assert_called_once()
-        assert mock.call_args is not None
-        assert mock.call_args.kwargs["method"] == "GET"
-        assert mock.call_args.kwargs["path"] == "/api/val"
-        assert len(mock.call_args.kwargs["detail"]) == 1
-        assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
+        # FastAPI only
+        if response.headers["Content-Type"] == "application/json":
+            mock.assert_called_once()
+            assert mock.call_args is not None
+            assert mock.call_args.kwargs["method"] == "GET"
+            assert mock.call_args.kwargs["path"] == "/api/val"
+            assert len(mock.call_args.kwargs["detail"]) == 1
+            assert mock.call_args.kwargs["detail"][0]["loc"] == ["query", "foo"]
 
 
 def test_middleware_request_logging(app: Starlette, mocker: MockerFixture):
@@ -280,40 +281,40 @@ def test_middleware_request_logging(app: Starlette, mocker: MockerFixture):
     from apitally.client.request_logging import BODY_TOO_LARGE
 
     mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
-    client = TestClient(app)
 
-    response = client.get("/api/foo/123?foo=bar", headers={"Test-Header": "test"})
-    assert response.status_code == 200
-    mock.assert_called_once()
-    assert mock.call_args is not None
-    assert mock.call_args.kwargs["request"]["method"] == "GET"
-    assert mock.call_args.kwargs["request"]["path"] == "/api/foo/{bar}"
-    assert mock.call_args.kwargs["request"]["url"] == "http://testserver/api/foo/123?foo=bar"
-    assert ("test-header", "test") in mock.call_args.kwargs["request"]["headers"]
-    assert mock.call_args.kwargs["request"]["consumer"] == "test"
-    assert mock.call_args.kwargs["response"]["status_code"] == 200
-    assert mock.call_args.kwargs["response"]["response_time"] > 0
-    assert ("content-type", "text/plain; charset=utf-8") in mock.call_args.kwargs["response"]["headers"]
-    assert mock.call_args.kwargs["response"]["size"] > 0
-    assert mock.call_args.kwargs["response"]["body"] == b"foo: 123"
+    with TestClient(app) as client:
+        response = client.get("/api/foo/123?foo=bar", headers={"Test-Header": "test"})
+        assert response.status_code == 200
+        mock.assert_called_once()
+        assert mock.call_args is not None
+        assert mock.call_args.kwargs["request"]["method"] == "GET"
+        assert mock.call_args.kwargs["request"]["path"] == "/api/foo/{bar}"
+        assert mock.call_args.kwargs["request"]["url"] == "http://testserver/api/foo/123?foo=bar"
+        assert ("test-header", "test") in mock.call_args.kwargs["request"]["headers"]
+        assert mock.call_args.kwargs["request"]["consumer"] == "test"
+        assert mock.call_args.kwargs["response"]["status_code"] == 200
+        assert mock.call_args.kwargs["response"]["response_time"] > 0
+        assert ("content-type", "text/plain; charset=utf-8") in mock.call_args.kwargs["response"]["headers"]
+        assert mock.call_args.kwargs["response"]["size"] > 0
+        assert mock.call_args.kwargs["response"]["body"] == b"foo: 123"
 
-    response = client.post("/api/bar", content=b"foo")
-    assert response.status_code == 200
-    assert mock.call_count == 2
-    assert mock.call_args is not None
-    assert mock.call_args.kwargs["request"]["method"] == "POST"
-    assert mock.call_args.kwargs["request"]["path"] == "/api/bar"
-    assert mock.call_args.kwargs["request"]["url"] == "http://testserver/api/bar"
-    assert mock.call_args.kwargs["request"]["body"] == b"foo"
-    assert mock.call_args.kwargs["response"]["body"] == b"bar: foo"
+        response = client.post("/api/bar", content=b"foo")
+        assert response.status_code == 200
+        assert mock.call_count == 2
+        assert mock.call_args is not None
+        assert mock.call_args.kwargs["request"]["method"] == "POST"
+        assert mock.call_args.kwargs["request"]["path"] == "/api/bar"
+        assert mock.call_args.kwargs["request"]["url"] == "http://testserver/api/bar"
+        assert mock.call_args.kwargs["request"]["body"] == b"foo"
+        assert mock.call_args.kwargs["response"]["body"] == b"bar: foo"
 
-    mocker.patch("apitally.starlette.MAX_BODY_SIZE", 2)
-    response = client.post("/api/bar", content=b"foo")
-    assert response.status_code == 200
-    assert mock.call_count == 3
-    assert mock.call_args is not None
-    assert mock.call_args.kwargs["request"]["body"] == BODY_TOO_LARGE
-    assert mock.call_args.kwargs["response"]["body"] == BODY_TOO_LARGE
+        mocker.patch("apitally.starlette.MAX_BODY_SIZE", 2)
+        response = client.post("/api/bar", content=b"foo")
+        assert response.status_code == 200
+        assert mock.call_count == 3
+        assert mock.call_args is not None
+        assert mock.call_args.kwargs["request"]["body"] == BODY_TOO_LARGE
+        assert mock.call_args.kwargs["response"]["body"] == BODY_TOO_LARGE
 
 
 def test_get_startup_data(app: Starlette, mocker: MockerFixture):

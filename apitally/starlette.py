@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Callable, Dict, List, Optional, Union
+from contextlib import asynccontextmanager
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 from warnings import warn
 
 from httpx import HTTPStatusError, Proxy
+from starlette.applications import Starlette
 from starlette.datastructures import Headers
 from starlette.requests import Request
 from starlette.routing import BaseRoute, Match, Router
 from starlette.schemas import EndpointInfo, SchemaGenerator
 from starlette.testclient import TestClient
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from starlette.types import ASGIApp, Lifespan, Message, Receive, Scope, Send
 
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
@@ -56,10 +58,13 @@ class ApitallyMiddleware:
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
-        _register_event_handler(app, "startup", self.on_startup)
-        _register_event_handler(app, "shutdown", self.client.handle_shutdown)
+        _inject_lifespan_handlers(
+            app,
+            on_startup=self.on_startup,
+            on_shutdown=self.client.handle_shutdown,
+        )
 
-    def on_startup(self) -> None:
+    async def on_startup(self) -> None:
         data = _get_startup_data(self.app, app_version=self.app_version, openapi_url=self.openapi_url)
         self.client.set_startup_data(data)
         self.client.start_sync_loop()
@@ -289,8 +294,30 @@ def _get_routes(app: Union[ASGIApp, Router]) -> List[BaseRoute]:
     return []  # pragma: no cover
 
 
-def _register_event_handler(app: Union[ASGIApp, Router], event: str, handler: Callable[[], Any]) -> None:
-    if isinstance(app, Router):
-        app.add_event_handler(event, handler)
-    elif hasattr(app, "app"):
-        _register_event_handler(app.app, event, handler)
+def _inject_lifespan_handlers(
+    app: Union[ASGIApp, Router],
+    on_startup: Callable[[], Awaitable[Any]],
+    on_shutdown: Callable[[], Awaitable[Any]],
+) -> None:
+    """
+    Ensures the given startup and shutdown functions are called as part of the app's lifespan context manager.
+    """
+    router = app
+    while not isinstance(router, Router) and hasattr(router, "app"):
+        router = router.app
+    if not isinstance(router, Router):
+        raise TypeError("app must be a Starlette or Router instance")
+
+    lifespan: Optional[Lifespan] = getattr(router, "lifespan_context", None)
+
+    @asynccontextmanager
+    async def wrapped_lifespan(app: Starlette):
+        await on_startup()
+        if lifespan is not None:
+            async with lifespan(app):
+                yield
+        else:
+            yield
+        await on_shutdown()
+
+    router.lifespan_context = wrapped_lifespan
