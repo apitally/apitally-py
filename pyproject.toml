@@ -49,11 +49,11 @@ django_rest_framework = [
     "inflection>=0.5.1",                     # required for schema generation
     "requests>=2.26.0",
 ]
-fastapi = ["fastapi>=0.88.0", "starlette>=0.22.0,<1.0.0", "httpx>=0.22.0"]
+fastapi = ["fastapi>=0.93.0", "starlette>=0.26.0,<1.0.0", "httpx>=0.22.0"]
 flask = ["flask>=2.0.0", "requests>=2.26.0"]
 litestar = ["litestar>=2.0.0", "httpx>=0.22.0"]
 sentry = ["sentry-sdk>=2.2.0"]
-starlette = ["starlette>=0.21.0,<1.0.0", "httpx>=0.22.0"]
+starlette = ["starlette>=0.26.0,<1.0.0", "httpx>=0.22.0"]
 
 [project.urls]
 Homepage = "https://apitally.io"

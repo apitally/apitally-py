@@ -49,7 +49,7 @@ jobs:
         python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
         deps:
           - fastapi starlette
-          - fastapi==0.88.0 starlette
+          - fastapi==0.93.0 starlette
           - flask
           - flask==2.3.*
           - flask==2.0.3 Werkzeug==2.*
@@ -67,23 +67,13 @@ jobs:
           - python: "3.8"
             deps: blacksheep
           - python: "3.8"
-            deps: blacksheep==2.2.0
-          - python: "3.8"
             deps: blacksheep==2.1.0
-          - python: "3.12"
-            deps: fastapi==0.100.1 starlette
-          - python: "3.12"
-            deps: fastapi==0.87.0 starlette
           - python: "3.12"
             deps: djangorestframework==3.12.* django==3.2.* uritemplate
           - python: "3.12"
             deps: djangorestframework==3.10.* django==2.2.* uritemplate
           - python: "3.12"
             deps: litestar==2.0.1
-          - python: "3.13"
-            deps: fastapi==0.100.1 starlette
-          - python: "3.13"
-            deps: fastapi==0.87.0 starlette
           - python: "3.13"
             deps: djangorestframework==3.12.* django==3.2.* uritemplate
           - python: "3.13"
