@@ -300,7 +300,7 @@ def _inject_lifespan_handlers(
     on_shutdown: Callable[[], Awaitable[Any]],
 ) -> None:
     """
-    Runs the given startup and shutdown functions as part of the app's lifespan context manager.
+    Ensures the given startup and shutdown functions are called as part of the app's lifespan context manager.
     """
     router = app
     while not isinstance(router, Router) and hasattr(router, "app"):
