@@ -56,6 +56,7 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
                 log_request_body=True,
                 log_response_body=True,
             ),
+            "include_django_views": True,
             "urlconf": ["tests.django_rest_framework_urls"],
         },
     )
@@ -92,6 +93,13 @@ def test_middleware_requests_ok(client: APIClient, mocker: MockerFixture):
     assert mock.call_args is not None
     assert mock.call_args.kwargs["method"] == "POST"
     assert int(mock.call_args.kwargs["request_size"]) > 0
+
+    response = client.get("/func/123/")
+    assert response.status_code == 200
+    assert mock.call_count == 3
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["method"] == "GET"
+    assert mock.call_args.kwargs["path"] == "/func/{pk}/"
 
 
 def test_middleware_requests_404(client: APIClient, mocker: MockerFixture):
@@ -173,11 +181,14 @@ def test_get_startup_data():
     assert data["client"] == "python:django"
 
 
-def test_get_drf_api_endpoints():
-    from apitally.django import _get_drf_paths
+def test_get_paths():
+    from apitally.django import _get_paths
 
-    endpoints = _get_drf_paths([None])
-    assert len(endpoints) == 4
-    assert endpoints[0]["method"] == "GET"
-    assert endpoints[0]["path"] == "/foo/"
-    assert endpoints[1]["path"] == "/foo/{bar}/"
+    paths = _get_paths([None])
+    assert len(paths) == 4
+    assert paths[0]["method"] == "GET"
+    assert paths[0]["path"] == "/foo/"
+    assert paths[1]["path"] == "/foo/{bar}/"
+
+    paths = _get_paths([None], include_django_views=True)
+    assert len(paths) == 5  # Also includes Django class-based view, but not function-based view

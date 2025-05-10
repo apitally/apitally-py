@@ -10,8 +10,10 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Unio
 from warnings import warn
 
 from django.conf import settings
+from django.contrib.admindocs.views import extract_views_from_urlpatterns, simplify_regex
 from django.urls import URLPattern, URLResolver, get_resolver
 from django.utils.module_loading import import_string
+from django.views.generic.base import View
 
 from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
@@ -41,6 +43,7 @@ class ApitallyMiddlewareConfig:
     request_logging_config: Optional[RequestLoggingConfig]
     app_version: Optional[str]
     identify_consumer_callback: Optional[Callable[[HttpRequest], Union[str, ApitallyConsumer, None]]]
+    include_django_views: bool
     urlconfs: List[Optional[str]]
     proxy: Optional[str]
 
@@ -53,6 +56,7 @@ class ApitallyMiddleware:
         self.drf_available = _check_import("rest_framework")
         self.drf_endpoint_enumerator = None
         self.ninja_available = _check_import("ninja")
+        self.include_django_views = False
         self.callbacks = set()
 
         if self.config is None:
@@ -68,6 +72,9 @@ class ApitallyMiddleware:
                 self.callbacks.update(_get_drf_callbacks(self.config.urlconfs))
         if self.ninja_available and None not in self.config.urlconfs:
             self.callbacks.update(_get_ninja_callbacks(self.config.urlconfs))
+        if self.config.include_django_views:
+            self.callbacks.update(_get_django_callbacks(self.config.urlconfs))
+            self.include_django_views = True
 
         self.client = ApitallyClient(
             client_id=self.config.client_id,
@@ -98,6 +105,7 @@ class ApitallyMiddleware:
         request_logging_config: Optional[RequestLoggingConfig] = None,
         app_version: Optional[str] = None,
         identify_consumer_callback: Optional[str] = None,
+        include_django_views: bool = False,
         urlconf: Optional[Union[List[Optional[str]], str]] = None,
         proxy: Optional[str] = None,
     ) -> None:
@@ -109,6 +117,7 @@ class ApitallyMiddleware:
             identify_consumer_callback=import_string(identify_consumer_callback)
             if identify_consumer_callback
             else None,
+            include_django_views=include_django_views,
             urlconfs=[urlconf] if urlconf is None or isinstance(urlconf, str) else urlconf,
             proxy=proxy,
         )
@@ -116,6 +125,7 @@ class ApitallyMiddleware:
     def __call__(self, request: HttpRequest) -> HttpResponse:
         if self.client.enabled and request.method is not None and request.method != "OPTIONS":
             timestamp = time.time()
+
             request_size = parse_int(request.headers.get("Content-Length"))
             request_body = b""
             if self.capture_request_body:
@@ -128,32 +138,35 @@ class ApitallyMiddleware:
             start_time = time.perf_counter()
             response = self.get_response(request)
             response_time = time.perf_counter() - start_time
-            response_size = (
-                parse_int(response["Content-Length"])
-                if response.has_header("Content-Length")
-                else (len(response.content) if not response.streaming else None)
-            )
-            response_body = b""
-            response_content_type = response.get("Content-Type")
-            if (
-                self.capture_response_body
-                and not response.streaming
-                and RequestLogger.is_supported_content_type(response_content_type)
-            ):
-                response_body = (
-                    response.content if response_size is not None and response_size <= MAX_BODY_SIZE else BODY_TOO_LARGE
-                )
-
-            try:
-                consumer = self.get_consumer(request)
-                consumer_identifier = consumer.identifier if consumer else None
-                self.client.consumer_registry.add_or_update_consumer(consumer)
-            except Exception:  # pragma: no cover
-                logger.exception("Failed to get consumer for request")
-                consumer_identifier = None
-
             path = self.get_path(request)
+
             if path is not None:
+                try:
+                    consumer = self.get_consumer(request)
+                    consumer_identifier = consumer.identifier if consumer else None
+                    self.client.consumer_registry.add_or_update_consumer(consumer)
+                except Exception:  # pragma: no cover
+                    logger.exception("Failed to get consumer for request")
+                    consumer_identifier = None
+
+                response_size = (
+                    parse_int(response["Content-Length"])
+                    if response.has_header("Content-Length")
+                    else (len(response.content) if not response.streaming else None)
+                )
+                response_body = b""
+                response_content_type = response.get("Content-Type")
+                if (
+                    self.capture_response_body
+                    and not response.streaming
+                    and RequestLogger.is_supported_content_type(response_content_type)
+                ):
+                    response_body = (
+                        response.content
+                        if response_size is not None and response_size <= MAX_BODY_SIZE
+                        else BODY_TOO_LARGE
+                    )
+
                 try:
                     self.client.request_counter.add_request(
                         consumer=consumer_identifier,
@@ -196,27 +209,27 @@ class ApitallyMiddleware:
                     except Exception:  # pragma: no cover
                         logger.exception("Failed to log server error")
 
-            if self.client.request_logger.enabled:
-                self.client.request_logger.log_request(
-                    request={
-                        "timestamp": timestamp,
-                        "method": request.method,
-                        "path": path,
-                        "url": request.build_absolute_uri(),
-                        "headers": list(request.headers.items()),
-                        "size": request_size,
-                        "consumer": consumer_identifier,
-                        "body": request_body,
-                    },
-                    response={
-                        "status_code": response.status_code,
-                        "response_time": response_time,
-                        "headers": list(response.items()),
-                        "size": response_size,
-                        "body": response_body,
-                    },
-                    exception=getattr(request, "unhandled_exception", None),
-                )
+                if self.client.request_logger.enabled:
+                    self.client.request_logger.log_request(
+                        request={
+                            "timestamp": timestamp,
+                            "method": request.method,
+                            "path": path,
+                            "url": request.build_absolute_uri(),
+                            "headers": list(request.headers.items()),
+                            "size": request_size,
+                            "consumer": consumer_identifier,
+                            "body": request_body,
+                        },
+                        response={
+                            "status_code": response.status_code,
+                            "response_time": response_time,
+                            "headers": list(response.items()),
+                            "size": response_size,
+                            "body": response_body,
+                        },
+                        exception=getattr(request, "unhandled_exception", None),
+                    )
         else:
             response = self.get_response(request)
 
@@ -240,8 +253,9 @@ class ApitallyMiddleware:
                     from ninja.operation import PathView
 
                     if hasattr(match.func, "__self__") and isinstance(match.func.__self__, PathView):
-                        path = "/" + match.route.lstrip("/")
-                        return re.sub(r"<(?:[^:]+:)?([^>:]+)>", r"{\1}", path)
+                        return _transform_path(match.route)
+                if self.include_django_views:
+                    return _transform_path(match.route)
             except Exception:  # pragma: no cover
                 logger.exception("Failed to get path for request")
         return None
@@ -263,10 +277,12 @@ class ApitallyMiddleware:
         return None
 
 
-def _get_startup_data(app_version: Optional[str], urlconfs: List[Optional[str]]) -> Dict[str, Any]:
+def _get_startup_data(
+    app_version: Optional[str], urlconfs: List[Optional[str]], include_django_views: bool = False
+) -> Dict[str, Any]:
     data: Dict[str, Any] = {}
     try:
-        data["paths"] = _get_paths(urlconfs)
+        data["paths"] = _get_paths(urlconfs, include_django_views=include_django_views)
     except Exception:  # pragma: no cover
         data["paths"] = []
         logger.exception("Failed to get paths")
@@ -293,13 +309,26 @@ def _get_openapi(urlconfs: List[Optional[str]]) -> Optional[str]:
     return None  # pragma: no cover
 
 
-def _get_paths(urlconfs: List[Optional[str]]) -> List[Dict[str, str]]:
+def _get_paths(urlconfs: List[Optional[str]], include_django_views: bool = False) -> List[Dict[str, str]]:
     paths = []
     with contextlib.suppress(ImportError):
         paths.extend(_get_drf_paths(urlconfs))
     with contextlib.suppress(ImportError):
         paths.extend(_get_ninja_paths(urlconfs))
-    return paths
+    if include_django_views:
+        paths.extend(_get_django_paths(urlconfs))
+    return _deduplicate_paths(paths)
+
+
+def _deduplicate_paths(paths: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    seen = set()
+    deduplicated_paths = []
+    for path in paths:
+        key = (path["method"], path["path"])
+        if key not in seen:
+            seen.add(key)
+            deduplicated_paths.append(path)
+    return deduplicated_paths
 
 
 def _get_drf_paths(urlconfs: List[Optional[str]]) -> List[Dict[str, str]]:
@@ -403,6 +432,37 @@ def _get_ninja_api_instances(
                                 apis.add(api)
                                 break
     return apis
+
+
+def _get_django_paths(urlconfs: Optional[List[Optional[str]]] = None) -> List[Dict[str, str]]:
+    if urlconfs is None:
+        urlconfs = [None]
+    return [
+        {
+            "method": method.upper(),
+            "path": _transform_path(regex),
+        }
+        for urlconf in urlconfs
+        for callback, regex, _, _ in extract_views_from_urlpatterns(get_resolver(urlconf).url_patterns)
+        if hasattr(callback, "view_class") and issubclass(callback.view_class, View)
+        for method in callback.view_class.http_method_names
+        if method != "options" and hasattr(callback.view_class, method)
+    ]
+
+
+def _get_django_callbacks(urlconfs: Optional[List[Optional[str]]] = None) -> Set[Callable]:
+    if urlconfs is None:
+        urlconfs = [None]
+    return {
+        callback
+        for urlconf in urlconfs
+        for callback, _, _, _ in extract_views_from_urlpatterns(get_resolver(urlconf).url_patterns)
+    }
+
+
+def _transform_path(path: str) -> str:
+    path = simplify_regex(path)
+    return re.sub(r"<(?:(?P<converter>[^>:]+):)?(?P<parameter>\w+)>", r"{\g<parameter>}", path)
 
 
 def _check_import(name: str) -> bool:

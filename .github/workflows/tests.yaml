@@ -26,7 +26,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "0.5.21"
+          version: "0.7.3"
           enable-cache: true
       - name: Install Python
         run: uv python install 3.13
@@ -85,7 +85,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "0.5.21"
+          version: "0.7.3"
           enable-cache: true
       - name: Install Python
         run: uv python install ${{ matrix.python }}
