@@ -73,6 +73,7 @@ class ApitallyMiddleware:
         if self.ninja_available and None not in self.config.urlconfs:
             self.callbacks.update(_get_ninja_callbacks(self.config.urlconfs))
         if self.config.include_django_views:
+            self.callbacks.update(_get_django_callbacks(self.config.urlconfs))
             self.include_django_views = True
 
         self.client = ApitallyClient(
@@ -241,7 +242,7 @@ class ApitallyMiddleware:
     def get_path(self, request: HttpRequest) -> Optional[str]:
         if (match := request.resolver_match) is not None:
             try:
-                if not self.include_django_views and self.callbacks and match.func not in self.callbacks:
+                if self.callbacks and match.func not in self.callbacks:
                     return None
                 if self.drf_endpoint_enumerator is not None:
                     from rest_framework.schemas.generators import is_api_view
@@ -442,11 +443,21 @@ def _get_django_paths(urlconfs: Optional[List[Optional[str]]] = None) -> List[Di
             "path": _transform_path(regex),
         }
         for urlconf in urlconfs
-        for view, regex, _, _ in extract_views_from_urlpatterns(get_resolver(urlconf).url_patterns)
-        if hasattr(view, "view_class") and issubclass(view.view_class, View)
-        for method in view.view_class.http_method_names
-        if method != "options" and hasattr(view.view_class, method)
+        for callback, regex, _, _ in extract_views_from_urlpatterns(get_resolver(urlconf).url_patterns)
+        if hasattr(callback, "view_class") and issubclass(callback.view_class, View)
+        for method in callback.view_class.http_method_names
+        if method != "options" and hasattr(callback.view_class, method)
     ]
+
+
+def _get_django_callbacks(urlconfs: Optional[List[Optional[str]]] = None) -> Set[Callable]:
+    if urlconfs is None:
+        urlconfs = [None]
+    return {
+        callback
+        for urlconf in urlconfs
+        for callback, _, _, _ in extract_views_from_urlpatterns(get_resolver(urlconf).url_patterns)
+    }
 
 
 def _transform_path(path: str) -> str:
