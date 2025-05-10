@@ -10,9 +10,10 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Unio
 from warnings import warn
 
 from django.conf import settings
-from django.contrib.admindocs.views import simplify_regex
+from django.contrib.admindocs.views import extract_views_from_urlpatterns, simplify_regex
 from django.urls import URLPattern, URLResolver, get_resolver
 from django.utils.module_loading import import_string
+from django.views.generic.base import View
 
 from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
@@ -275,10 +276,12 @@ class ApitallyMiddleware:
         return None
 
 
-def _get_startup_data(app_version: Optional[str], urlconfs: List[Optional[str]]) -> Dict[str, Any]:
+def _get_startup_data(
+    app_version: Optional[str], urlconfs: List[Optional[str]], include_django_views: bool = False
+) -> Dict[str, Any]:
     data: Dict[str, Any] = {}
     try:
-        data["paths"] = _get_paths(urlconfs)
+        data["paths"] = _get_paths(urlconfs, include_django_views=include_django_views)
     except Exception:  # pragma: no cover
         data["paths"] = []
         logger.exception("Failed to get paths")
@@ -305,13 +308,26 @@ def _get_openapi(urlconfs: List[Optional[str]]) -> Optional[str]:
     return None  # pragma: no cover
 
 
-def _get_paths(urlconfs: List[Optional[str]]) -> List[Dict[str, str]]:
+def _get_paths(urlconfs: List[Optional[str]], include_django_views: bool = False) -> List[Dict[str, str]]:
     paths = []
     with contextlib.suppress(ImportError):
         paths.extend(_get_drf_paths(urlconfs))
     with contextlib.suppress(ImportError):
         paths.extend(_get_ninja_paths(urlconfs))
-    return paths
+    if include_django_views:
+        paths.extend(_get_django_paths(urlconfs))
+    return _deduplicate_paths(paths)
+
+
+def _deduplicate_paths(paths: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    seen = set()
+    deduplicated_paths = []
+    for path in paths:
+        key = (path["method"], path["path"])
+        if key not in seen:
+            seen.add(key)
+            deduplicated_paths.append(path)
+    return deduplicated_paths
 
 
 def _get_drf_paths(urlconfs: List[Optional[str]]) -> List[Dict[str, str]]:
@@ -415,6 +431,22 @@ def _get_ninja_api_instances(
                                 apis.add(api)
                                 break
     return apis
+
+
+def _get_django_paths(urlconfs: Optional[List[Optional[str]]] = None) -> List[Dict[str, str]]:
+    if urlconfs is None:
+        urlconfs = [None]
+    return [
+        {
+            "method": method.upper(),
+            "path": _transform_path(regex),
+        }
+        for urlconf in urlconfs
+        for view, regex, _, _ in extract_views_from_urlpatterns(get_resolver(urlconf).url_patterns)
+        if hasattr(view, "view_class") and issubclass(view.view_class, View)
+        for method in view.view_class.http_method_names
+        if method != "options" and hasattr(view.view_class, method)
+    ]
 
 
 def _transform_path(path: str) -> str:
