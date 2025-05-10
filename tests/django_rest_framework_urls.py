@@ -1,4 +1,6 @@
+from django.http import HttpRequest, HttpResponse
 from django.urls import path
+from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -28,9 +30,15 @@ def baz(request: Request) -> Response:
     raise ValueError("baz")
 
 
+@require_http_methods(["GET"])
+def simple_view(request: HttpRequest, pk: int) -> HttpResponse:
+    return HttpResponse("Hello from a regular Django view")
+
+
 urlpatterns = [
     path("foo/", FooView.as_view()),
     path("foo/<int:bar>/", FooBarView.as_view()),
     path("bar/", bar),
     path("baz/", baz),
+    path("simple/<int:pk>/", simple_view),
 ]
