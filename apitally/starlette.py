@@ -38,12 +38,14 @@ class ApitallyMiddleware:
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = "/openapi.json",
         identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
+        capture_client_disconnects: bool = False,
         proxy: Optional[Union[str, Proxy]] = None,
     ) -> None:
         self.app = app
         self.app_version = app_version
         self.openapi_url = openapi_url
         self.identify_consumer_callback = identify_consumer_callback
+        self.capture_client_disconnects = capture_client_disconnects
         self.client = ApitallyClient(
             client_id=client_id,
             env=env,
@@ -72,7 +74,7 @@ class ApitallyMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if self.client.enabled and scope["type"] == "http" and scope["method"] != "OPTIONS":
             timestamp = time.time()
-            request = Request(scope)
+            request = Request(scope, receive, send)
             request_size = parse_int(request.headers.get("Content-Length"))
             request_body = b""
             request_body_too_large = request_size is not None and request_size > MAX_BODY_SIZE
@@ -138,6 +140,9 @@ class ApitallyMiddleware:
                 exception = e
                 raise e from None
             finally:
+                if self.capture_client_disconnects and await request.is_disconnected():
+                    # Client closed connection (report NGINX specific status code)
+                    response_status = 499
                 if response_time is None:
                     response_time = time.perf_counter() - start_time
                 self.add_request(
