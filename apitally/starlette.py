@@ -140,11 +140,11 @@ class ApitallyMiddleware:
                 exception = e
                 raise e from None
             finally:
+                if response_time is None:
+                    response_time = time.perf_counter() - start_time
                 if self.capture_client_disconnects and await request.is_disconnected():
                     # Client closed connection (report NGINX specific status code)
                     response_status = 499
-                if response_time is None:
-                    response_time = time.perf_counter() - start_time
                 self.add_request(
                     timestamp=timestamp,
                     request=request,
