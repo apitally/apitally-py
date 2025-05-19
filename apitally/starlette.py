@@ -38,14 +38,12 @@ class ApitallyMiddleware:
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = "/openapi.json",
         identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
-        capture_client_disconnects: bool = False,
         proxy: Optional[Union[str, Proxy]] = None,
     ) -> None:
         self.app = app
         self.app_version = app_version
         self.openapi_url = openapi_url
         self.identify_consumer_callback = identify_consumer_callback
-        self.capture_client_disconnects = capture_client_disconnects
         self.client = ApitallyClient(
             client_id=client_id,
             env=env,
@@ -142,9 +140,6 @@ class ApitallyMiddleware:
             finally:
                 if response_time is None:
                     response_time = time.perf_counter() - start_time
-                if self.capture_client_disconnects and await request.is_disconnected():
-                    # Client closed connection (report NGINX specific status code)
-                    response_status = 499
                 self.add_request(
                     timestamp=timestamp,
                     request=request,
