@@ -91,6 +91,7 @@ class ApitallyMiddleware:
 
             async def receive_wrapper() -> Message:
                 nonlocal request_body, request_body_too_large
+
                 message = await receive()
                 if message["type"] == "http.request" and self.capture_request_body and not request_body_too_large:
                     request_body += message.get("body", b"")
