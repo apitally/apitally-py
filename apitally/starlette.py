@@ -91,6 +91,7 @@ class ApitallyMiddleware:
 
             async def receive_wrapper() -> Message:
                 nonlocal request_body, request_body_too_large
+
                 message = await receive()
                 if message["type"] == "http.request" and self.capture_request_body and not request_body_too_large:
                     request_body += message.get("body", b"")
@@ -109,6 +110,7 @@ class ApitallyMiddleware:
                     response_chunked, \
                     response_content_type, \
                     response_size
+
                 if message["type"] == "http.response.start":
                     response_time = time.perf_counter() - start_time
                     response_status = message["status"]
@@ -120,9 +122,11 @@ class ApitallyMiddleware:
                     response_content_type = response_headers.get("Content-Type")
                     response_size = parse_int(response_headers.get("Content-Length")) if not response_chunked else 0
                     response_body_too_large = response_size is not None and response_size > MAX_BODY_SIZE
+
                 elif message["type"] == "http.response.body":
                     if response_chunked and response_size is not None:
                         response_size += len(message.get("body", b""))
+
                     if (
                         (self.capture_response_body or response_status == 422)
                         and RequestLogger.is_supported_content_type(response_content_type)
@@ -132,6 +136,11 @@ class ApitallyMiddleware:
                         if len(response_body) > MAX_BODY_SIZE:
                             response_body_too_large = True
                             response_body = b""
+
+                if self.capture_client_disconnects and await request.is_disconnected():
+                    # Client closed connection (report NGINX specific status code)
+                    response_status = 499
+
                 await send(message)
 
             try:
@@ -142,9 +151,6 @@ class ApitallyMiddleware:
             finally:
                 if response_time is None:
                     response_time = time.perf_counter() - start_time
-                if self.capture_client_disconnects and await request.is_disconnected():
-                    # Client closed connection (report NGINX specific status code)
-                    response_status = 499
                 self.add_request(
                     timestamp=timestamp,
                     request=request,
