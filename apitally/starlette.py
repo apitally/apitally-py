@@ -122,10 +122,6 @@ class ApitallyMiddleware:
                     response_size = parse_int(response_headers.get("Content-Length")) if not response_chunked else 0
                     response_body_too_large = response_size is not None and response_size > MAX_BODY_SIZE
 
-                    if self.capture_client_disconnects and await request.is_disconnected():
-                        # Client closed connection (report NGINX specific status code)
-                        response_status = 499
-
                 elif message["type"] == "http.response.body":
                     if response_chunked and response_size is not None:
                         response_size += len(message.get("body", b""))
@@ -140,9 +136,9 @@ class ApitallyMiddleware:
                             response_body_too_large = True
                             response_body = b""
 
-                    if self.capture_client_disconnects and await request.is_disconnected():
-                        # Client closed connection (report NGINX specific status code)
-                        response_status = 499
+                if self.capture_client_disconnects and await request.is_disconnected():
+                    # Client closed connection (report NGINX specific status code)
+                    response_status = 499
 
                 await send(message)
 
