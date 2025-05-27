@@ -1,21 +1,17 @@
 <p align="center">
   <a href="https://apitally.io" target="_blank">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://assets.apitally.io/logos/logo-vertical-dark.png">
-      <source media="(prefers-color-scheme: light)" srcset="https://assets.apitally.io/logos/logo-vertical-light.png">
-      <img alt="Apitally logo" src="https://assets.apitally.io/logos/logo-vertical-light.png" width="150">
+      <source media="(prefers-color-scheme: dark)" srcset="https://assets.apitally.io/logos/logo-horizontal-new-dark.png">
+      <source media="(prefers-color-scheme: light)" srcset="https://assets.apitally.io/logos/logo-horizontal-new-light.png">
+      <img alt="Apitally logo" src="https://assets.apitally.io/logos/logo-vertical-light.png" width="220">
     </picture>
   </a>
 </p>
-
 <p align="center"><b>Simple, privacy-focused API monitoring & analytics</b></p>
-
-<p align="center"><i>Apitally helps you understand how your APIs are being used and alerts you when things go wrong.<br>Just add two lines of code to your project to get started.</i></p>
+<p align="center" style="color: #ccc;">Apitally gives you the visibility you need to build better APIs – with just a few lines of code.</p>
 <br>
-
-![Apitally screenshots](https://assets.apitally.io/screenshots/overview.png)
-
----
+<img alt="Apitally screenshots" src="https://assets.apitally.io/screenshots/overview.png">
+<br>
 
 # Apitally SDK for Python
 
