@@ -68,7 +68,7 @@ pip install apitally[fastapi]
 ```
 
 The available extras are: `fastapi`, `flask`, `django_rest_framework`,
-`django_ninja`, `starlette` and `litestar`.
+`django_ninja`, `starlette`, `litestar` and `blacksheep`.
 
 ## Usage
 
