@@ -97,8 +97,8 @@ class RequestLoggingConfig:
         log_exception: Whether to log unhandled exceptions in case of server errors
         mask_query_params: Query parameter names to mask in logs. Expects regular expressions.
         mask_headers: Header names to mask in logs. Expects regular expressions.
-        mask_request_body_callback: Callback to mask the request body. Expects (method, path, body) and returns the masked body as bytes or None.
-        mask_response_body_callback: Callback to mask the response body. Expects (method, path, body) and returns the masked body as bytes or None.
+        mask_request_body_callback: Callback to mask the request body. Expects `request: RequestDict` as argument and returns the masked body as bytes or None.
+        mask_response_body_callback: Callback to mask the response body. Expects `request: RequestDict` and `response: ResponseDict` as arguments and returns the masked body as bytes or None.
         exclude_paths: Paths to exclude from logging. Expects regular expressions.
         exclude_callback: Callback to exclude requests from logging. Should expect two arguments, `request: RequestDict` and `response: ResponseDict`, and return True to exclude the request.
     """
