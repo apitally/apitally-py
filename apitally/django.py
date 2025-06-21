@@ -123,115 +123,114 @@ class ApitallyMiddleware:
         )
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
-        if self.client.enabled and request.method is not None and request.method != "OPTIONS":
-            timestamp = time.time()
+        if not self.client.enabled or request.method is None or request.method == "OPTIONS":
+            return self.get_response(request)
 
-            request_size = parse_int(request.headers.get("Content-Length"))
-            request_body = b""
-            if self.capture_request_body:
-                request_body = (
-                    request.body
-                    if request_size is not None and request_size <= MAX_BODY_SIZE and len(request.body) <= MAX_BODY_SIZE
-                    else BODY_TOO_LARGE
-                )
+        timestamp = time.time()
+        request_size = parse_int(request.headers.get("Content-Length"))
+        request_body = b""
+        if self.capture_request_body:
+            request_body = (
+                request.body
+                if request_size is not None and request_size <= MAX_BODY_SIZE and len(request.body) <= MAX_BODY_SIZE
+                else BODY_TOO_LARGE
+            )
 
-            start_time = time.perf_counter()
-            response = self.get_response(request)
-            response_time = time.perf_counter() - start_time
-            path = self.get_path(request)
+        start_time = time.perf_counter()
+        response = self.get_response(request)
+        response_time = time.perf_counter() - start_time
+        path = self.get_path(request)
 
-            if path is not None:
-                try:
-                    consumer = self.get_consumer(request)
-                    consumer_identifier = consumer.identifier if consumer else None
-                    self.client.consumer_registry.add_or_update_consumer(consumer)
-                except Exception:  # pragma: no cover
-                    logger.exception("Failed to get consumer for request")
-                    consumer_identifier = None
+        if path is None:
+            return response
 
-                response_size = (
-                    parse_int(response["Content-Length"])
-                    if response.has_header("Content-Length")
-                    else (len(response.content) if not response.streaming else None)
-                )
-                response_body = b""
-                response_content_type = response.get("Content-Type")
-                if (
-                    self.capture_response_body
-                    and not response.streaming
-                    and RequestLogger.is_supported_content_type(response_content_type)
-                ):
-                    response_body = (
-                        response.content
-                        if response_size is not None and response_size <= MAX_BODY_SIZE
-                        else BODY_TOO_LARGE
-                    )
+        try:
+            consumer = self.get_consumer(request)
+            consumer_identifier = consumer.identifier if consumer else None
+            self.client.consumer_registry.add_or_update_consumer(consumer)
+        except Exception:  # pragma: no cover
+            logger.exception("Failed to get consumer for request")
+            consumer_identifier = None
 
-                try:
-                    self.client.request_counter.add_request(
+        response_size = (
+            parse_int(response["Content-Length"])
+            if response.has_header("Content-Length")
+            else (len(response.content) if not response.streaming else None)
+        )
+        response_body = b""
+        response_content_type = response.get("Content-Type")
+        if (
+            self.capture_response_body
+            and not response.streaming
+            and RequestLogger.is_supported_content_type(response_content_type)
+        ):
+            response_body = (
+                response.content if response_size is not None and response_size <= MAX_BODY_SIZE else BODY_TOO_LARGE
+            )
+
+        try:
+            self.client.request_counter.add_request(
+                consumer=consumer_identifier,
+                method=request.method,
+                path=path,
+                status_code=response.status_code,
+                response_time=response_time,
+                request_size=request_size,
+                response_size=response_size,
+            )
+        except Exception:  # pragma: no cover
+            logger.exception("Failed to log request metadata")
+
+        if (
+            response.status_code == 422
+            and (content_type := response.get("Content-Type")) is not None
+            and content_type.startswith("application/json")
+        ):
+            try:
+                body = try_json_loads(response.content, encoding=response.get("Content-Encoding"))
+                if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
+                    # Log Django Ninja / Pydantic validation errors
+                    self.client.validation_error_counter.add_validation_errors(
                         consumer=consumer_identifier,
                         method=request.method,
                         path=path,
-                        status_code=response.status_code,
-                        response_time=response_time,
-                        request_size=request_size,
-                        response_size=response_size,
+                        detail=body["detail"],
                     )
-                except Exception:  # pragma: no cover
-                    logger.exception("Failed to log request metadata")
+            except Exception:  # pragma: no cover
+                logger.exception("Failed to log validation errors")
 
-                if (
-                    response.status_code == 422
-                    and (content_type := response.get("Content-Type")) is not None
-                    and content_type.startswith("application/json")
-                ):
-                    try:
-                        body = try_json_loads(response.content, encoding=response.get("Content-Encoding"))
-                        if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
-                            # Log Django Ninja / Pydantic validation errors
-                            self.client.validation_error_counter.add_validation_errors(
-                                consumer=consumer_identifier,
-                                method=request.method,
-                                path=path,
-                                detail=body["detail"],
-                            )
-                    except Exception:  # pragma: no cover
-                        logger.exception("Failed to log validation errors")
+        if response.status_code == 500 and hasattr(request, "unhandled_exception"):
+            try:
+                self.client.server_error_counter.add_server_error(
+                    consumer=consumer_identifier,
+                    method=request.method,
+                    path=path,
+                    exception=getattr(request, "unhandled_exception"),
+                )
+            except Exception:  # pragma: no cover
+                logger.exception("Failed to log server error")
 
-                if response.status_code == 500 and hasattr(request, "unhandled_exception"):
-                    try:
-                        self.client.server_error_counter.add_server_error(
-                            consumer=consumer_identifier,
-                            method=request.method,
-                            path=path,
-                            exception=getattr(request, "unhandled_exception"),
-                        )
-                    except Exception:  # pragma: no cover
-                        logger.exception("Failed to log server error")
-
-                if self.client.request_logger.enabled:
-                    self.client.request_logger.log_request(
-                        request={
-                            "timestamp": timestamp,
-                            "method": request.method,
-                            "path": path,
-                            "url": request.build_absolute_uri(),
-                            "headers": list(request.headers.items()),
-                            "size": request_size,
-                            "consumer": consumer_identifier,
-                            "body": request_body,
-                        },
-                        response={
-                            "status_code": response.status_code,
-                            "response_time": response_time,
-                            "headers": list(response.items()),
-                            "size": response_size,
-                            "body": response_body,
-                        },
-                        exception=getattr(request, "unhandled_exception", None),
-                    )
-        else:
-            response = self.get_response(request)
+        if self.client.request_logger.enabled:
+            self.client.request_logger.log_request(
+                request={
+                    "timestamp": timestamp,
+                    "method": request.method,
+                    "path": path,
+                    "url": request.build_absolute_uri(),
+                    "headers": list(request.headers.items()),
+                    "size": request_size,
+                    "consumer": consumer_identifier,
+                    "body": request_body,
+                },
+                response={
+                    "status_code": response.status_code,
+                    "response_time": response_time,
+                    "headers": list(response.items()),
+                    "size": response_size,
+                    "body": response_body,
+                },
+                exception=getattr(request, "unhandled_exception", None),
+            )
 
         return response
 
