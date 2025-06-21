@@ -7,8 +7,8 @@
     </picture>
   </a>
 </p>
-<p align="center"><b>Simple API monitoring & analytics for Python apps</b></p>
-<p align="center" style="color: #ccc;">Apitally gives you the visibility you need to build better APIs – with just a few lines of code.</p>
+<p align="center"><b>API monitoring & analytics made simple</b></p>
+<p align="center" style="color: #ccc;">Real-time metrics, request logs, and alerts for your APIs — with just a few lines of code.</p>
 <br>
 <img alt="Apitally screenshots" src="https://assets.apitally.io/screenshots/overview.png">
 <br>
