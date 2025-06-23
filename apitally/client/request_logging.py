@@ -23,6 +23,12 @@ from apitally.client.server_errors import (
 )
 
 
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
+
+
 logger = get_logger(__name__)
 
 MAX_BODY_SIZE = 50_000  # 50 KB (uncompressed)
@@ -102,14 +108,14 @@ class ExceptionDict(TypedDict):
     type: str
     message: str
     traceback: str
-    sentry_event_id: Optional[str]
+    sentry_event_id: NotRequired[str]
 
 
 class RequestLogItem(TypedDict):
     uuid: str
     request: RequestDict
     response: ResponseDict
-    exception: Optional[ExceptionDict]
+    exception: NotRequired[ExceptionDict]
 
 
 @dataclass
@@ -236,16 +242,14 @@ class RequestLogger:
             "uuid": str(uuid4()),
             "request": request,
             "response": response,
-            "exception": None,
         }
         if exception is not None and self.config.log_exception:
             item["exception"] = {
                 "type": get_exception_type(exception),
                 "message": get_truncated_exception_msg(exception),
                 "traceback": get_truncated_exception_traceback(exception),
-                "sentry_event_id": None,
             }
-            get_sentry_event_id_async(lambda event_id: item["exception"].update({"sentry_event_id": event_id}))  # type: ignore[union-attr]
+            get_sentry_event_id_async(lambda event_id: item["exception"].update({"sentry_event_id": event_id}))
 
         self.write_deque.append(item)
 
@@ -261,8 +265,6 @@ class RequestLogger:
                     item = self._apply_masking(item)
                     item["request"] = _skip_empty_values(item["request"])  # type: ignore[typeddict-item]
                     item["response"] = _skip_empty_values(item["response"])  # type: ignore[typeddict-item]
-                    if item["exception"] is None:
-                        item.pop("exception")  # type: ignore[misc]
                     self.file.write_line(self.serialize(item))
                 except IndexError:
                     break
@@ -442,7 +444,7 @@ class RequestLogger:
         return RequestLogger.is_supported_content_type(content_type)
 
     @staticmethod
-    def _has_json_content_type(headers: List[Tuple[str, str]]) -> bool | None:
+    def _has_json_content_type(headers: List[Tuple[str, str]]) -> Optional[bool]:
         content_type = next((v.lower() for k, v in headers if k.lower() == "content-type"), None)
         return None if content_type is None else (re.search(r"\bjson\b", content_type) is not None)
 
