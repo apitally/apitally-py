@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from io import BufferedReader
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict, List, Mapping, NotRequired, Optional, Tuple, TypedDict
+from typing import Any, AsyncIterator, Callable, Dict, List, Mapping, Optional, Tuple, TypedDict
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
@@ -102,14 +102,14 @@ class ExceptionDict(TypedDict):
     type: str
     message: str
     traceback: str
-    sentry_event_id: NotRequired[str]
+    sentry_event_id: Optional[str]
 
 
 class RequestLogItem(TypedDict):
     uuid: str
     request: RequestDict
     response: ResponseDict
-    exception: NotRequired[ExceptionDict]
+    exception: Optional[ExceptionDict]
 
 
 @dataclass
@@ -236,14 +236,16 @@ class RequestLogger:
             "uuid": str(uuid4()),
             "request": request,
             "response": response,
+            "exception": None,
         }
         if exception is not None and self.config.log_exception:
             item["exception"] = {
                 "type": get_exception_type(exception),
                 "message": get_truncated_exception_msg(exception),
                 "traceback": get_truncated_exception_traceback(exception),
+                "sentry_event_id": None,
             }
-            get_sentry_event_id_async(lambda event_id: item["exception"].update({"sentry_event_id": event_id}))
+            get_sentry_event_id_async(lambda event_id: item["exception"].update({"sentry_event_id": event_id}))  # type: ignore[union-attr]
 
         self.write_deque.append(item)
 
@@ -259,6 +261,8 @@ class RequestLogger:
                     item = self._apply_masking(item)
                     item["request"] = _skip_empty_values(item["request"])  # type: ignore[typeddict-item]
                     item["response"] = _skip_empty_values(item["response"])  # type: ignore[typeddict-item]
+                    if item["exception"] is None:
+                        item.pop("exception")  # type: ignore[misc]
                     self.file.write_line(self.serialize(item))
                 except IndexError:
                     break
