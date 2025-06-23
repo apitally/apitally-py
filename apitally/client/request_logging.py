@@ -356,7 +356,7 @@ class RequestLogger:
 
         # Mask request and response body fields
         for key in ("request", "response"):
-            if data[key]["body"] is None or data[key]["body"] == BODY_TOO_LARGE:
+            if data[key]["body"] is None or data[key]["body"] == BODY_TOO_LARGE or data[key]["body"] == BODY_MASKED:
                 continue
             body = data[key]["body"]
             body_is_json = self._has_json_content_type(data[key]["headers"])
