@@ -394,10 +394,9 @@ class RequestLogger:
                 k: (MASKED if isinstance(v, str) and self._should_mask_body_field(k) else self._mask_body(v))
                 for k, v in data.items()
             }
-        elif isinstance(data, list):
+        if isinstance(data, list):
             return [self._mask_body(item) for item in data]
-        else:
-            return data
+        return data
 
     @lru_cache(maxsize=100)
     def _should_mask_query_param(self, query_param_name: str) -> bool:
