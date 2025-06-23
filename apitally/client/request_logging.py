@@ -388,19 +388,6 @@ class RequestLogger:
     def _mask_headers(self, headers: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
         return [(k, v if not self._should_mask_header(k) else MASKED) for k, v in headers]
 
-    def _mask_bodies(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        for key in ["request", "response"]:
-            if "body" not in data[key] or data[key]["body"] == BODY_TOO_LARGE:
-                continue
-            headers = data[key].get("headers", [])
-            body_is_json = self._has_json_content_type(headers)
-            if body_is_json is None or body_is_json:
-                with suppress(Exception):
-                    body = self.deserialize(data[key]["body"])
-                    masked_body = self._mask_body(body)
-                    data[key]["body"] = self.serialize(masked_body)
-        return data
-
     def _mask_body(self, data: Any) -> Any:
         if isinstance(data, dict):
             return {
