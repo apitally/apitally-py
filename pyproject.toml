@@ -29,7 +29,10 @@ classifiers = [
     "Typing :: Typed",
 ]
 requires-python = ">=3.9,<4.0"
-dependencies = ["backoff>=2.0.0"]
+dependencies = [
+    "backoff>=2.0.0",
+    "typing-extensions>=4.0.0; python_version<'3.11'",
+]
 dynamic = ["version"]
 
 [project.optional-dependencies]

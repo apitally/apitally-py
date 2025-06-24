@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 from collections import deque
+from contextlib import suppress
 from dataclasses import dataclass, field
 from functools import lru_cache
 from io import BufferedReader
@@ -22,6 +23,12 @@ from apitally.client.server_errors import (
 )
 
 
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
+
+
 logger = get_logger(__name__)
 
 MAX_BODY_SIZE = 50_000  # 50 KB (uncompressed)
@@ -31,7 +38,12 @@ MAX_FILES_IN_DEQUE = 50
 BODY_TOO_LARGE = b"<body too large>"
 BODY_MASKED = b"<masked>"
 MASKED = "******"
-ALLOWED_CONTENT_TYPES = ["application/json", "text/plain"]
+ALLOWED_CONTENT_TYPES = [
+    "application/json",
+    "application/problem+json",
+    "application/vnd.api+json",
+    "text/plain",
+]
 EXCLUDE_PATH_PATTERNS = [
     r"/_?healthz?$",
     r"/_?health[\-_]?checks?$",
@@ -61,6 +73,16 @@ MASK_HEADER_PATTERNS = [
     r"token",
     r"cookie",
 ]
+MASK_BODY_FIELD_PATTERNS = [
+    r"password",
+    r"pwd",
+    r"token",
+    r"secret",
+    r"auth",
+    r"card[\-_ ]number",
+    r"ccv",
+    r"ssn",
+]
 
 
 class RequestDict(TypedDict):
@@ -82,6 +104,20 @@ class ResponseDict(TypedDict):
     body: Optional[bytes]
 
 
+class ExceptionDict(TypedDict):
+    type: str
+    message: str
+    traceback: str
+    sentry_event_id: NotRequired[str]
+
+
+class RequestLogItem(TypedDict):
+    uuid: str
+    request: RequestDict
+    response: ResponseDict
+    exception: NotRequired[ExceptionDict]
+
+
 @dataclass
 class RequestLoggingConfig:
     """
@@ -97,6 +133,7 @@ class RequestLoggingConfig:
         log_exception: Whether to log unhandled exceptions in case of server errors
         mask_query_params: Query parameter names to mask in logs. Expects regular expressions.
         mask_headers: Header names to mask in logs. Expects regular expressions.
+        mask_body_fields: Body fields to mask in logs. Expects regular expressions.
         mask_request_body_callback: Callback to mask the request body. Expects `request: RequestDict` as argument and returns the masked body as bytes or None.
         mask_response_body_callback: Callback to mask the response body. Expects `request: RequestDict` and `response: ResponseDict` as arguments and returns the masked body as bytes or None.
         exclude_paths: Paths to exclude from logging. Expects regular expressions.
@@ -112,6 +149,7 @@ class RequestLoggingConfig:
     log_exception: bool = True
     mask_query_params: List[str] = field(default_factory=list)
     mask_headers: List[str] = field(default_factory=list)
+    mask_body_fields: List[str] = field(default_factory=list)
     mask_request_body_callback: Optional[Callable[[RequestDict], Optional[bytes]]] = None
     mask_response_body_callback: Optional[Callable[[RequestDict, ResponseDict], Optional[bytes]]] = None
     exclude_paths: List[str] = field(default_factory=list)
@@ -161,7 +199,8 @@ class RequestLogger:
         self.config = config or RequestLoggingConfig()
         self.enabled = self.config.enabled and _check_writable_fs()
         self.serialize = _get_json_serializer()
-        self.write_deque: deque[Dict[str, Any]] = deque([], MAX_REQUESTS_IN_DEQUE)
+        self.deserialize = _get_json_deserializer()
+        self.write_deque: deque[RequestLogItem] = deque([], MAX_REQUESTS_IN_DEQUE)
         self.file_deque: deque[TempGzipFile] = deque([])
         self.file: Optional[TempGzipFile] = None
         self.lock = threading.Lock()
@@ -172,10 +211,14 @@ class RequestLogger:
         return self.file.size if self.file is not None else 0
 
     def log_request(
-        self, request: RequestDict, response: ResponseDict, exception: Optional[BaseException] = None
+        self,
+        request: RequestDict,
+        response: ResponseDict,
+        exception: Optional[BaseException] = None,
     ) -> None:
         if not self.enabled or self.suspend_until is not None:
             return
+
         parsed_url = urlparse(request["url"])
         user_agent = self._get_user_agent(request["headers"])
         if (
@@ -185,55 +228,20 @@ class RequestLogger:
         ):
             return
 
-        query = self._mask_query_params(parsed_url.query) if self.config.log_query_params else ""
-        request["url"] = urlunparse(parsed_url._replace(query=query))
-
         if not self.config.log_request_body or not self._has_supported_content_type(request["headers"]):
             request["body"] = None
-        elif (
-            self.config.mask_request_body_callback is not None
-            and request["body"] is not None
-            and request["body"] != BODY_TOO_LARGE
-        ):
-            try:
-                request["body"] = self.config.mask_request_body_callback(request)
-            except Exception:  # pragma: no cover
-                logger.exception("User-provided mask_request_body_callback function raised an exception")
-                request["body"] = None
-            if request["body"] is None:
-                request["body"] = BODY_MASKED
-        if request["body"] is not None and len(request["body"]) > MAX_BODY_SIZE:
-            request["body"] = BODY_TOO_LARGE
-
         if not self.config.log_response_body or not self._has_supported_content_type(response["headers"]):
             response["body"] = None
-        elif (
-            self.config.mask_response_body_callback is not None
-            and response["body"] is not None
-            and response["body"] != BODY_TOO_LARGE
-        ):
-            try:
-                response["body"] = self.config.mask_response_body_callback(request, response)
-            except Exception:  # pragma: no cover
-                logger.exception("User-provided mask_response_body_callback function raised an exception")
-                response["body"] = None
-            if response["body"] is None:
-                response["body"] = BODY_MASKED
-        if response["body"] is not None and len(response["body"]) > MAX_BODY_SIZE:
-            response["body"] = BODY_TOO_LARGE
-
-        request["headers"] = self._mask_headers(request["headers"]) if self.config.log_request_headers else []
-        response["headers"] = self._mask_headers(response["headers"]) if self.config.log_response_headers else []
 
         if request["size"] is not None and request["size"] < 0:
             request["size"] = None
         if response["size"] is not None and response["size"] < 0:
             response["size"] = None
 
-        item: Dict[str, Any] = {
+        item: RequestLogItem = {
             "uuid": str(uuid4()),
-            "request": _skip_empty_values(request),
-            "response": _skip_empty_values(response),
+            "request": request,
+            "response": response,
         }
         if exception is not None and self.config.log_exception:
             item["exception"] = {
@@ -242,6 +250,7 @@ class RequestLogger:
                 "traceback": get_truncated_exception_traceback(exception),
             }
             get_sentry_event_id_async(lambda event_id: item["exception"].update({"sentry_event_id": event_id}))
+
         self.write_deque.append(item)
 
     def write_to_file(self) -> None:
@@ -253,6 +262,9 @@ class RequestLogger:
             while True:
                 try:
                     item = self.write_deque.popleft()
+                    item = self._apply_masking(item)
+                    item["request"] = _skip_empty_values(item["request"])  # type: ignore[typeddict-item]
+                    item["response"] = _skip_empty_values(item["response"])  # type: ignore[typeddict-item]
                     self.file.write_line(self.serialize(item))
                 except IndexError:
                     break
@@ -307,6 +319,67 @@ class RequestLogger:
     def _should_exclude_user_agent(self, user_agent: Optional[str]) -> bool:
         return self._match_patterns(user_agent, EXCLUDE_USER_AGENT_PATTERNS) if user_agent is not None else False
 
+    def _apply_masking(self, data: RequestLogItem) -> RequestLogItem:
+        # Apply user-provided mask_request_body_callback function
+        if (
+            self.config.mask_request_body_callback is not None
+            and data["request"]["body"] is not None
+            and data["request"]["body"] != BODY_TOO_LARGE
+        ):
+            try:
+                data["request"]["body"] = self.config.mask_request_body_callback(data["request"])
+            except Exception:  # pragma: no cover
+                logger.exception("User-provided mask_request_body_callback function raised an exception")
+                data["request"]["body"] = None
+            if data["request"]["body"] is None:
+                data["request"]["body"] = BODY_MASKED
+
+        # Apply user-provided mask_response_body_callback function
+        if (
+            self.config.mask_response_body_callback is not None
+            and data["response"]["body"] is not None
+            and data["response"]["body"] != BODY_TOO_LARGE
+        ):
+            try:
+                data["response"]["body"] = self.config.mask_response_body_callback(data["request"], data["response"])
+            except Exception:  # pragma: no cover
+                logger.exception("User-provided mask_response_body_callback function raised an exception")
+                data["response"]["body"] = None
+            if data["response"]["body"] is None:
+                data["response"]["body"] = BODY_MASKED
+
+        # Check request and response body sizes
+        if data["request"]["body"] is not None and len(data["request"]["body"]) > MAX_BODY_SIZE:
+            data["request"]["body"] = BODY_TOO_LARGE
+        if data["response"]["body"] is not None and len(data["response"]["body"]) > MAX_BODY_SIZE:
+            data["response"]["body"] = BODY_TOO_LARGE
+
+        # Mask request and response body fields
+        for key in ("request", "response"):
+            if data[key]["body"] is None or data[key]["body"] == BODY_TOO_LARGE or data[key]["body"] == BODY_MASKED:
+                continue
+            body = data[key]["body"]
+            body_is_json = self._has_json_content_type(data[key]["headers"])
+            if body is not None and (body_is_json is None or body_is_json):
+                with suppress(Exception):
+                    masked_body = self._mask_body(self.deserialize(body))
+                    data[key]["body"] = self.serialize(masked_body)
+
+        # Mask request and response headers
+        data["request"]["headers"] = (
+            self._mask_headers(data["request"]["headers"]) if self.config.log_request_headers else []
+        )
+        data["response"]["headers"] = (
+            self._mask_headers(data["response"]["headers"]) if self.config.log_response_headers else []
+        )
+
+        # Mask query params
+        parsed_url = urlparse(data["request"]["url"])
+        query = self._mask_query_params(parsed_url.query) if self.config.log_query_params else ""
+        data["request"]["url"] = urlunparse(parsed_url._replace(query=query))
+
+        return data
+
     def _mask_query_params(self, query: str) -> str:
         query_params = parse_qsl(query)
         masked_query_params = [(k, v if not self._should_mask_query_param(k) else MASKED) for k, v in query_params]
@@ -314,6 +387,16 @@ class RequestLogger:
 
     def _mask_headers(self, headers: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
         return [(k, v if not self._should_mask_header(k) else MASKED) for k, v in headers]
+
+    def _mask_body(self, data: Any) -> Any:
+        if isinstance(data, dict):
+            return {
+                k: (MASKED if isinstance(v, str) and self._should_mask_body_field(k) else self._mask_body(v))
+                for k, v in data.items()
+            }
+        if isinstance(data, list):
+            return [self._mask_body(item) for item in data]
+        return data
 
     @lru_cache(maxsize=100)
     def _should_mask_query_param(self, query_param_name: str) -> bool:
@@ -324,6 +407,11 @@ class RequestLogger:
     def _should_mask_header(self, header_name: str) -> bool:
         patterns = self.config.mask_headers + MASK_HEADER_PATTERNS
         return self._match_patterns(header_name, patterns)
+
+    @lru_cache(maxsize=100)
+    def _should_mask_body_field(self, field_name: str) -> bool:
+        patterns = self.config.mask_body_fields + MASK_BODY_FIELD_PATTERNS
+        return self._match_patterns(field_name, patterns)
 
     @staticmethod
     def _match_patterns(value: str, patterns: List[str]) -> bool:
@@ -338,12 +426,17 @@ class RequestLogger:
 
     @staticmethod
     def _has_supported_content_type(headers: List[Tuple[str, str]]) -> bool:
-        content_type = next((v for k, v in headers if k.lower() == "content-type"), None)
+        content_type = next((v.lower() for k, v in headers if k.lower() == "content-type"), None)
         return RequestLogger.is_supported_content_type(content_type)
 
     @staticmethod
+    def _has_json_content_type(headers: List[Tuple[str, str]]) -> Optional[bool]:
+        content_type = next((v.lower() for k, v in headers if k.lower() == "content-type"), None)
+        return None if content_type is None else (re.search(r"\bjson\b", content_type) is not None)
+
+    @staticmethod
     def is_supported_content_type(content_type: Optional[str]) -> bool:
-        return content_type is not None and any(content_type.startswith(t) for t in ALLOWED_CONTENT_TYPES)
+        return content_type is not None and any(content_type.lower().startswith(t) for t in ALLOWED_CONTENT_TYPES)
 
 
 def _check_writable_fs() -> bool:
@@ -375,6 +468,17 @@ def _get_json_serializer() -> Callable[[Any], bytes]:
             return json.dumps(obj, separators=(",", ":"), default=default).encode()
 
         return json_dumps
+
+
+def _get_json_deserializer() -> Callable[[bytes], Any]:
+    try:
+        import orjson  # type: ignore
+
+        return orjson.loads
+    except ImportError:
+        import json
+
+        return json.loads
 
 
 def _skip_empty_values(data: Mapping) -> Dict:
