@@ -1,6 +1,11 @@
 import time
+from importlib.util import find_spec
 
 import pytest
+
+
+if find_spec("sentry_sdk") is None:
+    pytest.skip("sentry-sdk is not available", allow_module_level=True)
 
 
 def test_get_sentry_event_id_async():
