@@ -6,17 +6,22 @@ from typing import Callable, Set
 _tasks: Set[asyncio.Task] = set()
 
 
-def get_sentry_event_id_async(cb: Callable[[str], None]) -> None:
+def get_sentry_event_id_async(cb: Callable[[str], None], raise_on_error: bool = False) -> None:
     try:
-        from sentry_sdk.hub import Hub
+        import sentry_sdk
         from sentry_sdk.scope import Scope
     except ImportError:
+        if raise_on_error:
+            raise
         return  # pragma: no cover
     if not hasattr(Scope, "get_isolation_scope") or not hasattr(Scope, "_last_event_id"):
-        # sentry-sdk < 2.2.0 is not supported
+        if raise_on_error:
+            raise RuntimeError("sentry-sdk < 2.2.0 is not supported")
         return  # pragma: no cover
-    if Hub.current.client is None:
-        return  # sentry-sdk not initialized
+    if not sentry_sdk.is_initialized():
+        if raise_on_error:
+            raise RuntimeError("sentry-sdk not initialized")
+        return
 
     scope = Scope.get_isolation_scope()
     if event_id := scope._last_event_id:
