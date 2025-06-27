@@ -41,10 +41,10 @@ def get_starlette_app() -> Starlette:
     from starlette.responses import PlainTextResponse, StreamingResponse
     from starlette.routing import Mount, Route
 
-    from apitally.starlette import ApitallyConsumer, ApitallyMiddleware, RequestLoggingConfig
+    from apitally.starlette import ApitallyConsumer, ApitallyMiddleware, RequestLoggingConfig, set_consumer
 
     def foo(request: Request):
-        request.state.apitally_consumer = "test"
+        set_consumer(request, "test")
         return PlainTextResponse("foo")
 
     def foo_bar(request: Request):

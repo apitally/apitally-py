@@ -28,7 +28,7 @@ async def app(module_mocker: MockerFixture) -> Litestar:
     from litestar.handlers import get, post
     from litestar.response import Stream
 
-    from apitally.litestar import ApitallyConsumer, ApitallyPlugin, RequestLoggingConfig
+    from apitally.litestar import ApitallyConsumer, ApitallyPlugin, RequestLoggingConfig, set_consumer
 
     async def mocked_handle_shutdown(_):
         # Empty function instead of Mock to avoid the following error in Python 3.10:
@@ -45,7 +45,7 @@ async def app(module_mocker: MockerFixture) -> Litestar:
 
     @get("/foo/{bar:str}")
     async def foo_bar(request: Request, bar: str) -> str:
-        request.state.apitally_consumer = "test2"
+        set_consumer(request, "test2")
         return f"foo: {bar}"
 
     @post("/bar")

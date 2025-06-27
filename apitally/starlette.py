@@ -25,7 +25,7 @@ from apitally.client.request_logging import (
 from apitally.common import get_versions, parse_int, try_json_loads
 
 
-__all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig", "set_consumer"]
 
 
 class ApitallyMiddleware:
@@ -266,6 +266,10 @@ class ApitallyMiddleware:
             consumer = self.identify_consumer_callback(request)
             return ApitallyConsumer.from_string_or_object(consumer)
         return None
+
+
+def set_consumer(request: Request, identifier: str, name: Optional[str] = None, group: Optional[str] = None) -> None:
+    request.state.apitally_consumer = ApitallyConsumer(identifier, name=name, group=group)
 
 
 def _get_startup_data(

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from werkzeug.routing.map import Map
 
 
-__all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig", "set_consumer"]
 
 
 class ApitallyMiddleware:
@@ -214,6 +214,10 @@ class ApitallyMiddleware:
             )
             return ApitallyConsumer.from_string_or_object(g.consumer_identifier)
         return None
+
+
+def set_consumer(identifier: str, name: Optional[str] = None, group: Optional[str] = None) -> None:
+    g.apitally_consumer = ApitallyConsumer(identifier, name=name, group=group)
 
 
 def _get_startup_data(
