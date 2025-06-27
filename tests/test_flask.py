@@ -18,9 +18,9 @@ if TYPE_CHECKING:
 
 @pytest.fixture(scope="module")
 def app(module_mocker: MockerFixture) -> Flask:
-    from flask import Flask, g, request
+    from flask import Flask, request
 
-    from apitally.flask import ApitallyMiddleware, RequestLoggingConfig
+    from apitally.flask import ApitallyMiddleware, RequestLoggingConfig, set_consumer
 
     module_mocker.patch("apitally.client.client_threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_threading.ApitallyClient.start_sync_loop")
@@ -41,7 +41,7 @@ def app(module_mocker: MockerFixture) -> Flask:
 
     @app.route("/foo/<bar>")
     def foo_bar(bar: int):
-        g.apitally_consumer = "test"
+        set_consumer("test")
         return f"foo: {bar}", {"Content-Type": "text/plain"}
 
     @app.route("/bar", methods=["POST"])

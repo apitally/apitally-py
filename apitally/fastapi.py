@@ -1,4 +1,4 @@
-from apitally.starlette import ApitallyConsumer, ApitallyMiddleware, RequestLoggingConfig
+from apitally.starlette import ApitallyConsumer, ApitallyMiddleware, RequestLoggingConfig, set_consumer
 
 
-__all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig"]
+__all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig", "set_consumer"]
