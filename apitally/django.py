@@ -118,6 +118,19 @@ class ApitallyMiddleware:
         request_logging_config: Optional[RequestLoggingConfig] = None,
         **kwargs: Unpack[RequestLoggingKwargs],
     ) -> None:
+        if identify_consumer_callback is not None:
+            warn(
+                "The 'identify_consumer_callback' setting is deprecated, use 'consumer_callback' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if request_logging_config is not None:
+            warn(
+                "The nested 'request_logging_config' setting is deprecated, use top-level settings instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         if identify_consumer_callback and not consumer_callback:
             consumer_callback = identify_consumer_callback
         if kwargs and request_logging_config is None:

@@ -50,6 +50,13 @@ class ApitallyMiddleware:
         request_logging_config: Optional[RequestLoggingConfig] = None,
         **kwargs: Unpack[RequestLoggingKwargs],
     ) -> None:
+        if request_logging_config is not None:
+            warn(
+                "The 'request_logging_config' parameter is deprecated, use keyword arguments instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         self.app = app
         self.wsgi_app = app.wsgi_app
         self.patch_handle_exception()

@@ -50,6 +50,19 @@ class ApitallyMiddleware:
         request_logging_config: Optional[RequestLoggingConfig] = None,
         **kwargs: Unpack[RequestLoggingKwargs],
     ) -> None:
+        if identify_consumer_callback is not None:
+            warn(
+                "The 'identify_consumer_callback' parameter is deprecated, use 'consumer_callback' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if request_logging_config is not None:
+            warn(
+                "The 'request_logging_config' parameter is deprecated, use keyword arguments instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         self.app = app
         self.app_version = app_version
         self.openapi_url = openapi_url

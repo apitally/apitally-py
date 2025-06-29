@@ -1,5 +1,6 @@
 import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
+from warnings import warn
 
 from blacksheep import Application, Headers, Request, Response
 from blacksheep.server.openapi.v3 import Info, OpenAPIHandler, Operation
@@ -36,6 +37,19 @@ def use_apitally(
     request_logging_config: Optional[RequestLoggingConfig] = None,
     **kwargs: Unpack[RequestLoggingKwargs],
 ) -> None:
+    if identify_consumer_callback is not None:
+        warn(
+            "The 'identify_consumer_callback' parameter is deprecated, use 'consumer_callback' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if request_logging_config is not None:
+        warn(
+            "The 'request_logging_config' parameter is deprecated, use keyword arguments instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     original_get_match = app.router.get_match
 
     def _wrapped_router_get_match(request: Request) -> Optional[RouteMatch]:
