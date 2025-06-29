@@ -29,7 +29,7 @@ async def app(module_mocker: MockerFixture) -> Application:
 def get_app() -> Application:
     from blacksheep import StreamedContent, get, post, text
 
-    from apitally.blacksheep import ApitallyConsumer, RequestLoggingConfig, use_apitally
+    from apitally.blacksheep import ApitallyConsumer, use_apitally
 
     def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
         return ApitallyConsumer("test", name="Test")
@@ -40,13 +40,11 @@ def get_app() -> Application:
         app,
         client_id=CLIENT_ID,
         env=ENV,
-        request_logging_config=RequestLoggingConfig(
-            enabled=True,
-            log_request_body=True,
-            log_response_body=True,
-        ),
         app_version="1.2.3",
-        identify_consumer_callback=identify_consumer,
+        enable_request_logging=True,
+        log_request_body=True,
+        log_response_body=True,
+        consumer_callback=identify_consumer,
     )
 
     @get("/api/foo")

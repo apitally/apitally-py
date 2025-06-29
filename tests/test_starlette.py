@@ -41,7 +41,7 @@ def get_starlette_app() -> Starlette:
     from starlette.responses import PlainTextResponse, StreamingResponse
     from starlette.routing import Mount, Route
 
-    from apitally.starlette import ApitallyConsumer, ApitallyMiddleware, RequestLoggingConfig, set_consumer
+    from apitally.starlette import ApitallyConsumer, ApitallyMiddleware, set_consumer
 
     def foo(request: Request):
         set_consumer(request, "test")
@@ -103,12 +103,10 @@ def get_starlette_app() -> Starlette:
         ApitallyMiddleware,
         client_id=CLIENT_ID,
         env=ENV,
-        request_logging_config=RequestLoggingConfig(
-            enabled=True,
-            log_request_body=True,
-            log_response_body=True,
-        ),
-        identify_consumer_callback=identify_consumer,
+        consumer_callback=identify_consumer,
+        enable_request_logging=True,
+        log_request_body=True,
+        log_response_body=True,
     )
     return app
 
@@ -117,7 +115,7 @@ def get_fastapi_app() -> Starlette:
     from fastapi import APIRouter, FastAPI, Query
     from fastapi.responses import PlainTextResponse, StreamingResponse
 
-    from apitally.fastapi import ApitallyConsumer, ApitallyMiddleware, RequestLoggingConfig
+    from apitally.fastapi import ApitallyConsumer, ApitallyMiddleware
 
     def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
         return ApitallyConsumer("test", name="Test")
@@ -127,12 +125,10 @@ def get_fastapi_app() -> Starlette:
         ApitallyMiddleware,
         client_id=CLIENT_ID,
         env=ENV,
-        request_logging_config=RequestLoggingConfig(
-            enabled=True,
-            log_request_body=True,
-            log_response_body=True,
-        ),
-        identify_consumer_callback=identify_consumer,
+        consumer_callback=identify_consumer,
+        enable_request_logging=True,
+        log_request_body=True,
+        log_response_body=True,
     )
 
     router = APIRouter()

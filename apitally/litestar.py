@@ -20,8 +20,15 @@ from apitally.client.request_logging import (
     MAX_BODY_SIZE,
     RequestLogger,
     RequestLoggingConfig,
+    RequestLoggingKwargs,
 )
 from apitally.common import get_versions, parse_int, try_json_loads
+
+
+try:
+    from typing import Unpack
+except ImportError:
+    from typing_extensions import Unpack
 
 
 __all__ = ["ApitallyPlugin", "ApitallyConsumer", "RequestLoggingConfig", "set_consumer"]
@@ -32,21 +39,27 @@ class ApitallyPlugin(InitPluginProtocol):
         self,
         client_id: str,
         env: str = "dev",
-        request_logging_config: Optional[RequestLoggingConfig] = None,
         app_version: Optional[str] = None,
         filter_openapi_paths: bool = True,
-        identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
+        consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
         proxy: Optional[Union[str, Proxy]] = None,
+        identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
+        request_logging_config: Optional[RequestLoggingConfig] = None,
+        **kwargs: Unpack[RequestLoggingKwargs],
     ) -> None:
+        if kwargs and request_logging_config is None:
+            request_logging_config = RequestLoggingConfig.from_kwargs(kwargs)
+
         self.client = ApitallyClient(
             client_id=client_id,
             env=env,
             request_logging_config=request_logging_config,
             proxy=proxy,
         )
+
         self.app_version = app_version
         self.filter_openapi_paths = filter_openapi_paths
-        self.identify_consumer_callback = identify_consumer_callback
+        self.consumer_callback = consumer_callback or identify_consumer_callback
 
         self.openapi_path = "/schema"
         self.capture_request_body = (
@@ -86,9 +99,9 @@ class ApitallyPlugin(InitPluginProtocol):
 
     def middleware_factory(self, app: ASGIApp) -> ASGIApp:
         async def middleware(scope: Scope, receive: Receive, send: Send) -> None:
-            if self.client.enabled and scope["type"] == "http" and scope["method"] != "OPTIONS":
+            if self.client.enabled and scope["type"] == ScopeType.HTTP and scope["method"] != "OPTIONS":
                 timestamp = time.time()
-                request = Request(scope)
+                request: Request = Request(scope)
                 request_size = parse_int(request.headers.get("Content-Length"))
                 request_body = b""
                 request_body_too_large = request_size is not None and request_size > MAX_BODY_SIZE
@@ -102,7 +115,7 @@ class ApitallyPlugin(InitPluginProtocol):
                 response_content_type: Optional[str] = None
                 start_time = time.perf_counter()
 
-                async def receive_wrapper() -> Message:
+                async def receive_wrapper():
                     nonlocal request_body, request_body_too_large
                     message = await receive()
                     if message["type"] == "http.request" and self.capture_request_body and not request_body_too_large:
@@ -112,7 +125,7 @@ class ApitallyPlugin(InitPluginProtocol):
                             request_body = b""
                     return message
 
-                async def send_wrapper(message: Message) -> None:
+                async def send_wrapper(message: Message):
                     nonlocal \
                         response_time, \
                         response_status, \
@@ -281,8 +294,8 @@ class ApitallyPlugin(InitPluginProtocol):
                 DeprecationWarning,
             )
             return ApitallyConsumer.from_string_or_object(request.state.consumer_identifier)
-        if self.identify_consumer_callback is not None:
-            consumer = self.identify_consumer_callback(request)
+        if self.consumer_callback is not None:
+            consumer = self.consumer_callback(request)
             return ApitallyConsumer.from_string_or_object(consumer)
         return None
 

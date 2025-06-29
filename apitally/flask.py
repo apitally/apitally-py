@@ -19,8 +19,15 @@ from apitally.client.request_logging import (
     MAX_BODY_SIZE,
     RequestLogger,
     RequestLoggingConfig,
+    RequestLoggingKwargs,
 )
 from apitally.common import get_versions
+
+
+try:
+    from typing import Unpack
+except ImportError:
+    from typing_extensions import Unpack
 
 
 if TYPE_CHECKING:
@@ -37,14 +44,19 @@ class ApitallyMiddleware:
         app: Flask,
         client_id: str,
         env: str = "dev",
-        request_logging_config: Optional[RequestLoggingConfig] = None,
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = None,
         proxy: Optional[str] = None,
+        request_logging_config: Optional[RequestLoggingConfig] = None,
+        **kwargs: Unpack[RequestLoggingKwargs],
     ) -> None:
         self.app = app
         self.wsgi_app = app.wsgi_app
         self.patch_handle_exception()
+
+        if kwargs and request_logging_config is None:
+            request_logging_config = RequestLoggingConfig.from_kwargs(kwargs)
+
         self.client = ApitallyClient(
             client_id=client_id,
             env=env,

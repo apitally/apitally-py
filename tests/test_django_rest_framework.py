@@ -28,8 +28,6 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
     import django
     from django.conf import settings
 
-    from apitally.django_rest_framework import RequestLoggingConfig
-
     module_mocker.patch("apitally.client.client_threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_threading.ApitallyClient.start_sync_loop")
     module_mocker.patch("apitally.client.client_threading.ApitallyClient.set_startup_data")
@@ -51,13 +49,11 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
         APITALLY_MIDDLEWARE={
             "client_id": "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9",
             "env": "dev",
-            "request_logging_config": RequestLoggingConfig(
-                enabled=True,
-                log_request_body=True,
-                log_response_body=True,
-            ),
             "include_django_views": True,
             "urlconf": ["tests.django_rest_framework_urls"],
+            "enable_request_logging": True,
+            "log_request_body": True,
+            "log_response_body": True,
         },
     )
     django.setup()

@@ -21,8 +21,15 @@ from apitally.client.request_logging import (
     MAX_BODY_SIZE,
     RequestLogger,
     RequestLoggingConfig,
+    RequestLoggingKwargs,
 )
 from apitally.common import get_versions, parse_int, try_json_loads
+
+
+try:
+    from typing import Unpack
+except ImportError:
+    from typing_extensions import Unpack
 
 
 __all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig", "set_consumer"]
@@ -34,18 +41,24 @@ class ApitallyMiddleware:
         app: ASGIApp,
         client_id: str,
         env: str = "dev",
-        request_logging_config: Optional[RequestLoggingConfig] = None,
         app_version: Optional[str] = None,
         openapi_url: Optional[str] = "/openapi.json",
-        identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
+        consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
         capture_client_disconnects: bool = False,
         proxy: Optional[Union[str, Proxy]] = None,
+        identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
+        request_logging_config: Optional[RequestLoggingConfig] = None,
+        **kwargs: Unpack[RequestLoggingKwargs],
     ) -> None:
         self.app = app
         self.app_version = app_version
         self.openapi_url = openapi_url
-        self.identify_consumer_callback = identify_consumer_callback
+        self.consumer_callback = consumer_callback or identify_consumer_callback
         self.capture_client_disconnects = capture_client_disconnects
+
+        if kwargs and request_logging_config is None:
+            request_logging_config = RequestLoggingConfig.from_kwargs(kwargs)
+
         self.client = ApitallyClient(
             client_id=client_id,
             env=env,
@@ -262,8 +275,8 @@ class ApitallyMiddleware:
                 DeprecationWarning,
             )
             return ApitallyConsumer.from_string_or_object(request.state.consumer_identifier)
-        if self.identify_consumer_callback is not None:
-            consumer = self.identify_consumer_callback(request)
+        if self.consumer_callback is not None:
+            consumer = self.consumer_callback(request)
             return ApitallyConsumer.from_string_or_object(consumer)
         return None
 

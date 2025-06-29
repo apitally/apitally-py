@@ -118,28 +118,25 @@ class RequestLogItem(TypedDict):
     exception: NotRequired[ExceptionDict]
 
 
+class RequestLoggingKwargs(TypedDict, total=False):
+    enable_request_logging: bool
+    log_query_params: bool
+    log_request_headers: bool
+    log_request_body: bool
+    log_response_headers: bool
+    log_response_body: bool
+    log_exception: bool
+    mask_query_params: List[str]
+    mask_headers: List[str]
+    mask_body_fields: List[str]
+    mask_request_body_callback: Optional[Callable[[RequestDict], Optional[bytes]]]
+    mask_response_body_callback: Optional[Callable[[RequestDict, ResponseDict], Optional[bytes]]]
+    exclude_paths: List[str]
+    exclude_callback: Optional[Callable[[RequestDict, ResponseDict], bool]]
+
+
 @dataclass
 class RequestLoggingConfig:
-    """
-    Configuration for request logging.
-
-    Attributes:
-        enabled: Whether request logging is enabled
-        log_query_params: Whether to log query parameter values
-        log_request_headers: Whether to log request header values
-        log_request_body: Whether to log the request body (only if JSON or plain text)
-        log_response_headers: Whether to log response header values
-        log_response_body: Whether to log the response body (only if JSON or plain text)
-        log_exception: Whether to log unhandled exceptions in case of server errors
-        mask_query_params: Query parameter names to mask in logs. Expects regular expressions.
-        mask_headers: Header names to mask in logs. Expects regular expressions.
-        mask_body_fields: Body fields to mask in logs. Expects regular expressions.
-        mask_request_body_callback: Callback to mask the request body. Expects `request: RequestDict` as argument and returns the masked body as bytes or None.
-        mask_response_body_callback: Callback to mask the response body. Expects `request: RequestDict` and `response: ResponseDict` as arguments and returns the masked body as bytes or None.
-        exclude_paths: Paths to exclude from logging. Expects regular expressions.
-        exclude_callback: Callback to exclude requests from logging. Should expect two arguments, `request: RequestDict` and `response: ResponseDict`, and return True to exclude the request.
-    """
-
     enabled: bool = False
     log_query_params: bool = True
     log_request_headers: bool = False
@@ -154,6 +151,11 @@ class RequestLoggingConfig:
     mask_response_body_callback: Optional[Callable[[RequestDict, ResponseDict], Optional[bytes]]] = None
     exclude_paths: List[str] = field(default_factory=list)
     exclude_callback: Optional[Callable[[RequestDict, ResponseDict], bool]] = None
+
+    @classmethod
+    def from_kwargs(cls, kwargs: RequestLoggingKwargs) -> "RequestLoggingConfig":
+        enabled = kwargs.pop("enable_request_logging", False)
+        return RequestLoggingConfig(enabled=enabled, **kwargs)  # type: ignore[misc]
 
 
 class TempGzipFile:

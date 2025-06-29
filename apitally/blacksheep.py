@@ -12,8 +12,15 @@ from apitally.client.request_logging import (
     MAX_BODY_SIZE,
     RequestLogger,
     RequestLoggingConfig,
+    RequestLoggingKwargs,
 )
 from apitally.common import get_versions, parse_int
+
+
+try:
+    from typing import Unpack
+except ImportError:
+    from typing_extensions import Unpack
 
 
 __all__ = ["use_apitally", "ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig"]
@@ -23,9 +30,11 @@ def use_apitally(
     app: Application,
     client_id: str,
     env: str = "dev",
-    request_logging_config: Optional[RequestLoggingConfig] = None,
     app_version: Optional[str] = None,
+    consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
     identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
+    request_logging_config: Optional[RequestLoggingConfig] = None,
+    **kwargs: Unpack[RequestLoggingKwargs],
 ) -> None:
     original_get_match = app.router.get_match
 
@@ -37,13 +46,16 @@ def use_apitally(
 
     app.router.get_match = _wrapped_router_get_match  # type: ignore[assignment,method-assign]
 
+    if kwargs and request_logging_config is None:
+        request_logging_config = RequestLoggingConfig.from_kwargs(kwargs)
+
     middleware = ApitallyMiddleware(
         app,
         client_id,
         env=env,
         request_logging_config=request_logging_config,
         app_version=app_version,
-        identify_consumer_callback=identify_consumer_callback,
+        consumer_callback=consumer_callback or identify_consumer_callback,
     )
     app.middlewares.append(middleware)
 
@@ -56,11 +68,11 @@ class ApitallyMiddleware:
         env: str = "dev",
         request_logging_config: Optional[RequestLoggingConfig] = None,
         app_version: Optional[str] = None,
-        identify_consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
+        consumer_callback: Optional[Callable[[Request], Union[str, ApitallyConsumer, None]]] = None,
     ) -> None:
         self.app = app
         self.app_version = app_version
-        self.identify_consumer_callback = identify_consumer_callback
+        self.consumer_callback = consumer_callback
         self.client = ApitallyClient(
             client_id=client_id,
             env=env,
@@ -88,8 +100,8 @@ class ApitallyMiddleware:
         identity = request.user or request.identity or None
         if identity is not None and identity.has_claim("apitally_consumer"):
             return ApitallyConsumer.from_string_or_object(identity.get("apitally_consumer"))
-        if self.identify_consumer_callback is not None:
-            consumer = self.identify_consumer_callback(request)
+        if self.consumer_callback is not None:
+            consumer = self.consumer_callback(request)
             return ApitallyConsumer.from_string_or_object(consumer)
         return None
 
