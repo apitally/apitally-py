@@ -47,9 +47,9 @@ logger = get_logger(__name__)
 class ApitallyMiddlewareConfig:
     client_id: str
     env: str
-    request_logging_config: Optional[RequestLoggingConfig]
     app_version: Optional[str]
-    identify_consumer_callback: Optional[Callable[[HttpRequest], Union[str, ApitallyConsumer, None]]]
+    request_logging_config: Optional[RequestLoggingConfig]
+    consumer_callback: Optional[Callable[[HttpRequest], Union[str, ApitallyConsumer, None]]]
     include_django_views: bool
     urlconfs: List[Optional[str]]
     proxy: Optional[str]
@@ -128,7 +128,7 @@ class ApitallyMiddleware:
             env=env,
             request_logging_config=request_logging_config,
             app_version=app_version,
-            identify_consumer_callback=import_string(consumer_callback) if consumer_callback else None,
+            consumer_callback=import_string(consumer_callback) if consumer_callback else None,
             include_django_views=include_django_views,
             urlconfs=[urlconf] if urlconf is None or isinstance(urlconf, str) else urlconf,
             proxy=proxy,
@@ -282,8 +282,8 @@ class ApitallyMiddleware:
                 DeprecationWarning,
             )
             return ApitallyConsumer.from_string_or_object(request.consumer_identifier)
-        if self.config is not None and self.config.identify_consumer_callback is not None:
-            consumer = self.config.identify_consumer_callback(request)
+        if self.config is not None and self.config.consumer_callback is not None:
+            consumer = self.config.consumer_callback(request)
             return ApitallyConsumer.from_string_or_object(consumer)
         return None
 

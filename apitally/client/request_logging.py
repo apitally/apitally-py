@@ -154,8 +154,9 @@ class RequestLoggingConfig:
 
     @classmethod
     def from_kwargs(cls, kwargs: RequestLoggingKwargs) -> "RequestLoggingConfig":
-        enabled = kwargs.pop("enable_request_logging", False)
-        return RequestLoggingConfig(enabled=enabled, **kwargs)  # type: ignore[misc]
+        enabled = kwargs.get("enable_request_logging", False)
+        config_kwargs: dict[str, Any] = {k: v for k, v in kwargs.items() if k in cls.__dataclass_fields__}
+        return RequestLoggingConfig(enabled=enabled, **config_kwargs)
 
 
 class TempGzipFile:
