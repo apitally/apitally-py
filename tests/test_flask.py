@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 def app(module_mocker: MockerFixture) -> Flask:
     from flask import Flask, request
 
-    from apitally.flask import ApitallyMiddleware, RequestLoggingConfig, set_consumer
+    from apitally.flask import ApitallyMiddleware, set_consumer
 
     module_mocker.patch("apitally.client.client_threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_threading.ApitallyClient.start_sync_loop")
@@ -32,11 +32,9 @@ def app(module_mocker: MockerFixture) -> Flask:
         app,
         client_id=CLIENT_ID,
         env=ENV,
-        request_logging_config=RequestLoggingConfig(
-            enabled=True,
-            log_request_body=True,
-            log_response_body=True,
-        ),
+        enable_request_logging=True,
+        log_request_body=True,
+        log_response_body=True,
     )
 
     @app.route("/foo/<bar>")

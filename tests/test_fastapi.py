@@ -37,7 +37,12 @@ def app(module_mocker: MockerFixture) -> FastAPI:
         return None
 
     app = FastAPI()
-    app.add_middleware(ApitallyMiddleware, client_id=CLIENT_ID, env=ENV, identify_consumer_callback=identify_consumer)
+    app.add_middleware(
+        ApitallyMiddleware,
+        client_id=CLIENT_ID,
+        env=ENV,
+        consumer_callback=identify_consumer,
+    )
 
     @app.get("/foo/")
     def foo():

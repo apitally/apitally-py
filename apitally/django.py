@@ -23,9 +23,15 @@ from apitally.client.request_logging import (
     MAX_BODY_SIZE,
     RequestLogger,
     RequestLoggingConfig,
+    RequestLoggingKwargs,
 )
 from apitally.common import get_versions, parse_int, try_json_loads
 
+
+try:
+    from typing import Unpack
+except ImportError:
+    from typing_extensions import Unpack
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -33,6 +39,7 @@ if TYPE_CHECKING:
 
 
 __all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig"]
+
 logger = get_logger(__name__)
 
 
@@ -40,9 +47,9 @@ logger = get_logger(__name__)
 class ApitallyMiddlewareConfig:
     client_id: str
     env: str
-    request_logging_config: Optional[RequestLoggingConfig]
     app_version: Optional[str]
-    identify_consumer_callback: Optional[Callable[[HttpRequest], Union[str, ApitallyConsumer, None]]]
+    request_logging_config: Optional[RequestLoggingConfig]
+    consumer_callback: Optional[Callable[[HttpRequest], Union[str, ApitallyConsumer, None]]]
     include_django_views: bool
     urlconfs: List[Optional[str]]
     proxy: Optional[str]
@@ -102,21 +109,39 @@ class ApitallyMiddleware:
         cls,
         client_id: str,
         env: str = "dev",
-        request_logging_config: Optional[RequestLoggingConfig] = None,
         app_version: Optional[str] = None,
-        identify_consumer_callback: Optional[str] = None,
+        consumer_callback: Optional[str] = None,
         include_django_views: bool = False,
         urlconf: Optional[Union[List[Optional[str]], str]] = None,
         proxy: Optional[str] = None,
+        identify_consumer_callback: Optional[str] = None,
+        request_logging_config: Optional[RequestLoggingConfig] = None,
+        **kwargs: Unpack[RequestLoggingKwargs],
     ) -> None:
+        if identify_consumer_callback is not None:
+            warn(
+                "The 'identify_consumer_callback' setting is deprecated, use 'consumer_callback' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if request_logging_config is not None:
+            warn(
+                "The nested 'request_logging_config' setting is deprecated, use top-level settings instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        if identify_consumer_callback and not consumer_callback:
+            consumer_callback = identify_consumer_callback
+        if kwargs and request_logging_config is None:
+            request_logging_config = RequestLoggingConfig.from_kwargs(kwargs)
+
         cls.config = ApitallyMiddlewareConfig(
             client_id=client_id,
             env=env,
             request_logging_config=request_logging_config,
             app_version=app_version,
-            identify_consumer_callback=import_string(identify_consumer_callback)
-            if identify_consumer_callback
-            else None,
+            consumer_callback=import_string(consumer_callback) if consumer_callback else None,
             include_django_views=include_django_views,
             urlconfs=[urlconf] if urlconf is None or isinstance(urlconf, str) else urlconf,
             proxy=proxy,
@@ -270,8 +295,8 @@ class ApitallyMiddleware:
                 DeprecationWarning,
             )
             return ApitallyConsumer.from_string_or_object(request.consumer_identifier)
-        if self.config is not None and self.config.identify_consumer_callback is not None:
-            consumer = self.config.identify_consumer_callback(request)
+        if self.config is not None and self.config.consumer_callback is not None:
+            consumer = self.config.consumer_callback(request)
             return ApitallyConsumer.from_string_or_object(consumer)
         return None
 
