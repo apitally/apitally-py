@@ -28,7 +28,7 @@ async def app(module_mocker: MockerFixture) -> Litestar:
     from litestar.handlers import get, post
     from litestar.response import Stream
 
-    from apitally.litestar import ApitallyConsumer, ApitallyPlugin, RequestLoggingConfig, set_consumer
+    from apitally.litestar import ApitallyConsumer, ApitallyPlugin, set_consumer
 
     async def mocked_handle_shutdown(_):
         # Empty function instead of Mock to avoid the following error in Python 3.10:
@@ -76,12 +76,10 @@ async def app(module_mocker: MockerFixture) -> Litestar:
         client_id=CLIENT_ID,
         env=ENV,
         app_version="1.2.3",
-        identify_consumer_callback=identify_consumer,
-        request_logging_config=RequestLoggingConfig(
-            enabled=True,
-            log_request_body=True,
-            log_response_body=True,
-        ),
+        consumer_callback=identify_consumer,
+        enable_request_logging=True,
+        log_request_body=True,
+        log_response_body=True,
     )
     app = Litestar(
         route_handlers=[foo, foo_bar, bar, baz, val, stream],
