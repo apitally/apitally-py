@@ -36,6 +36,14 @@ __all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig", "se
 
 
 class ApitallyMiddleware:
+    """
+    Apitally middleware for Starlette applications.
+
+    For more information, see:
+    - Setup guide: https://docs.apitally.io/frameworks/starlette
+    - Reference: https://docs.apitally.io/reference/python
+    """
+
     def __init__(
         self,
         app: ASGIApp,

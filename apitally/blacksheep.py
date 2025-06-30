@@ -24,7 +24,7 @@ except ImportError:
     from typing_extensions import Unpack
 
 
-__all__ = ["use_apitally", "ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig"]
+__all__ = ["use_apitally", "ApitallyConsumer", "RequestLoggingConfig"]
 
 
 def use_apitally(
@@ -37,6 +37,14 @@ def use_apitally(
     request_logging_config: Optional[RequestLoggingConfig] = None,
     **kwargs: Unpack[RequestLoggingKwargs],
 ) -> None:
+    """
+    Use the Apitally middleware for BlackSheep applications.
+
+    For more information, see:
+    - Setup guide: https://docs.apitally.io/frameworks/blacksheep
+    - Reference: https://docs.apitally.io/reference/python
+    """
+
     if identify_consumer_callback is not None:
         warn(
             "The 'identify_consumer_callback' parameter is deprecated, use 'consumer_callback' instead.",
