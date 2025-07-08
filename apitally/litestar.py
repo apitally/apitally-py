@@ -327,5 +327,5 @@ def _get_routes(app: Litestar) -> List[Dict[str, str]]:
         {"method": method, "path": route.path}
         for route in app.routes
         for method in route.methods
-        if route.scope_type == ScopeType.HTTP and method != "OPTIONS"
+        if route.scope_type == ScopeType.HTTP and method not in ["OPTIONS", "HEAD"]
     ]

@@ -128,7 +128,7 @@ class ApitallyMiddleware:
         return None
 
     async def __call__(self, request: Request, handler: Callable[[Request], Awaitable[Response]]) -> Response:
-        if not self.client.enabled:
+        if not self.client.enabled or request.method.upper() == "OPTIONS":
             return await handler(request)
 
         timestamp = time.time()
@@ -188,7 +188,7 @@ class ApitallyMiddleware:
                         if response_size is None or response_size < 0:
                             response_size = len(response_body)
 
-            if route_pattern and request.method.upper() != "OPTIONS":
+            if route_pattern:
                 self.client.request_counter.add_request(
                     consumer=consumer_identifier,
                     method=request.method.upper(),
@@ -251,7 +251,7 @@ def _get_startup_data(app: Application, app_version: Optional[str] = None) -> Di
 def _get_paths(app: Application) -> List[Dict[str, str]]:
     openapi = OpenAPIHandler(info=Info(title="", version=""))
     paths = []
-    methods = ("get", "put", "post", "delete", "options", "head", "patch", "trace")
+    methods = ("get", "put", "post", "delete", "patch")
     for path, path_item in openapi.get_paths(app).items():
         for method in methods:
             operation: Operation = getattr(path_item, method, None)

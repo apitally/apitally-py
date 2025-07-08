@@ -102,7 +102,7 @@ class ApitallyMiddleware:
         self.client.start_sync_loop()
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
-        if not self.client.enabled:
+        if not self.client.enabled or environ.get("REQUEST_METHOD") == "OPTIONS":
             return self.wsgi_app(environ, start_response)
 
         timestamp = time.time()
@@ -180,7 +180,7 @@ class ApitallyMiddleware:
         consumer_identifier = consumer.identifier if consumer else None
         self.client.consumer_registry.add_or_update_consumer(consumer)
 
-        if path is not None and request.method != "OPTIONS":
+        if path is not None:
             self.client.request_counter.add_request(
                 consumer=consumer_identifier,
                 method=request.method,
