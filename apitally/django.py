@@ -12,6 +12,7 @@ from warnings import warn
 from django.conf import settings
 from django.contrib.admindocs.views import extract_views_from_urlpatterns, simplify_regex
 from django.urls import URLPattern, URLResolver, get_resolver
+from django.utils.functional import Promise
 from django.utils.module_loading import import_string
 from django.views.generic.base import View
 
@@ -500,12 +501,9 @@ def _check_import(name: str) -> bool:
 
 
 def _convert_proxy_objects(data: Any) -> Any:
-    """
-    Recursively convert Django proxy objects to their string representation
-    to make them JSON serializable.
-    """
-    if hasattr(data, "_delegate_text") or hasattr(data, "_delegate_bytes"):
-        # This is a Django proxy object (like ugettext_lazy)
+    """Recursively convert Django proxy objects to string to make them JSON serializable."""
+    if isinstance(data, Promise):
+        # This is a Django proxy object
         return _force_text_compat(data)
     elif isinstance(data, dict):
         return {key: _convert_proxy_objects(value) for key, value in data.items()}
