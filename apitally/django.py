@@ -327,8 +327,10 @@ def _get_openapi(urlconfs: List[Optional[str]]) -> Optional[str]:
     with contextlib.suppress(ImportError):
         ninja_schema = _get_ninja_schema(urlconfs)
     if drf_schema is not None and ninja_schema is None:
+        drf_schema = _convert_proxy_objects(drf_schema)
         return json.dumps(drf_schema)
     elif ninja_schema is not None and drf_schema is None:
+        ninja_schema = _convert_proxy_objects(ninja_schema)
         return json.dumps(ninja_schema)
     return None  # pragma: no cover
 
@@ -495,3 +497,30 @@ def _check_import(name: str) -> bool:
         return True
     except ImportError:
         return False
+
+
+def _convert_proxy_objects(data: Any) -> Any:
+    """
+    Recursively convert Django proxy objects to their string representation
+    to make them JSON serializable.
+    """
+    if hasattr(data, "_delegate_text") or hasattr(data, "_delegate_bytes"):
+        # This is a Django proxy object (like ugettext_lazy)
+        return _force_text_compat(data)
+    elif isinstance(data, dict):
+        return {key: _convert_proxy_objects(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [_convert_proxy_objects(item) for item in data]
+    elif isinstance(data, tuple):
+        return tuple(_convert_proxy_objects(item) for item in data)
+    else:
+        return data
+
+
+def _force_text_compat(data: Any) -> str:
+    try:
+        from django.utils.encoding import force_text
+    except ImportError:
+        from django.utils.encoding import force_str as force_text
+
+    return force_text(data)

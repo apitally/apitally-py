@@ -207,3 +207,27 @@ def test_check_import():
 
     assert _check_import("ninja") is True
     assert _check_import("nonexistentpackage") is False
+
+
+def test_convert_proxy_objects():
+    from django.utils.functional import lazy
+
+    from apitally.django import _convert_proxy_objects
+
+    lazy_string = lazy(lambda: "Hello, World!", str)()
+    assert _convert_proxy_objects(lazy_string) == "Hello, World!"
+
+    data = {
+        "title": lazy_string,
+        "description": "Normal string",
+        "nested": {"summary": lazy_string, "items": [lazy_string, "normal string"]},
+    }
+    result = _convert_proxy_objects(data)
+    assert result["title"] == "Hello, World!"
+    assert result["description"] == "Normal string"
+    assert result["nested"]["summary"] == "Hello, World!"
+    assert result["nested"]["items"][0] == "Hello, World!"
+    assert result["nested"]["items"][1] == "normal string"
+
+    data = {"key": "value", "number": 42}
+    assert _convert_proxy_objects(data) == data
