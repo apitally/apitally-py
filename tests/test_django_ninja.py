@@ -218,20 +218,15 @@ def test_convert_proxy_objects():
     assert _convert_proxy_objects(lazy_string) == "Hello, World!"
 
     data = {
-        "title": lazy_string,
-        "description": "Normal string",
-        "nested": {"summary": lazy_string, "items": [lazy_string, "normal string"]},
+        "lazy": lazy_string,
+        "normal": "Normal string",
+        "nested": {"lazy": lazy_string, "items": [lazy_string, "normal string"]},
+        "tuple": (lazy_string, "normal", lazy_string),
     }
     result = _convert_proxy_objects(data)
-    assert result["title"] == "Hello, World!"
-    assert result["description"] == "Normal string"
-    assert result["nested"]["summary"] == "Hello, World!"
+    assert result["lazy"] == "Hello, World!"
+    assert result["normal"] == "Normal string"
+    assert result["nested"]["lazy"] == "Hello, World!"
     assert result["nested"]["items"][0] == "Hello, World!"
     assert result["nested"]["items"][1] == "normal string"
-
-    data = (lazy_string, "normal", lazy_string)
-    result = _convert_proxy_objects(data)
-    assert result == ("Hello, World!", "normal", "Hello, World!")
-
-    data = {"key": "value", "number": 42}
-    assert _convert_proxy_objects(data) == data
+    assert result["tuple"] == ("Hello, World!", "normal", "Hello, World!")
