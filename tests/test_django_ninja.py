@@ -229,5 +229,9 @@ def test_convert_proxy_objects():
     assert result["nested"]["items"][0] == "Hello, World!"
     assert result["nested"]["items"][1] == "normal string"
 
+    data = (lazy_string, "normal", lazy_string)
+    result = _convert_proxy_objects(data)
+    assert result == ("Hello, World!", "normal", "Hello, World!")
+
     data = {"key": "value", "number": 42}
     assert _convert_proxy_objects(data) == data
