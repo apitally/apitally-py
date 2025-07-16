@@ -321,10 +321,17 @@ def _get_startup_data(
 
 
 def _get_openapi(urlconfs: List[Optional[str]]) -> Optional[str]:
+    rest_framework_settings = getattr(settings, "REST_FRAMEWORK", {})
+    schema_class = rest_framework_settings.get("DEFAULT_SCHEMA_CLASS", "")
+
     drf_schema = None
     ninja_schema = None
     with contextlib.suppress(ImportError):
-        drf_schema = _get_drf_schema(urlconfs)
+        drf_schema = (
+            _get_drf_spectacular_schema(urlconfs)
+            if schema_class == "drf_spectacular.openapi.AutoSchema"
+            else _get_drf_schema(urlconfs)
+        )
     with contextlib.suppress(ImportError):
         ninja_schema = _get_ninja_schema(urlconfs)
     if drf_schema is not None and ninja_schema is None:
@@ -393,6 +400,18 @@ def _get_drf_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[str, Any]]:
             if schema is not None and len(schema["paths"]) > 0:
                 schemas.append(schema)
     return None if len(schemas) != 1 else schemas[0]  # type: ignore[return-value]
+
+
+def _get_drf_spectacular_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[str, Any]]:
+    from drf_spectacular.generators import SchemaGenerator
+
+    schemas = []
+    for urlconf in urlconfs:
+        generator = SchemaGenerator(urlconf=urlconf)
+        schema = generator.get_schema()
+        if schema is not None and len(schema["paths"]) > 0:
+            schemas.append(schema)
+    return None if len(schemas) != 1 else schemas[0]
 
 
 def _get_ninja_paths(urlconfs: List[Optional[str]]) -> List[Dict[str, str]]:
