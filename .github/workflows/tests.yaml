@@ -31,7 +31,9 @@ jobs:
       - name: Install Python
         run: uv python install 3.13
       - name: Install dependencies
-        run: uv sync --all-extras --frozen
+        run: |
+          uv sync --all-extras --frozen
+          uv pip install drf-spectacular inflection uritemplate
       - name: Run checks
         run: uv run make check
       - name: Run tests and create coverage report
