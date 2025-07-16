@@ -15,7 +15,12 @@ if find_spec("drf_spectacular") is None:
 @pytest.fixture(scope="module")
 def reset_modules() -> None:
     for module in list(sys.modules):
-        if module.startswith("django.") or module.startswith("rest_framework.") or module.startswith("apitally."):
+        if (
+            module.startswith("django.")
+            or module.startswith("rest_framework.")
+            or module.startswith("apitally.")
+            or module.startswith("tests.")
+        ):
             del sys.modules[module]
 
 
