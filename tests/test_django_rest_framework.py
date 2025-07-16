@@ -23,7 +23,7 @@ def reset_modules() -> None:
             module.startswith("django.")
             or module.startswith("rest_framework.")
             or module.startswith("apitally.")
-            or module.startswith("tests.")
+            or module == "tests.django_rest_framework_urls"
         ):
             del sys.modules[module]
 
