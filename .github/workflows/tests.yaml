@@ -31,7 +31,9 @@ jobs:
       - name: Install Python
         run: uv python install 3.13
       - name: Install dependencies
-        run: uv sync --all-extras --frozen
+        run: |
+          uv sync --all-extras --frozen
+          uv pip install drf-spectacular
       - name: Run checks
         run: uv run make check
       - name: Run tests and create coverage report
@@ -53,6 +55,7 @@ jobs:
           - flask
           - flask==2.3.*
           - flask==2.0.3 Werkzeug==2.*
+          - djangorestframework drf-spectacular django
           - djangorestframework django uritemplate inflection
           - djangorestframework django==4.2.* uritemplate inflection
           - djangorestframework==3.12.* django==3.2.* uritemplate
