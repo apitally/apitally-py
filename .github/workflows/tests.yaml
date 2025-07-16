@@ -53,6 +53,7 @@ jobs:
           - flask
           - flask==2.3.*
           - flask==2.0.3 Werkzeug==2.*
+          - djangorestframework drf-spectacular django
           - djangorestframework django uritemplate inflection
           - djangorestframework django==4.2.* uritemplate inflection
           - djangorestframework==3.12.* django==3.2.* uritemplate

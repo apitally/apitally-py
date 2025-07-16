@@ -403,7 +403,7 @@ def _get_drf_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[str, Any]]:
 
 
 def _get_drf_spectacular_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[str, Any]]:
-    from drf_spectacular.generators import SchemaGenerator
+    from drf_spectacular.generators import SchemaGenerator  # type: ignore[import-not-found]
 
     schemas = []
     for urlconf in urlconfs:
