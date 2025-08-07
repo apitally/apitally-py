@@ -9,6 +9,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from functools import lru_cache
 from io import BufferedReader
+from logging import LogRecord
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, List, Mapping, Optional, Tuple, TypedDict
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -111,11 +112,21 @@ class ExceptionDict(TypedDict):
     sentry_event_id: NotRequired[str]
 
 
+class LogRecordDict(TypedDict):
+    timestamp: float
+    logger: str
+    level: str
+    message: str
+    filename: str
+    line: int
+
+
 class RequestLogItem(TypedDict):
     uuid: str
     request: RequestDict
     response: ResponseDict
     exception: NotRequired[ExceptionDict]
+    logs: NotRequired[List[LogRecordDict]]
 
 
 class RequestLoggingKwargs(TypedDict, total=False):
@@ -126,6 +137,7 @@ class RequestLoggingKwargs(TypedDict, total=False):
     log_response_headers: bool
     log_response_body: bool
     log_exception: bool
+    capture_logs: bool
     mask_query_params: List[str]
     mask_headers: List[str]
     mask_body_fields: List[str]
@@ -144,6 +156,7 @@ class RequestLoggingConfig:
     log_response_headers: bool = True
     log_response_body: bool = False
     log_exception: bool = True
+    capture_logs: bool = False
     mask_query_params: List[str] = field(default_factory=list)
     mask_headers: List[str] = field(default_factory=list)
     mask_body_fields: List[str] = field(default_factory=list)
@@ -218,6 +231,7 @@ class RequestLogger:
         request: RequestDict,
         response: ResponseDict,
         exception: Optional[BaseException] = None,
+        logs: Optional[List[LogRecord]] = None,
     ) -> None:
         if not self.enabled or self.suspend_until is not None:
             return
@@ -246,6 +260,7 @@ class RequestLogger:
             "request": request,
             "response": response,
         }
+
         if exception is not None and self.config.log_exception:
             item["exception"] = {
                 "type": get_exception_type(exception),
@@ -253,6 +268,19 @@ class RequestLogger:
                 "traceback": get_truncated_exception_traceback(exception),
             }
             get_sentry_event_id_async(lambda event_id: item["exception"].update({"sentry_event_id": event_id}))
+
+        if logs is not None and self.config.capture_logs and len(logs) > 0:
+            item["logs"] = [
+                {
+                    "timestamp": log_record.created,
+                    "logger": log_record.name,
+                    "level": log_record.levelname,
+                    "message": log_record.getMessage(),
+                    "filename": log_record.filename,
+                    "line": log_record.lineno,
+                }
+                for log_record in logs
+            ]
 
         self.write_deque.append(item)
 

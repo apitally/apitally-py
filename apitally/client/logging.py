@@ -1,5 +1,8 @@
 import logging
 import os
+from contextvars import ContextVar
+from logging import LogRecord
+from typing import List, Optional
 
 
 debug = os.getenv("APITALLY_DEBUG", "false").lower() in {"true", "yes", "y", "1"}
@@ -15,3 +18,14 @@ if debug:
 
 def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
+
+
+class LogHandler(logging.Handler):
+    def __init__(self, log_buffer_var: ContextVar[Optional[List[LogRecord]]]) -> None:
+        super().__init__()
+        self.log_buffer_var = log_buffer_var
+
+    def emit(self, record: logging.LogRecord) -> None:
+        buffer = self.log_buffer_var.get()
+        if buffer is not None:
+            buffer.append(record)

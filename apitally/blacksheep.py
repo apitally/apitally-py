@@ -1,4 +1,6 @@
+import logging
 import time
+from contextvars import ContextVar
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 from warnings import warn
 
@@ -8,6 +10,7 @@ from blacksheep.server.routing import RouteMatch
 
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
+from apitally.client.logging import LogHandler
 from apitally.client.request_logging import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
@@ -110,6 +113,13 @@ class ApitallyMiddleware:
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
+        self.log_buffer_var: ContextVar[Optional[List[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
+        self.log_handler = None
+
+        if self.client.request_logger.config.capture_logs:
+            self.log_handler = LogHandler(self.log_buffer_var)
+            logging.getLogger().addHandler(self.log_handler)
+
     async def after_start(self, application: Application) -> None:
         data = _get_startup_data(application, app_version=self.app_version)
         self.client.set_startup_data(data)
@@ -135,13 +145,16 @@ class ApitallyMiddleware:
         start_time = time.perf_counter()
         response: Optional[Response] = None
         exception: Optional[BaseException] = None
+        logs: List[logging.LogRecord] = []
 
         try:
+            token = self.log_buffer_var.set(logs)
             response = await handler(request)
         except BaseException as e:
             exception = e
             raise e from None
         finally:
+            self.log_buffer_var.reset(token)
             response_time = time.perf_counter() - start_time
 
             consumer = self.get_consumer(request)
@@ -227,6 +240,7 @@ class ApitallyMiddleware:
                         "body": response_body,
                     },
                     exception=exception,
+                    logs=logs,
                 )
 
         return response

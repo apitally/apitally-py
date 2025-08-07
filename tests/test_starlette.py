@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from importlib.util import find_spec
 from typing import TYPE_CHECKING, Optional
 
@@ -43,8 +44,12 @@ def get_starlette_app() -> Starlette:
 
     from apitally.starlette import ApitallyConsumer, ApitallyMiddleware, set_consumer
 
+    logging.getLogger().setLevel(logging.INFO)
+
     def foo(request: Request):
         set_consumer(request, "test")
+        logging.info("testing foo 1")
+        logging.warning("testing foo 2")
         return PlainTextResponse("foo")
 
     def foo_bar(request: Request):
@@ -107,6 +112,7 @@ def get_starlette_app() -> Starlette:
         enable_request_logging=True,
         log_request_body=True,
         log_response_body=True,
+        capture_logs=True,
     )
     return app
 

@@ -1,5 +1,7 @@
 import json
+import logging
 import time
+from contextvars import ContextVar
 from typing import Callable, Dict, List, Optional, Union
 from warnings import warn
 
@@ -15,6 +17,7 @@ from litestar.types import ASGIApp, Message, Receive, Scope, Send
 
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
+from apitally.client.logging import LogHandler
 from apitally.client.request_logging import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
@@ -82,6 +85,13 @@ class ApitallyPlugin(InitPluginProtocol):
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
+        self.log_buffer_var: ContextVar[Optional[List[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
+        self.log_handler = None
+
+        if self.client.request_logger.config.capture_logs:
+            self.log_handler = LogHandler(self.log_buffer_var)
+            logging.getLogger().addHandler(self.log_handler)
+
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
         app_config.on_startup.append(self.on_startup)
         app_config.on_shutdown.append(self.client.handle_shutdown)
@@ -112,171 +122,161 @@ class ApitallyPlugin(InitPluginProtocol):
 
     def middleware_factory(self, app: ASGIApp) -> ASGIApp:
         async def middleware(scope: Scope, receive: Receive, send: Send) -> None:
-            if self.client.enabled and scope["type"] == ScopeType.HTTP and scope["method"] != "OPTIONS":
-                timestamp = time.time()
-                request: Request = Request(scope)
-                request_size = parse_int(request.headers.get("Content-Length"))
-                request_body = b""
-                request_body_too_large = request_size is not None and request_size > MAX_BODY_SIZE
-                response_status = 0
-                response_time = 0.0
-                response_headers = Headers()
-                response_body = b""
-                response_body_too_large = False
-                response_size: Optional[int] = None
-                response_chunked = False
-                response_content_type: Optional[str] = None
-                start_time = time.perf_counter()
+            if not self.client.enabled or scope["type"] != ScopeType.HTTP or scope["method"] == "OPTIONS":
+                await app(scope, receive, send)
+                return
 
-                async def receive_wrapper():
-                    nonlocal request_body, request_body_too_large
-                    message = await receive()
-                    if message["type"] == "http.request" and self.capture_request_body and not request_body_too_large:
-                        request_body += message.get("body", b"")
-                        if len(request_body) > MAX_BODY_SIZE:
-                            request_body_too_large = True
-                            request_body = b""
-                    return message
+            timestamp = time.time()
+            request: Request = Request(scope)
+            request_size = parse_int(request.headers.get("Content-Length"))
+            request_body = b""
+            request_body_too_large = request_size is not None and request_size > MAX_BODY_SIZE
+            response_status = 0
+            response_time = 0.0
+            response_headers = Headers()
+            response_body = b""
+            response_body_too_large = False
+            response_size: Optional[int] = None
+            response_chunked = False
+            response_content_type: Optional[str] = None
+            logs: List[logging.LogRecord] = []
+            start_time = time.perf_counter()
 
-                async def send_wrapper(message: Message):
-                    nonlocal \
-                        response_time, \
-                        response_status, \
-                        response_headers, \
-                        response_body, \
-                        response_body_too_large, \
-                        response_chunked, \
-                        response_content_type, \
-                        response_size
-                    if message["type"] == "http.response.start":
-                        response_time = time.perf_counter() - start_time
-                        response_status = message["status"]
-                        response_headers = Headers(message["headers"])
-                        response_chunked = (
-                            response_headers.get("Transfer-Encoding") == "chunked"
-                            or "Content-Length" not in response_headers
-                        )
-                        response_content_type = response_headers.get("Content-Type")
-                        response_size = parse_int(response_headers.get("Content-Length")) if not response_chunked else 0
-                        response_body_too_large = response_size is not None and response_size > MAX_BODY_SIZE
-                    elif message["type"] == "http.response.body":
-                        if response_chunked and response_size is not None:
-                            response_size += len(message.get("body", b""))
-                        if (
-                            (self.capture_response_body or response_status == 400)
-                            and RequestLogger.is_supported_content_type(response_content_type)
-                            and not response_body_too_large
-                        ):
-                            response_body += message.get("body", b"")
-                            if len(response_body) > MAX_BODY_SIZE:
-                                response_body_too_large = True
-                                response_body = b""
-                    await send(message)
+            async def receive_wrapper():
+                nonlocal request_body, request_body_too_large
+                message = await receive()
+                if message["type"] == "http.request" and self.capture_request_body and not request_body_too_large:
+                    request_body += message.get("body", b"")
+                    if len(request_body) > MAX_BODY_SIZE:
+                        request_body_too_large = True
+                        request_body = b""
+                return message
 
-                await app(scope, receive_wrapper, send_wrapper)
-                self.add_request(
-                    timestamp=timestamp,
-                    request=request,
-                    request_body=request_body if not request_body_too_large else BODY_TOO_LARGE,
-                    request_size=request_size,
-                    response_status=response_status,
-                    response_time=response_time,
-                    response_headers=response_headers,
-                    response_body=response_body if not response_body_too_large else BODY_TOO_LARGE,
-                    response_size=response_size,
-                )
-            else:
-                await app(scope, receive, send)  # pragma: no cover
-
-        return middleware
-
-    def add_request(
-        self,
-        timestamp: float,
-        request: Request,
-        request_body: bytes,
-        request_size: Optional[int],
-        response_status: int,
-        response_time: float,
-        response_headers: Headers,
-        response_body: bytes,
-        response_size: Optional[int],
-    ) -> None:
-        if response_status < 100:
-            return  # pragma: no cover
-        path = self.get_path(request)
-        if self.filter_path(path):
-            return
-
-        consumer = self.get_consumer(request)
-        consumer_identifier = consumer.identifier if consumer else None
-        self.client.consumer_registry.add_or_update_consumer(consumer)
-
-        if path is not None:
-            self.client.request_counter.add_request(
-                consumer=consumer_identifier,
-                method=request.method,
-                path=path,
-                status_code=response_status,
-                response_time=response_time,
-                request_size=request_size,
-                response_size=response_size,
-            )
-
-            if response_status == 400 and response_body and len(response_body) < 4096:
-                body = try_json_loads(response_body, encoding=response_headers.get("Content-Encoding"))
-                if (
-                    isinstance(body, dict)
-                    and "detail" in body
-                    and isinstance(body["detail"], str)
-                    and "validation" in body["detail"].lower()
-                    and "extra" in body
-                    and isinstance(body["extra"], list)
-                ):
-                    self.client.validation_error_counter.add_validation_errors(
-                        consumer=consumer_identifier,
-                        method=request.method,
-                        path=path,
-                        detail=[
-                            {
-                                "loc": [error.get("source", "body")] + error["key"].split("."),
-                                "msg": error["message"],
-                                "type": "",
-                            }
-                            for error in body["extra"]
-                            if "key" in error and "message" in error
-                        ],
+            async def send_wrapper(message: Message):
+                nonlocal \
+                    response_time, \
+                    response_status, \
+                    response_headers, \
+                    response_body, \
+                    response_body_too_large, \
+                    response_chunked, \
+                    response_content_type, \
+                    response_size
+                if message["type"] == "http.response.start":
+                    response_time = time.perf_counter() - start_time
+                    response_status = message["status"]
+                    response_headers = Headers(message["headers"])
+                    response_chunked = (
+                        response_headers.get("Transfer-Encoding") == "chunked"
+                        or "Content-Length" not in response_headers
                     )
+                    response_content_type = response_headers.get("Content-Type")
+                    response_size = parse_int(response_headers.get("Content-Length")) if not response_chunked else 0
+                    response_body_too_large = response_size is not None and response_size > MAX_BODY_SIZE
+                elif message["type"] == "http.response.body":
+                    if response_chunked and response_size is not None:
+                        response_size += len(message.get("body", b""))
+                    if (
+                        (self.capture_response_body or response_status == 400)
+                        and RequestLogger.is_supported_content_type(response_content_type)
+                        and not response_body_too_large
+                    ):
+                        response_body += message.get("body", b"")
+                        if len(response_body) > MAX_BODY_SIZE:
+                            response_body_too_large = True
+                            response_body = b""
+                await send(message)
 
-            if response_status == 500 and "exception" in request.state:
-                self.client.server_error_counter.add_server_error(
+            try:
+                token = self.log_buffer_var.set(logs)
+                await app(scope, receive_wrapper, send_wrapper)
+            finally:
+                self.log_buffer_var.reset(token)
+
+            if response_status < 100:
+                return  # pragma: no cover
+
+            path = self.get_path(request)
+            if self.filter_path(path):
+                return
+
+            if request_body_too_large:
+                request_body = BODY_TOO_LARGE
+            if response_body_too_large:
+                response_body = BODY_TOO_LARGE
+
+            consumer = self.get_consumer(request)
+            consumer_identifier = consumer.identifier if consumer else None
+            self.client.consumer_registry.add_or_update_consumer(consumer)
+
+            if path is not None:
+                self.client.request_counter.add_request(
                     consumer=consumer_identifier,
                     method=request.method,
                     path=path,
-                    exception=request.state["exception"],
+                    status_code=response_status,
+                    response_time=response_time,
+                    request_size=request_size,
+                    response_size=response_size,
                 )
 
-        if self.client.request_logger.enabled:
-            self.client.request_logger.log_request(
-                request={
-                    "timestamp": timestamp,
-                    "method": request.method,
-                    "path": path,
-                    "url": str(request.url),
-                    "headers": [(k, v) for k, v in request.headers.items()],
-                    "size": request_size,
-                    "consumer": consumer_identifier,
-                    "body": request_body,
-                },
-                response={
-                    "status_code": response_status,
-                    "response_time": response_time,
-                    "headers": [(k, v) for k, v in response_headers.items()],
-                    "size": response_size,
-                    "body": response_body,
-                },
-                exception=request.state["exception"] if "exception" in request.state else None,
-            )
+                if response_status == 400 and response_body and len(response_body) < 4096:
+                    body = try_json_loads(response_body, encoding=response_headers.get("Content-Encoding"))
+                    if (
+                        isinstance(body, dict)
+                        and "detail" in body
+                        and isinstance(body["detail"], str)
+                        and "validation" in body["detail"].lower()
+                        and "extra" in body
+                        and isinstance(body["extra"], list)
+                    ):
+                        self.client.validation_error_counter.add_validation_errors(
+                            consumer=consumer_identifier,
+                            method=request.method,
+                            path=path,
+                            detail=[
+                                {
+                                    "loc": [error.get("source", "body")] + error["key"].split("."),
+                                    "msg": error["message"],
+                                    "type": "",
+                                }
+                                for error in body["extra"]
+                                if "key" in error and "message" in error
+                            ],
+                        )
+
+                if response_status == 500 and "exception" in request.state:
+                    self.client.server_error_counter.add_server_error(
+                        consumer=consumer_identifier,
+                        method=request.method,
+                        path=path,
+                        exception=request.state["exception"],
+                    )
+
+            if self.client.request_logger.enabled:
+                self.client.request_logger.log_request(
+                    request={
+                        "timestamp": timestamp,
+                        "method": request.method,
+                        "path": path,
+                        "url": str(request.url),
+                        "headers": [(k, v) for k, v in request.headers.items()],
+                        "size": request_size,
+                        "consumer": consumer_identifier,
+                        "body": request_body,
+                    },
+                    response={
+                        "status_code": response_status,
+                        "response_time": response_time,
+                        "headers": [(k, v) for k, v in response_headers.items()],
+                        "size": response_size,
+                        "body": response_body,
+                    },
+                    exception=request.state["exception"] if "exception" in request.state else None,
+                    logs=logs,
+                )
+
+        return middleware
 
     def get_path(self, request: Request) -> Optional[str]:
         if not request.route_handler.paths:
