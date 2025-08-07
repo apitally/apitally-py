@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import time
+from contextvars import ContextVar
 from io import BytesIO
 from threading import Timer
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
@@ -14,6 +16,7 @@ from werkzeug.test import Client
 
 from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
+from apitally.client.logging import LogHandler
 from apitally.client.request_logging import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
@@ -87,6 +90,13 @@ class ApitallyMiddleware:
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
+        self.log_buffer_var: ContextVar[Optional[List[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
+        self.log_handler = None
+
+        if self.client.request_logger.config.capture_logs:
+            self.log_handler = LogHandler(self.log_buffer_var)
+            logging.getLogger().addHandler(self.log_handler)
+
     def delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         # Short delay to allow app routes to be registered first
         timer = Timer(
@@ -126,8 +136,15 @@ class ApitallyMiddleware:
                     else BODY_TOO_LARGE
                 )
 
+            logs: List[logging.LogRecord] = []
             start_time = time.perf_counter()
-            response = self.wsgi_app(environ, catching_start_response)
+
+            try:
+                token = self.log_buffer_var.set(logs)
+                response = self.wsgi_app(environ, catching_start_response)
+            finally:
+                self.log_buffer_var.reset(token)
+
             response_time = time.perf_counter() - start_time
 
             response_body = b""
@@ -143,15 +160,53 @@ class ApitallyMiddleware:
                             response_body = BODY_TOO_LARGE
                             break
 
-            self.add_request(
-                timestamp=timestamp,
-                request=request,
-                request_body=request_body,
-                status_code=status_code,
-                response_time=response_time,
-                response_headers=response_headers,
-                response_body=response_body,
-            )
+            path = self.get_path(request.environ)
+            response_size = response_headers.get("Content-Length", type=int)
+
+            consumer = self.get_consumer()
+            consumer_identifier = consumer.identifier if consumer else None
+            self.client.consumer_registry.add_or_update_consumer(consumer)
+
+            if path is not None:
+                self.client.request_counter.add_request(
+                    consumer=consumer_identifier,
+                    method=request.method,
+                    path=path,
+                    status_code=status_code,
+                    response_time=response_time,
+                    request_size=request.content_length,
+                    response_size=response_size,
+                )
+                if status_code == 500 and "unhandled_exception" in g:
+                    self.client.server_error_counter.add_server_error(
+                        consumer=consumer_identifier,
+                        method=request.method,
+                        path=path,
+                        exception=g.unhandled_exception,
+                    )
+
+            if self.client.request_logger.enabled:
+                self.client.request_logger.log_request(
+                    request={
+                        "timestamp": timestamp,
+                        "method": request.method,
+                        "path": path,
+                        "url": request.url,
+                        "headers": list(request.headers.items()),
+                        "size": request.content_length,
+                        "consumer": consumer_identifier,
+                        "body": request_body,
+                    },
+                    response={
+                        "status_code": status_code,
+                        "response_time": response_time,
+                        "headers": list(response_headers.items()),
+                        "size": response_size,
+                        "body": response_body,
+                    },
+                    exception=g.unhandled_exception if "unhandled_exception" in g else None,
+                    logs=logs,
+                )
         return response
 
     def patch_handle_exception(self) -> None:
@@ -162,63 +217,6 @@ class ApitallyMiddleware:
             return original_handle_exception(e)
 
         self.app.handle_exception = handle_exception  # type: ignore[method-assign]
-
-    def add_request(
-        self,
-        timestamp: float,
-        request: Request,
-        request_body: bytes,
-        status_code: int,
-        response_time: float,
-        response_headers: Headers,
-        response_body: bytes,
-    ) -> None:
-        path = self.get_path(request.environ)
-        response_size = response_headers.get("Content-Length", type=int)
-
-        consumer = self.get_consumer()
-        consumer_identifier = consumer.identifier if consumer else None
-        self.client.consumer_registry.add_or_update_consumer(consumer)
-
-        if path is not None:
-            self.client.request_counter.add_request(
-                consumer=consumer_identifier,
-                method=request.method,
-                path=path,
-                status_code=status_code,
-                response_time=response_time,
-                request_size=request.content_length,
-                response_size=response_size,
-            )
-            if status_code == 500 and "unhandled_exception" in g:
-                self.client.server_error_counter.add_server_error(
-                    consumer=consumer_identifier,
-                    method=request.method,
-                    path=path,
-                    exception=g.unhandled_exception,
-                )
-
-        if self.client.request_logger.enabled:
-            self.client.request_logger.log_request(
-                request={
-                    "timestamp": timestamp,
-                    "method": request.method,
-                    "path": path,
-                    "url": request.url,
-                    "headers": list(request.headers.items()),
-                    "size": request.content_length,
-                    "consumer": consumer_identifier,
-                    "body": request_body,
-                },
-                response={
-                    "status_code": status_code,
-                    "response_time": response_time,
-                    "headers": list(response_headers.items()),
-                    "size": response_size,
-                    "body": response_body,
-                },
-                exception=g.unhandled_exception if "unhandled_exception" in g else None,
-            )
 
     def get_path(self, environ: WSGIEnvironment) -> Optional[str]:
         url_adapter = self.app.url_map.bind_to_environ(environ)

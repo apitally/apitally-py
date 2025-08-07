@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import time
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 from warnings import warn
 
@@ -16,6 +18,7 @@ from starlette.types import ASGIApp, Lifespan, Message, Receive, Scope, Send
 
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
+from apitally.client.logging import LogHandler
 from apitally.client.request_logging import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
@@ -94,6 +97,13 @@ class ApitallyMiddleware:
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
+        self.log_buffer_var: ContextVar[Optional[List[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
+        self.log_handler = None
+
+        if self.client.request_logger.config.capture_logs:
+            self.log_handler = LogHandler(self.log_buffer_var)
+            logging.getLogger().addHandler(self.log_handler)
+
         _inject_lifespan_handlers(
             app,
             on_startup=self.on_startup,
@@ -106,172 +116,160 @@ class ApitallyMiddleware:
         self.client.start_sync_loop()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if self.client.enabled and scope["type"] == "http" and scope["method"] != "OPTIONS":
-            timestamp = time.time()
-            request = Request(scope, receive, send)
-            request_size = parse_int(request.headers.get("Content-Length"))
-            request_body = b""
-            request_body_too_large = request_size is not None and request_size > MAX_BODY_SIZE
-            response_status = 0
-            response_time: Optional[float] = None
-            response_headers = Headers()
-            response_body = b""
-            response_body_too_large = False
-            response_size: Optional[int] = None
-            response_chunked = False
-            response_content_type: Optional[str] = None
-            exception: Optional[BaseException] = None
-            start_time = time.perf_counter()
+        if not self.client.enabled or scope["type"] != "http" or scope["method"] == "OPTIONS":  # pragma: no cover
+            await self.app(scope, receive, send)
+            return
 
-            async def receive_wrapper() -> Message:
-                nonlocal request_body, request_body_too_large
+        timestamp = time.time()
+        request = Request(scope, receive, send)
+        request_size = parse_int(request.headers.get("Content-Length"))
+        request_body = b""
+        request_body_too_large = request_size is not None and request_size > MAX_BODY_SIZE
+        response_status = 0
+        response_time: Optional[float] = None
+        response_headers = Headers()
+        response_body = b""
+        response_body_too_large = False
+        response_size: Optional[int] = None
+        response_chunked = False
+        response_content_type: Optional[str] = None
+        exception: Optional[BaseException] = None
+        logs: List[logging.LogRecord] = []
+        start_time = time.perf_counter()
 
-                message = await receive()
-                if message["type"] == "http.request" and self.capture_request_body and not request_body_too_large:
-                    request_body += message.get("body", b"")
-                    if len(request_body) > MAX_BODY_SIZE:
-                        request_body_too_large = True
-                        request_body = b""
-                return message
+        async def receive_wrapper() -> Message:
+            nonlocal request_body, request_body_too_large
 
-            async def send_wrapper(message: Message) -> None:
-                nonlocal \
-                    response_time, \
-                    response_status, \
-                    response_headers, \
-                    response_body, \
-                    response_body_too_large, \
-                    response_chunked, \
-                    response_content_type, \
-                    response_size
+            message = await receive()
+            if message["type"] == "http.request" and self.capture_request_body and not request_body_too_large:
+                request_body += message.get("body", b"")
+                if len(request_body) > MAX_BODY_SIZE:
+                    request_body_too_large = True
+                    request_body = b""
+            return message
 
-                if message["type"] == "http.response.start":
-                    response_time = time.perf_counter() - start_time
-                    response_status = message["status"]
-                    response_headers = Headers(scope=message)
-                    response_chunked = (
-                        response_headers.get("Transfer-Encoding") == "chunked"
-                        or "Content-Length" not in response_headers
-                    )
-                    response_content_type = response_headers.get("Content-Type")
-                    response_size = parse_int(response_headers.get("Content-Length")) if not response_chunked else 0
-                    response_body_too_large = response_size is not None and response_size > MAX_BODY_SIZE
+        async def send_wrapper(message: Message) -> None:
+            nonlocal \
+                response_time, \
+                response_status, \
+                response_headers, \
+                response_body, \
+                response_body_too_large, \
+                response_chunked, \
+                response_content_type, \
+                response_size
 
-                elif message["type"] == "http.response.body":
-                    if response_chunked and response_size is not None:
-                        response_size += len(message.get("body", b""))
-
-                    if (
-                        (self.capture_response_body or response_status == 422)
-                        and RequestLogger.is_supported_content_type(response_content_type)
-                        and not response_body_too_large
-                    ):
-                        response_body += message.get("body", b"")
-                        if len(response_body) > MAX_BODY_SIZE:
-                            response_body_too_large = True
-                            response_body = b""
-
-                if self.capture_client_disconnects and await request.is_disconnected():
-                    # Client closed connection (report NGINX specific status code)
-                    response_status = 499
-
-                await send(message)
-
-            try:
-                await self.app(scope, receive_wrapper, send_wrapper)
-            except BaseException as e:
-                exception = e
-                raise e from None
-            finally:
-                if response_time is None:
-                    response_time = time.perf_counter() - start_time
-                self.add_request(
-                    timestamp=timestamp,
-                    request=request,
-                    request_body=request_body if not request_body_too_large else BODY_TOO_LARGE,
-                    request_size=request_size,
-                    response_status=response_status,
-                    response_time=response_time,
-                    response_headers=response_headers,
-                    response_body=response_body if not response_body_too_large else BODY_TOO_LARGE,
-                    response_size=response_size,
-                    exception=exception,
+            if message["type"] == "http.response.start":
+                response_time = time.perf_counter() - start_time
+                response_status = message["status"]
+                response_headers = Headers(scope=message)
+                response_chunked = (
+                    response_headers.get("Transfer-Encoding") == "chunked" or "Content-Length" not in response_headers
                 )
-        else:
-            await self.app(scope, receive, send)  # pragma: no cover
+                response_content_type = response_headers.get("Content-Type")
+                response_size = parse_int(response_headers.get("Content-Length")) if not response_chunked else 0
+                response_body_too_large = response_size is not None and response_size > MAX_BODY_SIZE
 
-    def add_request(
-        self,
-        timestamp: float,
-        request: Request,
-        request_body: bytes,
-        request_size: Optional[int],
-        response_status: int,
-        response_time: float,
-        response_headers: Headers,
-        response_body: bytes,
-        response_size: Optional[int],
-        exception: Optional[BaseException] = None,
-    ) -> None:
-        path = self.get_path(request)
+            elif message["type"] == "http.response.body":
+                if response_chunked and response_size is not None:
+                    response_size += len(message.get("body", b""))
 
-        consumer = self.get_consumer(request)
-        consumer_identifier = consumer.identifier if consumer else None
-        self.client.consumer_registry.add_or_update_consumer(consumer)
+                if (
+                    (self.capture_response_body or response_status == 422)
+                    and RequestLogger.is_supported_content_type(response_content_type)
+                    and not response_body_too_large
+                ):
+                    response_body += message.get("body", b"")
+                    if len(response_body) > MAX_BODY_SIZE:
+                        response_body_too_large = True
+                        response_body = b""
 
-        if path is not None:
-            if response_status == 0 and exception is not None:
-                response_status = 500
-            self.client.request_counter.add_request(
-                consumer=consumer_identifier,
-                method=request.method,
-                path=path,
-                status_code=response_status,
-                response_time=response_time,
-                request_size=request_size,
-                response_size=response_size,
-            )
-            if response_status == 422 and response_body and response_headers.get("Content-Type") == "application/json":
-                body = try_json_loads(response_body, encoding=response_headers.get("Content-Encoding"))
-                if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
-                    # Log FastAPI / Pydantic validation errors
-                    self.client.validation_error_counter.add_validation_errors(
-                        consumer=consumer_identifier,
-                        method=request.method,
-                        path=path,
-                        detail=body["detail"],
-                    )
-            if response_status == 500 and exception is not None:
-                self.client.server_error_counter.add_server_error(
+            if self.capture_client_disconnects and await request.is_disconnected():
+                # Client closed connection (report NGINX specific status code)
+                response_status = 499
+
+            await send(message)
+
+        try:
+            token = self.log_buffer_var.set(logs)
+            await self.app(scope, receive_wrapper, send_wrapper)
+        except BaseException as e:
+            exception = e
+            raise e from None
+        finally:
+            self.log_buffer_var.reset(token)
+
+            if response_time is None:
+                response_time = time.perf_counter() - start_time
+            if request_body_too_large:
+                request_body = BODY_TOO_LARGE
+            if response_body_too_large:
+                response_body = BODY_TOO_LARGE
+
+            path = self.get_path(request)
+
+            consumer = self.get_consumer(request)
+            consumer_identifier = consumer.identifier if consumer else None
+            self.client.consumer_registry.add_or_update_consumer(consumer)
+
+            if path is not None:
+                if response_status == 0 and exception is not None:
+                    response_status = 500
+                self.client.request_counter.add_request(
                     consumer=consumer_identifier,
                     method=request.method,
                     path=path,
+                    status_code=response_status,
+                    response_time=response_time,
+                    request_size=request_size,
+                    response_size=response_size,
+                )
+                if (
+                    response_status == 422
+                    and response_body
+                    and response_headers.get("Content-Type") == "application/json"
+                ):
+                    body = try_json_loads(response_body, encoding=response_headers.get("Content-Encoding"))
+                    if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
+                        # Log FastAPI / Pydantic validation errors
+                        self.client.validation_error_counter.add_validation_errors(
+                            consumer=consumer_identifier,
+                            method=request.method,
+                            path=path,
+                            detail=body["detail"],
+                        )
+                if response_status == 500 and exception is not None:
+                    self.client.server_error_counter.add_server_error(
+                        consumer=consumer_identifier,
+                        method=request.method,
+                        path=path,
+                        exception=exception,
+                    )
+
+            if self.client.request_logger.enabled:
+                self.client.request_logger.log_request(
+                    request={
+                        "timestamp": timestamp,
+                        "method": request.method,
+                        "path": path,
+                        "url": str(request.url),
+                        "headers": request.headers.items(),
+                        "size": request_size,
+                        "consumer": consumer_identifier,
+                        "body": request_body,
+                    },
+                    response={
+                        "status_code": response_status,
+                        "response_time": response_time,
+                        "headers": response_headers.items(),
+                        "size": response_size,
+                        "body": response_body,
+                    },
                     exception=exception,
+                    logs=logs,
                 )
 
-        if self.client.request_logger.enabled:
-            self.client.request_logger.log_request(
-                request={
-                    "timestamp": timestamp,
-                    "method": request.method,
-                    "path": path,
-                    "url": str(request.url),
-                    "headers": request.headers.items(),
-                    "size": request_size,
-                    "consumer": consumer_identifier,
-                    "body": request_body,
-                },
-                response={
-                    "status_code": response_status,
-                    "response_time": response_time,
-                    "headers": response_headers.items(),
-                    "size": response_size,
-                    "body": response_body,
-                },
-                exception=exception,
-            )
-
-    def get_path(self, request: Request, routes: Optional[list[BaseRoute]] = None) -> Optional[str]:
+    def get_path(self, request: Request, routes: Optional[List[BaseRoute]] = None) -> Optional[str]:
         if routes is None:
             routes = request.app.routes
         for route in routes:
@@ -289,7 +287,6 @@ class ApitallyMiddleware:
         if hasattr(request.state, "apitally_consumer") and request.state.apitally_consumer:
             return ApitallyConsumer.from_string_or_object(request.state.apitally_consumer)
         if hasattr(request.state, "consumer_identifier") and request.state.consumer_identifier:
-            # Keeping this for legacy support
             warn(
                 "Providing a consumer identifier via `request.state.consumer_identifier` is deprecated, "
                 "use `request.state.apitally_consumer` instead.",
