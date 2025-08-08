@@ -117,7 +117,7 @@ class LogRecordDict(TypedDict):
     logger: str
     level: str
     message: str
-    filename: str
+    file: str
     line: int
 
 
@@ -276,7 +276,7 @@ class RequestLogger:
                     "logger": log_record.name,
                     "level": log_record.levelname,
                     "message": log_record.getMessage(),
-                    "filename": log_record.filename,
+                    "file": log_record.pathname,
                     "line": log_record.lineno,
                 }
                 for log_record in logs
