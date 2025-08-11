@@ -36,6 +36,7 @@ MAX_BODY_SIZE = 50_000  # 50 KB (uncompressed)
 MAX_FILE_SIZE = 1_000_000  # 1 MB (compressed)
 MAX_REQUESTS_IN_DEQUE = 100  # Written to file every second, so limits logging to 100 rps
 MAX_FILES_IN_DEQUE = 50
+MAX_LOG_MSG_LENGTH = 2048
 BODY_TOO_LARGE = b"<body too large>"
 BODY_MASKED = b"<masked>"
 MASKED = "******"
@@ -275,7 +276,7 @@ class RequestLogger:
                     "timestamp": log_record.created,
                     "logger": log_record.name,
                     "level": log_record.levelname,
-                    "message": log_record.getMessage(),
+                    "message": _truncate_log_msg(log_record.getMessage()),
                     "file": log_record.pathname,
                     "line": log_record.lineno,
                 }
@@ -516,3 +517,10 @@ def _skip_empty_values(data: Mapping) -> Dict:
     return {
         k: v for k, v in data.items() if v is not None and not (isinstance(v, (list, dict, bytes, str)) and len(v) == 0)
     }
+
+
+def _truncate_log_msg(msg: str) -> str:
+    if len(msg) > MAX_LOG_MSG_LENGTH:
+        suffix = "... (truncated)"
+        return msg[: MAX_LOG_MSG_LENGTH - len(suffix)] + suffix
+    return msg
