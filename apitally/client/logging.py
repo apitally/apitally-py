@@ -21,11 +21,13 @@ def get_logger(name: str) -> logging.Logger:
 
 
 class LogHandler(logging.Handler):
+    MAX_BUFFER_SIZE = 1000
+
     def __init__(self, log_buffer_var: ContextVar[Optional[List[LogRecord]]]) -> None:
         super().__init__()
         self.log_buffer_var = log_buffer_var
 
     def emit(self, record: logging.LogRecord) -> None:
         buffer = self.log_buffer_var.get()
-        if buffer is not None:
+        if buffer is not None and len(buffer) < self.MAX_BUFFER_SIZE:
             buffer.append(record)
