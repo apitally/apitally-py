@@ -44,6 +44,7 @@ def get_app() -> Application:
         enable_request_logging=True,
         log_request_body=True,
         log_response_body=True,
+        capture_logs=True,
         consumer_callback=identify_consumer,
     )
 

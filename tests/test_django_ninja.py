@@ -53,6 +53,7 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
             "enable_request_logging": True,
             "log_request_body": True,
             "log_response_body": True,
+            "capture_logs": True,
         },
     )
     django.setup()

@@ -35,6 +35,7 @@ def app(module_mocker: MockerFixture) -> Flask:
         enable_request_logging=True,
         log_request_body=True,
         log_response_body=True,
+        capture_logs=True,
     )
 
     @app.route("/foo/<bar>")
