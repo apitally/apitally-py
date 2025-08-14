@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import re
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
@@ -18,7 +20,7 @@ from django.views.generic.base import View
 
 from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
-from apitally.client.logging import get_logger
+from apitally.client.logging import LogHandler, get_logger
 from apitally.client.request_logging import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
@@ -105,6 +107,13 @@ class ApitallyMiddleware:
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
+        self.log_buffer_var: ContextVar[Optional[List[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
+        self.log_handler: Optional[LogHandler] = None
+
+        if self.client.request_logger.config.capture_logs:
+            self.log_handler = LogHandler(self.log_buffer_var)
+            logging.getLogger().addHandler(self.log_handler)
+
     @classmethod
     def configure(
         cls,
@@ -162,8 +171,15 @@ class ApitallyMiddleware:
                 else BODY_TOO_LARGE
             )
 
+        logs: List[logging.LogRecord] = []
         start_time = time.perf_counter()
-        response = self.get_response(request)
+
+        try:
+            token = self.log_buffer_var.set(logs)
+            response = self.get_response(request)
+        finally:
+            self.log_buffer_var.reset(token)
+
         response_time = time.perf_counter() - start_time
         path = self.get_path(request)
 
@@ -256,6 +272,7 @@ class ApitallyMiddleware:
                     "body": response_body,
                 },
                 exception=getattr(request, "unhandled_exception", None),
+                logs=logs,
             )
 
         return response
