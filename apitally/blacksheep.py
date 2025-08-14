@@ -114,7 +114,7 @@ class ApitallyMiddleware:
         )
 
         self.log_buffer_var: ContextVar[Optional[List[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
-        self.log_handler = None
+        self.log_handler: Optional[LogHandler] = None
 
         if self.client.request_logger.config.capture_logs:
             self.log_handler = LogHandler(self.log_buffer_var)

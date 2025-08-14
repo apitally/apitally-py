@@ -98,7 +98,7 @@ class ApitallyMiddleware:
         )
 
         self.log_buffer_var: ContextVar[Optional[List[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
-        self.log_handler = None
+        self.log_handler: Optional[LogHandler] = None
 
         if self.client.request_logger.config.capture_logs:
             self.log_handler = LogHandler(self.log_buffer_var)
@@ -227,7 +227,7 @@ class ApitallyMiddleware:
                 if (
                     response_status == 422
                     and response_body
-                    and response_headers.get("Content-Type") == "application/json"
+                    and response_headers.get("Content-Type", "").lower().startswith("application/json")
                 ):
                     body = try_json_loads(response_body, encoding=response_headers.get("Content-Encoding"))
                     if isinstance(body, dict) and "detail" in body and isinstance(body["detail"], list):
