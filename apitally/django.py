@@ -221,7 +221,7 @@ class ApitallyMiddleware:
                 response_size=response_size,
             )
         except Exception:  # pragma: no cover
-            logger.exception("Failed to log request metadata")
+            logger.exception("Failed to capture request metrics")
 
         if (
             response.status_code == 422
@@ -239,7 +239,7 @@ class ApitallyMiddleware:
                         detail=body["detail"],
                     )
             except Exception:  # pragma: no cover
-                logger.exception("Failed to log validation errors")
+                logger.exception("Failed to capture validation errors")
 
         if response.status_code == 500 and hasattr(request, "unhandled_exception"):
             try:
@@ -250,7 +250,7 @@ class ApitallyMiddleware:
                     exception=getattr(request, "unhandled_exception"),
                 )
             except Exception:  # pragma: no cover
-                logger.exception("Failed to log server error")
+                logger.exception("Failed to capture server error")
 
         if self.client.request_logger.enabled:
             self.client.request_logger.log_request(
@@ -327,11 +327,11 @@ def _get_startup_data(
         data["paths"] = _get_paths(urlconfs, include_django_views=include_django_views)
     except Exception:  # pragma: no cover
         data["paths"] = []
-        logger.exception("Failed to get paths")
+        logger.warning("Failed to get list of endpoints", exc_info=True)
     try:
         data["openapi"] = _get_openapi(urlconfs)
     except Exception:  # pragma: no cover
-        logger.exception("Failed to get OpenAPI schema")
+        pass
     data["versions"] = get_versions("django", "djangorestframework", "django-ninja", app_version=app_version)
     data["client"] = "python:django"
     return data

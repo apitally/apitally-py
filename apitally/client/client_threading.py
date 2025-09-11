@@ -74,7 +74,7 @@ class ApitallyClient(ApitallyClientBase):
                 try:
                     self.request_logger.write_to_file()
                 except Exception:  # pragma: no cover
-                    logger.exception("An error occurred while writing request logs")
+                    logger.exception("An error occurred while writing request logs to a file")
 
                 now = time.time()
                 if (now - last_sync_time) >= self.sync_interval:
@@ -192,6 +192,6 @@ class ApitallyClient(ApitallyClientBase):
             self.stop_sync_loop()
             logger.error("Invalid Apitally client ID: %s", self.client_id)
         elif response.status_code == 422:
-            logger.error("Received validation error from Apitally hub: %s", response.json())
+            logger.warning("Received validation error from Apitally hub: %s", response.json())
         else:
             response.raise_for_status()
