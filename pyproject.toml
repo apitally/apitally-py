@@ -67,7 +67,7 @@ dev = ["ipykernel~=6.30.0", "mypy~=1.18.2", "pre-commit~=4.3.0", "ruff~=0.13.2"]
 test = [
     "pytest~=8.4.0",
     "pytest-asyncio~=0.21.2",
-    "pytest-cov~=6.3.0",
+    "pytest-cov~=7.0.0",
     "pytest-httpx~=0.33.0",
     "pytest-mock~=3.15.0",
     "requests-mock~=1.12.1",
