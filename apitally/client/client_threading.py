@@ -62,7 +62,7 @@ class ApitallyClient(ApitallyClientBase):
 
     def start_sync_loop(self) -> None:
         if not self.enabled:
-            return
+            return  # pragma: no cover
         self._stop_sync_loop.clear()
         if self._thread is None or not self._thread.is_alive():
             self._thread = Thread(target=self._run_sync_loop, daemon=True)

@@ -51,7 +51,7 @@ class ApitallyClient(ApitallyClientBase):
 
     def start_sync_loop(self) -> None:
         if not self.enabled:
-            return
+            return  # pragma: no cover
         self._stop_sync_loop = False
         self._sync_loop_task = asyncio.create_task(self._run_sync_loop())
 
