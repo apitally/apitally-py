@@ -64,7 +64,7 @@ jobs:
           - django-ninja==0.18.0 django
           - litestar
           - litestar==2.0.1
-          - blacksheep
+          - blacksheep cryptography
           - blacksheep==2.1.0
         exclude:
           - python: "3.12"
