@@ -50,6 +50,8 @@ class ApitallyClient(ApitallyClientBase):
             return httpx.AsyncClient(base_url=self.hub_url, timeout=REQUEST_TIMEOUT, proxies=self.proxy)
 
     def start_sync_loop(self) -> None:
+        if not self.enabled:
+            return
         self._stop_sync_loop = False
         self._sync_loop_task = asyncio.create_task(self._run_sync_loop())
 

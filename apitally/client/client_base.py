@@ -43,16 +43,23 @@ class ApitallyClientBase(ABC):
     def __init__(self, client_id: str, env: str, request_logging_config: Optional[RequestLoggingConfig] = None) -> None:
         if hasattr(self, "client_id"):
             raise RuntimeError("Apitally client is already initialized")  # pragma: no cover
+
+        client_id_valid = True
+        env_valid = True
+
         try:
             UUID(client_id)
         except ValueError:
-            raise ValueError(f"invalid client_id '{client_id}' (expecting hexadecimal UUID format)")
+            logger.error(f"invalid client_id '{client_id}' (expecting hexadecimal UUID format)")
+            client_id_valid = False
+
         if re.match(r"^[\w-]{1,32}$", env) is None:
-            raise ValueError(f"invalid env '{env}' (expecting 1-32 alphanumeric lowercase characters and hyphens only)")
+            logger.error(f"invalid env '{env}' (expecting 1-32 alphanumeric lowercase characters and hyphens only)")
+            env_valid = False
 
         self.client_id = client_id
         self.env = env
-        self.enabled = True
+        self.enabled = client_id_valid and env_valid
         self.instance_uuid = str(uuid4())
         self.request_counter = RequestCounter()
         self.validation_error_counter = ValidationErrorCounter()
