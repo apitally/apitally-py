@@ -64,7 +64,7 @@ jobs:
           - django-ninja==0.18.0 django
           - litestar
           - litestar==2.0.1
-          - blacksheep==2.4.1 # current version v2.4.2 is broken
+          - blacksheep
           - blacksheep==2.1.0
         exclude:
           - python: "3.12"
