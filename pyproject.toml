@@ -63,7 +63,7 @@ Documentation = "https://docs.apitally.io"
 Repository = "https://github.com/apitally/apitally-py"
 
 [dependency-groups]
-dev = ["ipykernel~=6.30.0", "mypy~=1.18.2", "pre-commit~=4.3.0", "ruff~=0.14.0"]
+dev = ["ipykernel~=6.31.0", "mypy~=1.18.2", "pre-commit~=4.3.0", "ruff~=0.14.0"]
 test = [
     "blacksheep[full]",
     "pytest~=8.4.0",
