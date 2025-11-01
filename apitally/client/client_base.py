@@ -44,22 +44,19 @@ class ApitallyClientBase(ABC):
         if hasattr(self, "client_id"):
             raise RuntimeError("Apitally client is already initialized")  # pragma: no cover
 
-        client_id_valid = True
-        env_valid = True
+        self.client_id = str(client_id)
+        self.env = str(env)
+        self.enabled = True
 
-        try:
-            UUID(client_id)
-        except ValueError:
-            logger.error(f"invalid client_id '{client_id}' (expecting hexadecimal UUID format)")
-            client_id_valid = False
+        if not self.validate_client_id(self.client_id):
+            self.enabled = False
+            logger.error(f"invalid client_id '{self.client_id}' (expecting string in hexadecimal UUID format)")
+        if not self.validate_env(self.env):
+            self.enabled = False
+            logger.error(
+                f"invalid env '{self.env}' (expecting string with 1-32 alphanumeric characters and hyphens only)"
+            )
 
-        if re.match(r"^[\w-]{1,32}$", env) is None:
-            logger.error(f"invalid env '{env}' (expecting 1-32 alphanumeric lowercase characters and hyphens only)")
-            env_valid = False
-
-        self.client_id = client_id
-        self.env = env
-        self.enabled = client_id_valid and env_valid
         self.instance_uuid = str(uuid4())
         self.request_counter = RequestCounter()
         self.validation_error_counter = ValidationErrorCounter()
@@ -104,3 +101,15 @@ class ApitallyClientBase(ABC):
             "consumers": self.consumer_registry.get_and_reset_updated_consumers(),
         }
         return self.add_uuids_to_data(data)
+
+    @staticmethod
+    def validate_client_id(client_id: str) -> bool:
+        try:
+            UUID(client_id)
+            return True
+        except ValueError:
+            return False
+
+    @staticmethod
+    def validate_env(env: str) -> bool:
+        return re.match(r"^[\w-]{1,32}$", env) is not None
