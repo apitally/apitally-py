@@ -171,6 +171,10 @@ class ApitallyMiddleware:
             response_headers = Headers()
             response_body = b""
 
+            # Route pattern is "*" if the request doesn't match any route since v2.4.4
+            if route_pattern == "*":
+                route_pattern = None
+
             if self.capture_request_body and RequestLogger.is_supported_content_type(request_content_type):
                 if request_size is not None and request_size > MAX_BODY_SIZE:
                     request_body = BODY_TOO_LARGE
