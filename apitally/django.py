@@ -294,7 +294,11 @@ class ApitallyMiddleware:
                 if self.ninja_available:
                     from ninja.operation import PathView
 
-                    if hasattr(match.func, "__self__") and isinstance(match.func.__self__, PathView):
+                    if (hasattr(match.func, "__self__") and isinstance(match.func.__self__, PathView)) or (
+                        hasattr(match, "_func_path")
+                        and isinstance(match._func_path, str)
+                        and match._func_path.startswith("ninja.")
+                    ):
                         return _transform_path(match.route)
                 if self.include_django_views:
                     return _transform_path(match.route)
