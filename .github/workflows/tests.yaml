@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
         deps:
           - fastapi starlette
           - fastapi==0.94.1 starlette
@@ -61,6 +61,7 @@ jobs:
           - djangorestframework==3.12.* django==3.2.* uritemplate
           - djangorestframework==3.10.* django==2.2.* uritemplate
           - django-ninja django
+          - django-ninja==1.4.5 django
           - django-ninja==0.18.0 django
           - litestar
           - litestar==2.0.1
@@ -80,6 +81,18 @@ jobs:
           - python: "3.13"
             deps: djangorestframework==3.10.* django==2.2.* uritemplate
           - python: "3.13"
+            deps: litestar==2.0.1
+          - python: "3.14"
+            deps: fastapi==0.94.1 starlette
+          - python: "3.14"
+            deps: flask==2.0.3 Werkzeug==2.*
+          - python: "3.14"
+            deps: djangorestframework==3.12.* django==3.2.* uritemplate
+          - python: "3.14"
+            deps: djangorestframework==3.10.* django==2.2.* uritemplate
+          - python: "3.14"
+            deps: django-ninja==0.18.0 django
+          - python: "3.14"
             deps: litestar==2.0.1
     steps:
       - uses: actions/checkout@v6
