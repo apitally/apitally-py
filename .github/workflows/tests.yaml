@@ -67,6 +67,8 @@ jobs:
           - blacksheep
           - blacksheep==2.1.0
         exclude:
+          - python: "3.9"
+            deps: litestar==2.0.1
           - python: "3.12"
             deps: djangorestframework==3.12.* django==3.2.* uritemplate
           - python: "3.12"
