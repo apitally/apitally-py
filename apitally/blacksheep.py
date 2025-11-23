@@ -171,6 +171,7 @@ class ApitallyMiddleware:
             response_headers = Headers()
             response_body = b""
 
+            # Route pattern is "*" if the request doesn't match any route since v2.4.4
             if route_pattern == "*":
                 route_pattern = None
 
