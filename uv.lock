@@ -45,6 +45,7 @@ name = "apitally"
 source = { editable = "." }
 dependencies = [
     { name = "backoff" },
+    { name = "psutil" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 
@@ -115,6 +116,7 @@ types = [
     { name = "djangorestframework-types" },
     { name = "types-colorama" },
     { name = "types-docutils" },
+    { name = "types-psutil" },
     { name = "types-pygments" },
     { name = "types-pyyaml" },
     { name = "types-requests" },
@@ -141,6 +143,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'starlette'", specifier = ">=0.22.0" },
     { name = "inflection", marker = "extra == 'django-rest-framework'", specifier = ">=0.5.1" },
     { name = "litestar", marker = "extra == 'litestar'", specifier = ">=2.0.0" },
+    { name = "psutil", specifier = ">=5.9.6" },
     { name = "requests", marker = "extra == 'django-ninja'", specifier = ">=2.26.0" },
     { name = "requests", marker = "extra == 'django-rest-framework'", specifier = ">=2.26.0" },
     { name = "requests", marker = "extra == 'flask'", specifier = ">=2.26.0" },
@@ -174,6 +177,7 @@ types = [
     { name = "djangorestframework-types" },
     { name = "types-colorama" },
     { name = "types-docutils" },
+    { name = "types-psutil" },
     { name = "types-pygments" },
     { name = "types-pyyaml" },
     { name = "types-requests" },
@@ -3056,6 +3060,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/eb/d7/576ec24bf61a280f571e1f22284793adc321610b9bcfba1bf468cf7b334f/types_docutils-0.22.3.20251115.tar.gz", hash = "sha256:0f79ea6a7bd4d12d56c9f824a0090ffae0ea4204203eb0006392906850913e16", size = 56828, upload-time = "2025-11-15T02:59:57.371Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9c/01/61ac9eb38f1f978b47443dc6fd2e0a3b0f647c2da741ddad30771f1b2b6f/types_docutils-0.22.3.20251115-py3-none-any.whl", hash = "sha256:c6e53715b65395d00a75a3a8a74e352c669bc63959e65a207dffaa22f4a2ad6e", size = 91951, upload-time = "2025-11-15T02:59:56.413Z" },
+]
+
+[[package]]
+name = "types-psutil"
+version = "7.1.3.20251129"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4d/a2/4e9992bb56c4d1bcdeee8397134ed446ec802fa11a564d780362fef17244/types_psutil-7.1.3.20251129.tar.gz", hash = "sha256:3d6af84712be290803ed3cf4dd4ea7eb0b2fa61ed40de7d5c3a909879c4191ee", size = 24302, upload-time = "2025-11-29T03:03:40.73Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/70/ce/65c4ea4d27701accbc3828ecc5eadf96fc61bd94a421fd4ab52c76608833/types_psutil-7.1.3.20251129-py3-none-any.whl", hash = "sha256:832299f76c6fcf096ea8714cf6eda14d3b26f5631e83bec7829941795fc3b4a5", size = 30352, upload-time = "2025-11-29T03:03:39.499Z" },
 ]
 
 [[package]]
