@@ -12,6 +12,7 @@ from apitally.client.consumers import ConsumerRegistry
 from apitally.client.logging import get_logger
 from apitally.client.request_logging import RequestLogger, RequestLoggingConfig
 from apitally.client.requests import RequestCounter
+from apitally.client.resources import get_cpu_memory_usage
 from apitally.client.server_errors import ServerErrorCounter
 from apitally.client.validation_errors import ValidationErrorCounter
 
@@ -99,6 +100,7 @@ class ApitallyClientBase(ABC):
             "validation_errors": self.validation_error_counter.get_and_reset_validation_errors(),
             "server_errors": self.server_error_counter.get_and_reset_server_errors(),
             "consumers": self.consumer_registry.get_and_reset_updated_consumers(),
+            "resources": get_cpu_memory_usage(),
         }
         return self.add_uuids_to_data(data)
 
