@@ -18,5 +18,5 @@ def get_cpu_memory_usage() -> Optional[Dict[str, Union[float, int]]]:
             _is_first_interval = False
             return None
         return data
-    except psutil.Error:
+    except psutil.Error:  # pragma: no cover
         return None
