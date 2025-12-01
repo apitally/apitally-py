@@ -4,15 +4,15 @@ import psutil
 
 
 _is_first_interval = True
+_process = psutil.Process()
 
 
 def get_cpu_memory_usage() -> Optional[Dict[str, Union[float, int]]]:
     global _is_first_interval
     try:
-        process = psutil.Process()
         data = {
-            "cpu_percent": process.cpu_percent(),
-            "memory_rss": process.memory_info().rss,
+            "cpu_percent": _process.cpu_percent(),
+            "memory_rss": _process.memory_info().rss,
         }
         if _is_first_interval:
             _is_first_interval = False
