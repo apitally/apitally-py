@@ -106,7 +106,6 @@ default-groups = ["dev", "test", "types"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py314"
 
 [tool.ruff.lint]
 ignore = ["E501"]
