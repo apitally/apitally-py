@@ -61,8 +61,9 @@ jobs:
           - djangorestframework==3.12.* django==3.2.* uritemplate
           - djangorestframework==3.10.* django==2.2.* uritemplate
           - django-ninja django
-          - django-ninja==1.4.5 django
-          - django-ninja==0.18.0 django
+          - django-ninja==1.5.1 django==6.*
+          - django-ninja==1.4.5 django==5.*
+          - django-ninja==0.18.0 django==4.*
           - litestar
           - litestar==2.0.1
           - blacksheep
@@ -70,6 +71,14 @@ jobs:
         exclude:
           - python: "3.9"
             deps: litestar==2.0.1
+          - python: "3.9"
+            deps: django-ninja==1.4.5 django==5.*
+          - python: "3.9"
+            deps: django-ninja==1.5.1 django==6.*
+          - python: "3.10"
+            deps: django-ninja==1.5.1 django==6.*
+          - python: "3.11"
+            deps: django-ninja==1.5.1 django==6.*
           - python: "3.12"
             deps: djangorestframework==3.12.* django==3.2.* uritemplate
           - python: "3.12"
@@ -91,7 +100,7 @@ jobs:
           - python: "3.14"
             deps: djangorestframework==3.10.* django==2.2.* uritemplate
           - python: "3.14"
-            deps: django-ninja==0.18.0 django
+            deps: django-ninja==0.18.0 django==4.*
           - python: "3.14"
             deps: litestar==2.0.1
     steps:

@@ -7,7 +7,7 @@ import re
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass
-from importlib import import_module
+from importlib.util import find_spec
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
 from warnings import warn
 
@@ -534,9 +534,8 @@ def _transform_path(path: str) -> str:
 
 def _check_import(name: str) -> bool:
     try:
-        import_module(name)
-        return True
-    except ImportError:
+        return find_spec(name) is not None
+    except ValueError:  # pragma: no cover
         return False
 
 
