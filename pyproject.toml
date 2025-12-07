@@ -76,7 +76,7 @@ test = [
     "pytest~=8.4.0",
     "pytest-asyncio~=0.21.2",
     "pytest-cov~=7.0.0",
-    "pytest-httpx~=0.36.0",
+    "pytest-httpx~=0.35.0",
     "pytest-mock~=3.15.0",
     "requests-mock~=1.12.1",
 ]
