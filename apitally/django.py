@@ -535,7 +535,7 @@ def _transform_path(path: str) -> str:
 def _check_import(name: str) -> bool:
     try:
         return find_spec(name) is not None
-    except ValueError:
+    except ValueError:  # pragma: no cover
         return False
 
 
