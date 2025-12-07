@@ -72,7 +72,7 @@ jobs:
           - python: "3.9"
             deps: litestar==2.0.1
           - python: "3.9"
-            deps: django-ninja==1.4.5 django==5.*)
+            deps: django-ninja==1.4.5 django==5.*
           - python: "3.9"
             deps: django-ninja==1.5.1 django==6.*
           - python: "3.10"
