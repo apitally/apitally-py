@@ -40,13 +40,13 @@ dynamic = ["version"]
 [project.optional-dependencies]
 blacksheep = ["blacksheep>=2", "httpx>=0.22.0"]
 django_ninja = [
-    "django>=2.2,<5; python_version<'3.10'",
+    "django>=6,<7; python_version<'3.10'",
     "django>=2.2; python_version>='3.10'",
     "django-ninja>=0.18.0",
     "requests>=2.26.0",
 ]
 django_rest_framework = [
-    "django>=2.2,<5; python_version<'3.10'",
+    "django>=6,<7; python_version<'3.10'",
     "django>=2.2; python_version>='3.10'",
     "djangorestframework>=3.10.0",
     "uritemplate>=3.0.0",                    # required for schema generation
