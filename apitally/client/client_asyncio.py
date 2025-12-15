@@ -75,7 +75,11 @@ class ApitallyClient(ApitallyClientBase):
                 except Exception:  # pragma: no cover
                     logger.exception("An error occurred during sync with Apitally hub")
 
-            self.request_logger.maintain()
+            try:
+                self.request_logger.maintain()
+            except Exception:  # pragma: no cover
+                logger.exception("An error occurred while maintaining request logger")
+
             await asyncio.sleep(1)
 
     def stop_sync_loop(self) -> None:
