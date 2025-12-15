@@ -122,7 +122,7 @@ class ApitallyClient(ApitallyClientBase):
         i = 0
         while log_file := self.request_logger.get_file():
             if i > 0:
-                time.sleep(random.uniform(0.1, 0.3))
+                await asyncio.sleep(random.uniform(0.1, 0.3))
             try:
                 stream = log_file.stream_lines_compressed()
                 await self._send_log_data(client, log_file.uuid, stream)
