@@ -195,7 +195,7 @@ class ApitallyMiddleware:
             await self.app(scope, receive_wrapper, send_wrapper)
         except BaseException as e:
             exception = e
-            raise e from None
+            raise
         finally:
             self.log_buffer_var.reset(token)
 

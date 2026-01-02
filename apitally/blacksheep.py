@@ -152,7 +152,7 @@ class ApitallyMiddleware:
             response = await handler(request)
         except BaseException as e:
             exception = e
-            raise e from None
+            raise
         finally:
             self.log_buffer_var.reset(token)
             response_time = time.perf_counter() - start_time
