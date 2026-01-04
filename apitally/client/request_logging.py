@@ -53,6 +53,15 @@ EXCLUDE_PATH_PATTERNS = [
     r"/ping$",
     r"/ready$",
     r"/live$",
+    r"/favicon(?:-[\w-]+)?\.(ico|png|svg)$",
+    r"/apple-touch-icon(?:-[\w-]+)?\.png$",
+    r"/robots\.txt$",
+    r"/sitemap\.xml$",
+    r"/manifest\.json$",
+    r"/site\.webmanifest$",
+    r"/service-worker\.js$",
+    r"/sw\.js$",
+    r"/\.well-known/",
 ]
 EXCLUDE_USER_AGENT_PATTERNS = [
     r"health[\-_ ]?check",
