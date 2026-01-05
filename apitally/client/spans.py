@@ -1,20 +1,42 @@
 import threading
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING, Any, Iterator, Optional
 
-from opentelemetry import context as context_api
-from opentelemetry import trace as trace_api
-from opentelemetry.sdk.trace import ReadableSpan, Span, TracerProvider
-from opentelemetry.sdk.trace.export import SpanProcessor
-
+from apitally.client.logging import get_logger
 from apitally.client.request_logging import SpanDict
 
 
-class SubtreeSpanCollector(SpanProcessor):
+try:
+    from opentelemetry import context as context_api
+    from opentelemetry import trace as trace_api
+    from opentelemetry.sdk.trace import ReadableSpan, Span, TracerProvider
+    from opentelemetry.sdk.trace.export import SpanProcessor
+
+    OPENTELEMETRY_INSTALLED = True
+except ImportError:
+    OPENTELEMETRY_INSTALLED = False
+
+if TYPE_CHECKING:
+    from opentelemetry import context as context_api
+    from opentelemetry import trace as trace_api
+    from opentelemetry.sdk.trace import ReadableSpan, Span, TracerProvider
+    from opentelemetry.sdk.trace.export import SpanProcessor
+
+
+logger = get_logger(__name__)
+
+_BaseClass: Any = SpanProcessor if OPENTELEMETRY_INSTALLED else object
+
+
+class SubtreeSpanCollector(_BaseClass):
     """A SpanProcessor that collects spans belonging to a specific subtree of a trace."""
 
     def __init__(self, enabled: bool = True) -> None:
+        if enabled and not OPENTELEMETRY_INSTALLED:
+            logger.warning("capture_spans=True requires the opentelemetry-sdk package to be installed")
+            enabled = False
+
         self.enabled = enabled
         self.included_span_ids: dict[int, set[int]] = {}
         self.collected_spans: dict[int, list[SpanDict]] = defaultdict(list)
@@ -46,15 +68,15 @@ class SubtreeSpanCollector(SpanProcessor):
 
     def on_start(self, span: Span, parent_context: Optional[context_api.Context] = None) -> None:
         ctx = span.get_span_context()
-        parent_span_ctx = span.parent
-        parent_id = parent_span_ctx.span_id if parent_span_ctx else None
+        if ctx is None:
+            return
 
         with self.lock:
             included = self.included_span_ids.get(ctx.trace_id)
             if not included:
                 return
 
-            if parent_id is not None and parent_id in included:
+            if span.parent is not None and span.parent.span_id in included:
                 included.add(ctx.span_id)
 
     def on_end(self, span: ReadableSpan) -> None:
