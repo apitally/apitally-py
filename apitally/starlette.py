@@ -135,6 +135,7 @@ class ApitallyMiddleware:
         response_content_type: Optional[str] = None
         exception: Optional[BaseException] = None
         logs: List[logging.LogRecord] = []
+        trace_id: Optional[int] = None
         start_time = time.perf_counter()
 
         async def receive_wrapper() -> Message:
@@ -192,7 +193,8 @@ class ApitallyMiddleware:
 
         try:
             token = self.log_buffer_var.set(logs)
-            await self.app(scope, receive_wrapper, send_wrapper)
+            with self.client.span_collector.collect() as trace_id:
+                await self.app(scope, receive_wrapper, send_wrapper)
         except BaseException as e:
             exception = e
             raise
@@ -247,6 +249,7 @@ class ApitallyMiddleware:
                     )
 
             if self.client.request_logger.enabled:
+                spans = self.client.span_collector.get_and_clear_spans(trace_id) if trace_id else None
                 self.client.request_logger.log_request(
                     request={
                         "timestamp": timestamp,
@@ -267,6 +270,7 @@ class ApitallyMiddleware:
                     },
                     exception=exception,
                     logs=logs,
+                    spans=spans,
                 )
 
     def get_path(self, request: Request, routes: Optional[List[BaseRoute]] = None) -> Optional[str]:
