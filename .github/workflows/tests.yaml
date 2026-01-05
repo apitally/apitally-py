@@ -117,6 +117,6 @@ jobs:
       - name: Install test dependencies
         run: uv sync --no-install-project --only-group test --frozen
       - name: Install app dependencies
-        run: uv pip install ${{ matrix.deps }} "./dist/apitally-*.whl[opentelemetry]"
+        run: uv pip install ${{ matrix.deps }} opentelemetry-sdk ./dist/apitally-*.whl
       - name: Run tests
         run: uv run make test
