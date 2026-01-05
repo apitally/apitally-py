@@ -6,7 +6,6 @@ from importlib.util import find_spec
 from typing import TYPE_CHECKING, Optional
 
 import pytest
-from opentelemetry import trace
 from pytest import FixtureRequest
 from pytest_mock import MockerFixture
 
@@ -40,6 +39,7 @@ async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlett
 
 
 def get_starlette_app() -> Starlette:
+    from opentelemetry import trace
     from starlette.applications import Starlette
     from starlette.responses import PlainTextResponse, StreamingResponse
     from starlette.routing import Mount, Route
@@ -134,6 +134,7 @@ def get_starlette_app() -> Starlette:
 def get_fastapi_app() -> Starlette:
     from fastapi import APIRouter, FastAPI, Query
     from fastapi.responses import PlainTextResponse, StreamingResponse
+    from opentelemetry import trace
 
     from apitally.fastapi import ApitallyConsumer, ApitallyMiddleware
 
