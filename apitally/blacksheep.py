@@ -23,7 +23,7 @@ from apitally.common import get_versions, parse_int
 
 try:
     from typing import Unpack
-except ImportError:
+except ImportError:  # pragma: no cover
     from typing_extensions import Unpack
 
 

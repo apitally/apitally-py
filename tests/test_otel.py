@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from importlib.util import find_spec
 from typing import TYPE_CHECKING, Iterator
 
 import pytest
 from pytest_httpx import HTTPXMock
 from requests_mock import Mocker as RequestsMocker
 
+
+if find_spec("opentelemetry.instrumentation") is None:
+    pytest.skip("opentelemetry.instrumentation is not available", allow_module_level=True)
 
 if TYPE_CHECKING:
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter

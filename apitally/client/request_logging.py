@@ -26,7 +26,7 @@ from apitally.client.server_errors import (
 
 try:
     from typing import NotRequired
-except ImportError:
+except ImportError:  # pragma: no cover
     from typing_extensions import NotRequired
 
 

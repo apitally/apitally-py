@@ -30,7 +30,7 @@ from apitally.common import get_versions, parse_int, try_json_loads
 
 try:
     from typing import Unpack
-except ImportError:
+except ImportError:  # pragma: no cover
     from typing_extensions import Unpack
 
 

@@ -1,7 +1,15 @@
+from __future__ import annotations
+
 import functools
 from contextlib import contextmanager, suppress
 from inspect import iscoroutinefunction
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterator, ParamSpec, TypeVar, Union, overload
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterator, TypeVar, Union, overload
+
+
+try:
+    from typing import ParamSpec
+except ImportError:  # pragma: no cover
+    from typing_extensions import ParamSpec
 
 
 if TYPE_CHECKING:
