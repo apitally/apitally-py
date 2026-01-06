@@ -67,7 +67,7 @@ class SpanCollector(_BaseClass):
     def on_start(self, span: Span, parent_context: Optional[context_api.Context] = None) -> None:
         ctx = span.get_span_context()
         if ctx is None:
-            return
+            return  # pragma: no cover
 
         with self.lock:
             included = self.included_span_ids.get(ctx.trace_id)
@@ -80,7 +80,7 @@ class SpanCollector(_BaseClass):
     def on_end(self, span: ReadableSpan) -> None:
         ctx = span.get_span_context()
         if ctx is None:
-            return
+            return  # pragma: no cover
 
         with self.lock:
             included = self.included_span_ids.get(ctx.trace_id)
@@ -97,10 +97,10 @@ class SpanCollector(_BaseClass):
             self.included_span_ids.pop(trace_id, None)
             return self.collected_spans.pop(trace_id, [])
 
-    def shutdown(self) -> None:
+    def shutdown(self) -> None:  # pragma: no cover
         pass
 
-    def force_flush(self, timeout_millis: int = 30000) -> bool:
+    def force_flush(self, timeout_millis: int = 30000) -> bool:  # pragma: no cover
         return True
 
     @staticmethod
@@ -108,7 +108,7 @@ class SpanCollector(_BaseClass):
         """Serialize a span to a dictionary for logging."""
         ctx = span.get_span_context()
         if ctx is None or span.start_time is None or span.end_time is None:
-            return None
+            return None  # pragma: no cover
 
         data: SpanDict = {
             "span_id": format(ctx.span_id, "016x"),
