@@ -126,7 +126,7 @@ def get_starlette_app() -> Starlette:
         log_request_body=True,
         log_response_body=True,
         capture_logs=True,
-        capture_spans=True,
+        capture_traces=True,
     )
     return app
 
@@ -151,7 +151,7 @@ def get_fastapi_app() -> Starlette:
         log_request_body=True,
         log_response_body=True,
         capture_logs=True,
-        capture_spans=True,
+        capture_traces=True,
     )
 
     router = APIRouter()

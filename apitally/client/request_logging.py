@@ -160,7 +160,7 @@ class RequestLoggingKwargs(TypedDict, total=False):
     log_response_body: bool
     log_exception: bool
     capture_logs: bool
-    capture_spans: bool
+    capture_traces: bool
     mask_query_params: List[str]
     mask_headers: List[str]
     mask_body_fields: List[str]
@@ -180,7 +180,7 @@ class RequestLoggingConfig:
     log_response_body: bool = False
     log_exception: bool = True
     capture_logs: bool = False
-    capture_spans: bool = False
+    capture_traces: bool = False
     mask_query_params: List[str] = field(default_factory=list)
     mask_headers: List[str] = field(default_factory=list)
     mask_body_fields: List[str] = field(default_factory=list)

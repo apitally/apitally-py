@@ -200,6 +200,7 @@ class ApitallyMiddleware:
             raise
         finally:
             self.log_buffer_var.reset(token)
+            spans = self.client.span_collector.get_and_clear_spans(trace_id) if trace_id is not None else None
 
             if response_time is None:
                 response_time = time.perf_counter() - start_time
@@ -249,7 +250,6 @@ class ApitallyMiddleware:
                     )
 
             if self.client.request_logger.enabled:
-                spans = self.client.span_collector.get_and_clear_spans(trace_id) if trace_id else None
                 self.client.request_logger.log_request(
                     request={
                         "timestamp": timestamp,
