@@ -79,7 +79,7 @@ def span(name: str) -> Iterator[Span]:
 def instrument_asyncpg(**kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
-    except ImportError:  # pragma: no cover
+    except ImportError:
         raise RuntimeError("`instrument_asyncpg()` requires the `opentelemetry-instrumentation-asyncpg` package")
 
     AsyncPGInstrumentor().instrument(**kwargs)
@@ -88,7 +88,7 @@ def instrument_asyncpg(**kwargs: Any) -> None:  # pragma: no cover
 def instrument_botocore(**kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
-    except ImportError:  # pragma: no cover
+    except ImportError:
         raise RuntimeError("`instrument_botocore()` requires the `opentelemetry-instrumentation-botocore` package")
 
     BotocoreInstrumentor().instrument(**kwargs)
@@ -111,7 +111,7 @@ def instrument_mysql(
 ) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.mysql import MySQLInstrumentor
-    except ImportError:  # pragma: no cover
+    except ImportError:
         raise RuntimeError("`instrument_mysql()` requires the `opentelemetry-instrumentation-mysql` package")
 
     if conn is not None:
@@ -125,7 +125,7 @@ def instrument_psycopg(
 ) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.psycopg import PsycopgInstrumentor
-    except ImportError:  # pragma: no cover
+    except ImportError:
         raise RuntimeError("`instrument_psycopg()` requires the `opentelemetry-instrumentation-psycopg` package")
 
     if conn is not None:
@@ -137,7 +137,7 @@ def instrument_psycopg(
 def instrument_psycopg2(conn: Union[Psycopg2Connection, None] = None, **kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
-    except ImportError:  # pragma: no cover
+    except ImportError:
         raise RuntimeError("`instrument_psycopg2()` requires the `opentelemetry-instrumentation-psycopg2` package")
 
     if conn is not None:
@@ -149,7 +149,7 @@ def instrument_psycopg2(conn: Union[Psycopg2Connection, None] = None, **kwargs: 
 def instrument_pymongo(**kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
-    except ImportError:  # pragma: no cover
+    except ImportError:
         raise RuntimeError("`instrument_pymongo()` requires the `opentelemetry-instrumentation-pymongo` package")
 
     PymongoInstrumentor().instrument(**kwargs)
@@ -158,7 +158,7 @@ def instrument_pymongo(**kwargs: Any) -> None:  # pragma: no cover
 def instrument_redis(**kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.redis import RedisInstrumentor
-    except ImportError:  # pragma: no cover
+    except ImportError:
         raise RuntimeError("`instrument_redis()` requires the `opentelemetry-instrumentation-redis` package")
 
     RedisInstrumentor().instrument(**kwargs)
@@ -178,7 +178,7 @@ def instrument_sqlalchemy(
 ) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-    except ImportError:  # pragma: no cover
+    except ImportError:
         raise RuntimeError("`instrument_sqlalchemy()` requires the `opentelemetry-instrumentation-sqlalchemy` package")
 
     with suppress(ImportError):
