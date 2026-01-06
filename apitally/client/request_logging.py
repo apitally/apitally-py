@@ -135,9 +135,9 @@ class SpanDict(TypedDict):
     span_id: str
     parent_span_id: Optional[str]
     name: str
+    kind: str
     start_time: int
     end_time: int
-    kind: NotRequired[str]
     status: NotRequired[str]
     attributes: NotRequired[dict[str, Any]]
 

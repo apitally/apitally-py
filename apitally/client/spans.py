@@ -114,11 +114,10 @@ class SpanCollector(_BaseClass):
             "span_id": format(ctx.span_id, "016x"),
             "parent_span_id": format(span.parent.span_id, "016x") if span.parent else None,
             "name": span.name,
+            "kind": span.kind.name,
             "start_time": span.start_time,
             "end_time": span.end_time,
         }
-        if span.kind and span.kind != trace_api.SpanKind.INTERNAL:
-            data["kind"] = span.kind.name
         if span.status and span.status.status_code != trace_api.StatusCode.UNSET:
             data["status"] = span.status.status_code.name
         if span.attributes:
