@@ -76,7 +76,7 @@ def span(name: str) -> Iterator[Span]:
         yield span
 
 
-def instrument_asyncpg(**kwargs: Any) -> None:
+def instrument_asyncpg(**kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
     except ImportError:  # pragma: no cover
@@ -85,7 +85,7 @@ def instrument_asyncpg(**kwargs: Any) -> None:
     AsyncPGInstrumentor().instrument(**kwargs)
 
 
-def instrument_botocore(**kwargs: Any) -> None:
+def instrument_botocore(**kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
     except ImportError:  # pragma: no cover
@@ -106,7 +106,9 @@ def instrument_httpx(client: Union[HttpxClient, HttpxAsyncClient, None] = None, 
         HTTPXClientInstrumentor().instrument(**kwargs)
 
 
-def instrument_mysql(conn: Union[MySQLConnectionAbstract, PooledMySQLConnection, None] = None, **kwargs: Any) -> None:
+def instrument_mysql(
+    conn: Union[MySQLConnectionAbstract, PooledMySQLConnection, None] = None, **kwargs: Any
+) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.mysql import MySQLInstrumentor
     except ImportError:  # pragma: no cover
@@ -118,7 +120,9 @@ def instrument_mysql(conn: Union[MySQLConnectionAbstract, PooledMySQLConnection,
         MySQLInstrumentor().instrument(**kwargs)
 
 
-def instrument_psycopg(conn: Union[PsycopgConnection, PsycopgAsyncConnection, None] = None, **kwargs: Any) -> None:
+def instrument_psycopg(
+    conn: Union[PsycopgConnection, PsycopgAsyncConnection, None] = None, **kwargs: Any
+) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.psycopg import PsycopgInstrumentor
     except ImportError:  # pragma: no cover
@@ -130,7 +134,7 @@ def instrument_psycopg(conn: Union[PsycopgConnection, PsycopgAsyncConnection, No
         PsycopgInstrumentor().instrument(**kwargs)
 
 
-def instrument_psycopg2(conn: Union[Psycopg2Connection, None] = None, **kwargs: Any) -> None:
+def instrument_psycopg2(conn: Union[Psycopg2Connection, None] = None, **kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
     except ImportError:  # pragma: no cover
@@ -142,7 +146,7 @@ def instrument_psycopg2(conn: Union[Psycopg2Connection, None] = None, **kwargs: 
         Psycopg2Instrumentor().instrument(**kwargs)
 
 
-def instrument_pymongo(**kwargs: Any) -> None:
+def instrument_pymongo(**kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
     except ImportError:  # pragma: no cover
@@ -151,7 +155,7 @@ def instrument_pymongo(**kwargs: Any) -> None:
     PymongoInstrumentor().instrument(**kwargs)
 
 
-def instrument_redis(**kwargs: Any) -> None:
+def instrument_redis(**kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.redis import RedisInstrumentor
     except ImportError:  # pragma: no cover
@@ -169,7 +173,9 @@ def instrument_requests(**kwargs: Any) -> None:
     RequestsInstrumentor().instrument(**kwargs)
 
 
-def instrument_sqlalchemy(engine: Union[SQLAlchemyEngine, SQLAlchemyAsyncEngine, None], **kwargs: Any) -> None:
+def instrument_sqlalchemy(
+    engine: Union[SQLAlchemyEngine, SQLAlchemyAsyncEngine, None], **kwargs: Any
+) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
     except ImportError:  # pragma: no cover

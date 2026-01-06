@@ -32,7 +32,7 @@ _BaseClass: Any = SpanProcessor if OPENTELEMETRY_INSTALLED else object
 class SpanCollector(_BaseClass):
     def __init__(self, enabled: bool = True) -> None:
         if enabled and not OPENTELEMETRY_INSTALLED:
-            logger.warning("capture_traces=True requires the opentelemetry-sdk package to be installed")
+            logger.warning("`capture_traces=True` requires the `opentelemetry-sdk` package")
             enabled = False
 
         self.enabled = enabled
