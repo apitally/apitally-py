@@ -137,13 +137,16 @@ class ApitallyMiddleware:
                 )
 
             logs: List[logging.LogRecord] = []
+            trace_id: Optional[int] = None
             start_time = time.perf_counter()
 
             try:
                 token = self.log_buffer_var.set(logs)
-                response = self.wsgi_app(environ, catching_start_response)
+                with self.client.span_collector.collect() as trace_id:
+                    response = self.wsgi_app(environ, catching_start_response)
             finally:
                 self.log_buffer_var.reset(token)
+                spans = self.client.span_collector.get_and_clear_spans(trace_id) if trace_id is not None else None
 
             response_time = time.perf_counter() - start_time
 
@@ -206,6 +209,7 @@ class ApitallyMiddleware:
                     },
                     exception=g.unhandled_exception if "unhandled_exception" in g else None,
                     logs=logs,
+                    spans=spans,
                 )
         return response
 

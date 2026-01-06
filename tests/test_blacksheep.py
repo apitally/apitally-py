@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from importlib.util import find_spec
 from typing import Optional
 
@@ -30,6 +31,7 @@ def get_app() -> Application:
     from blacksheep import StreamedContent, get, post, text
 
     from apitally.blacksheep import ApitallyConsumer, use_apitally
+    from apitally.otel import span
 
     def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
         return ApitallyConsumer("test", name="Test")
@@ -45,6 +47,7 @@ def get_app() -> Application:
         log_request_body=True,
         log_response_body=True,
         capture_logs=True,
+        capture_traces=True,
         consumer_callback=identify_consumer,
     )
 
@@ -72,6 +75,16 @@ def get_app() -> Application:
             yield b"bar"
 
         return Response(200, content=StreamedContent(b"text/plain", stream_response))
+
+    @get("/api/traces")
+    def traces() -> Response:
+        with span("outer_span"):
+            time.sleep(0.01)
+            with span("inner_span_1"):
+                time.sleep(0.01)
+            with span("inner_span_2"):
+                time.sleep(0.01)
+        return text("traces")
 
     return app
 
@@ -185,18 +198,39 @@ async def test_middleware_request_logging(app: Application, mocker: MockerFixtur
     assert mock.call_args.kwargs["request"]["body"] == BODY_TOO_LARGE
 
 
+async def test_middleware_tracing(app: Application, mocker: MockerFixture):
+    from blacksheep.testing import TestClient
+
+    mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
+    client = TestClient(app)
+
+    response = await client.get("/api/traces")
+    assert response.status == 200
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["spans"] is not None
+    assert len(mock.call_args.kwargs["spans"]) == 4
+    assert {s["name"] for s in mock.call_args.kwargs["spans"]} == {
+        "handle_request",
+        "outer_span",
+        "inner_span_1",
+        "inner_span_2",
+    }
+
+
 def test_get_startup_data(app: Application, mocker: MockerFixture):
     from apitally.blacksheep import _get_startup_data
 
     mocker.patch("apitally.blacksheep.ApitallyClient")
 
     data = _get_startup_data(app, app_version="1.2.3")
-    assert len(data["paths"]) == 5
+    assert len(data["paths"]) == 6
     assert {"method": "GET", "path": "/api/foo"} in data["paths"]
     assert {"method": "GET", "path": "/api/foo/{bar}"} in data["paths"]
     assert {"method": "POST", "path": "/api/bar"} in data["paths"]
     assert {"method": "POST", "path": "/api/baz"} in data["paths"]
     assert {"method": "GET", "path": "/api/stream"} in data["paths"]
+    assert {"method": "GET", "path": "/api/traces"} in data["paths"]
     assert data["versions"]["blacksheep"]
     assert data["versions"]["app"] == "1.2.3"
     assert data["client"] == "python:blacksheep"

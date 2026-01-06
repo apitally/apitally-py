@@ -140,6 +140,7 @@ class ApitallyPlugin(InitPluginProtocol):
             response_chunked = False
             response_content_type: Optional[str] = None
             logs: List[logging.LogRecord] = []
+            trace_id: Optional[int] = None
             start_time = time.perf_counter()
 
             async def receive_wrapper():
@@ -189,9 +190,11 @@ class ApitallyPlugin(InitPluginProtocol):
 
             try:
                 token = self.log_buffer_var.set(logs)
-                await app(scope, receive_wrapper, send_wrapper)
+                with self.client.span_collector.collect() as trace_id:
+                    await app(scope, receive_wrapper, send_wrapper)
             finally:
                 self.log_buffer_var.reset(token)
+                spans = self.client.span_collector.get_and_clear_spans(trace_id) if trace_id is not None else None
 
             if response_status < 100:
                 return  # pragma: no cover
@@ -274,6 +277,7 @@ class ApitallyPlugin(InitPluginProtocol):
                     },
                     exception=request.state["exception"] if "exception" in request.state else None,
                     logs=logs,
+                    spans=spans,
                 )
 
         return middleware

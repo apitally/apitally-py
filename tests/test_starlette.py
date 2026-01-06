@@ -39,11 +39,11 @@ async def app(request: FixtureRequest, module_mocker: MockerFixture) -> Starlett
 
 
 def get_starlette_app() -> Starlette:
-    from opentelemetry import trace
     from starlette.applications import Starlette
     from starlette.responses import PlainTextResponse, StreamingResponse
     from starlette.routing import Mount, Route
 
+    from apitally.otel import span
     from apitally.starlette import ApitallyConsumer, ApitallyMiddleware, set_consumer
 
     logging.getLogger().setLevel(logging.INFO)
@@ -83,12 +83,11 @@ def get_starlette_app() -> Starlette:
         return PlainTextResponse("ok", background=tasks)
 
     async def traces(request: Request):
-        tracer = trace.get_tracer("test")
-        with tracer.start_as_current_span("outer_span"):
+        with span("outer_span"):
             await asyncio.sleep(0.01)
-            with tracer.start_as_current_span("inner_span_1"):
+            with span("inner_span_1"):
                 await asyncio.sleep(0.01)
-            with tracer.start_as_current_span("inner_span_2"):
+            with span("inner_span_2"):
                 await asyncio.sleep(0.01)
         return PlainTextResponse("traces")
 
@@ -134,9 +133,9 @@ def get_starlette_app() -> Starlette:
 def get_fastapi_app() -> Starlette:
     from fastapi import APIRouter, FastAPI, Query
     from fastapi.responses import PlainTextResponse, StreamingResponse
-    from opentelemetry import trace
 
     from apitally.fastapi import ApitallyConsumer, ApitallyMiddleware
+    from apitally.otel import span
 
     def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
         return ApitallyConsumer("test", name="Test")
@@ -195,12 +194,11 @@ def get_fastapi_app() -> Starlette:
 
     @app.get("/traces")
     async def traces():
-        tracer = trace.get_tracer("test")
-        with tracer.start_as_current_span("outer_span"):
+        with span("outer_span"):
             await asyncio.sleep(0.01)
-            with tracer.start_as_current_span("inner_span_1"):
+            with span("inner_span_1"):
                 await asyncio.sleep(0.01)
-            with tracer.start_as_current_span("inner_span_2"):
+            with span("inner_span_2"):
                 await asyncio.sleep(0.01)
         return "traces"
 

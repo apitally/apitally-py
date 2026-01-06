@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from importlib.util import find_spec
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,7 @@ def app(module_mocker: MockerFixture) -> Flask:
     from flask import Flask, request
 
     from apitally.flask import ApitallyMiddleware, set_consumer
+    from apitally.otel import span
 
     module_mocker.patch("apitally.client.client_threading.ApitallyClient._instance", None)
     module_mocker.patch("apitally.client.client_threading.ApitallyClient.start_sync_loop")
@@ -36,6 +38,7 @@ def app(module_mocker: MockerFixture) -> Flask:
         log_request_body=True,
         log_response_body=True,
         capture_logs=True,
+        capture_traces=True,
     )
 
     @app.route("/foo/<bar>")
@@ -51,6 +54,16 @@ def app(module_mocker: MockerFixture) -> Flask:
     @app.route("/baz", methods=["PUT"])
     def baz():
         raise ValueError("baz")
+
+    @app.route("/traces")
+    def traces():
+        with span("outer_span"):
+            time.sleep(0.01)
+            with span("inner_span_1"):
+                time.sleep(0.01)
+            with span("inner_span_2"):
+                time.sleep(0.01)
+        return "traces"
 
     return app
 
@@ -144,11 +157,29 @@ def test_middleware_request_logging(app: Flask, mocker: MockerFixture):
     assert mock.call_args.kwargs["response"]["body"] == BODY_TOO_LARGE
 
 
+def test_middleware_tracing(app: Flask, mocker: MockerFixture):
+    mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
+    client = app.test_client()
+
+    response = client.get("/traces")
+    assert response.status_code == 200
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["spans"] is not None
+    assert len(mock.call_args.kwargs["spans"]) == 4
+    assert {s["name"] for s in mock.call_args.kwargs["spans"]} == {
+        "handle_request",
+        "outer_span",
+        "inner_span_1",
+        "inner_span_2",
+    }
+
+
 def test_get_startup_data(app: Flask):
     from apitally.flask import _get_startup_data
 
     data = _get_startup_data(app, app_version="1.2.3", openapi_url="/openapi.json")
-    assert len(data["paths"]) == 3
+    assert len(data["paths"]) == 4
     assert data["versions"]["flask"]
     assert data["versions"]["app"] == "1.2.3"
     assert data["client"] == "python:flask"

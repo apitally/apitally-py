@@ -146,15 +146,18 @@ class ApitallyMiddleware:
         response: Optional[Response] = None
         exception: Optional[BaseException] = None
         logs: List[logging.LogRecord] = []
+        trace_id: Optional[int] = None
 
         try:
             token = self.log_buffer_var.set(logs)
-            response = await handler(request)
+            with self.client.span_collector.collect() as trace_id:
+                response = await handler(request)
         except BaseException as e:
             exception = e
             raise
         finally:
             self.log_buffer_var.reset(token)
+            spans = self.client.span_collector.get_and_clear_spans(trace_id) if trace_id is not None else None
             response_time = time.perf_counter() - start_time
 
             consumer = self.get_consumer(request)
@@ -245,6 +248,7 @@ class ApitallyMiddleware:
                     },
                     exception=exception,
                     logs=logs,
+                    spans=spans,
                 )
 
         return response
