@@ -1,4 +1,7 @@
-from typing import TYPE_CHECKING, Any, Union
+import asyncio
+import functools
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterator, ParamSpec, TypeVar, Union, overload
 
 
 if TYPE_CHECKING:
@@ -6,11 +9,63 @@ if TYPE_CHECKING:
     from httpx import Client as HttpxClient  # type: ignore[import-not-found]
     from mysql.connector.abstracts import MySQLConnectionAbstract  # type: ignore[import-not-found]
     from mysql.connector.pooling import PooledMySQLConnection  # type: ignore[import-not-found]
+    from opentelemetry.trace import Span  # type: ignore[import-not-found]
     from psycopg import AsyncConnection as PsycopgAsyncConnection  # type: ignore[import-not-found]
     from psycopg import Connection as PsycopgConnection  # type: ignore[import-not-found]
     from psycopg2._psycopg import connection as Psycopg2Connection  # type: ignore[import-not-found]
     from sqlalchemy import Engine as SQLAlchemyEngine  # type: ignore[import-not-found]
     from sqlalchemy.ext.asyncio import AsyncEngine as SQLAlchemyAsyncEngine  # type: ignore[import-not-found]
+
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+@overload
+def instrument(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]: ...
+
+
+@overload
+def instrument(func: Callable[P, R]) -> Callable[P, R]: ...
+
+
+def instrument(func: Callable[P, R]) -> Union[Callable[P, R], Callable[P, Awaitable[R]]]:
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        raise RuntimeError("`instrument()` requires the `opentelemetry-api` package")
+
+    tracer = trace.get_tracer("apitally.otel")
+    span_name = f"{func.__module__}.{func.__qualname__}"
+
+    if asyncio.iscoroutinefunction(func):
+
+        @functools.wraps(func)
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            with tracer.start_as_current_span(span_name):
+                return await func(*args, **kwargs)
+
+        return async_wrapper
+    else:
+
+        @functools.wraps(func)
+        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            with tracer.start_as_current_span(span_name):
+                return func(*args, **kwargs)
+
+        return sync_wrapper
+
+
+@contextmanager
+def span(name: str) -> Iterator[Span]:
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        raise RuntimeError("`span()` requires the `opentelemetry-api` package")
+
+    tracer = trace.get_tracer("apitally.otel")
+    with tracer.start_as_current_span(name) as span:
+        yield span
 
 
 def instrument_asyncpg(**kwargs: Any) -> None:
