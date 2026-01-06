@@ -14,7 +14,7 @@ try:
     from opentelemetry.sdk.trace.export import SpanProcessor
 
     OPENTELEMETRY_INSTALLED = True
-except ImportError:
+except ImportError:  # pragma: no cover
     OPENTELEMETRY_INSTALLED = False
 
 if TYPE_CHECKING:

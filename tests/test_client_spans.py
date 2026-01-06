@@ -23,6 +23,8 @@ def test_span_collector_disabled():
 
 @pytest.mark.skipif(find_spec("opentelemetry.sdk") is None, reason="opentelemetry-sdk not installed")
 def test_span_collector_enabled():
+    from opentelemetry import trace as trace_api
+
     from apitally.client.spans import SpanCollector
 
     collector = SpanCollector(enabled=True)
@@ -38,8 +40,8 @@ def test_span_collector_enabled():
         assert trace_id in collector.included_span_ids
 
         # Child span should be collected
-        with collector.tracer.start_as_current_span("child_span"):
-            pass
+        with collector.tracer.start_as_current_span("child_span", kind=trace_api.SpanKind.CLIENT) as span:
+            span.set_attribute("key", "value")
 
     spans = collector.get_and_clear_spans(trace_id)
     assert not any(s["name"] == "outside_span" for s in spans)
