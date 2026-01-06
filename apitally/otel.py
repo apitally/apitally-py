@@ -22,6 +22,15 @@ def instrument_asyncpg(**kwargs: Any) -> None:
     AsyncPGInstrumentor().instrument(**kwargs)
 
 
+def instrument_botocore(**kwargs: Any) -> None:
+    try:
+        from opentelemetry.instrumentation.botocore import BotocoreInstrumentor  # type: ignore[import-not-found]
+    except ImportError:
+        raise RuntimeError("`instrument_botocore()` requires the `opentelemetry-instrumentation-botocore` package")
+
+    BotocoreInstrumentor().instrument(**kwargs)
+
+
 def instrument_httpx(client: Union[HttpxClient, HttpxAsyncClient, None] = None, **kwargs: Any) -> None:
     try:
         from opentelemetry.instrumentation.httpx import HttpxInstrumentor  # type: ignore[import-not-found]
