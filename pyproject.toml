@@ -58,7 +58,7 @@ flask = ["flask>=2.0.0", "requests>=2.26.0"]
 litestar = ["litestar>=2.0.0", "httpx>=0.22.0"]
 sentry = ["sentry-sdk>=2.2.0"]
 starlette = ["starlette>=0.26.1,<1.0.0", "httpx>=0.22.0"]
-opentelemetry = ["opentelemetry-sdk>=1.39.1,<2.0.0"]
+otel = ["opentelemetry-sdk>=1.39.1,<2.0.0"]
 
 [project.urls]
 Homepage = "https://apitally.io"
@@ -93,6 +93,19 @@ types = [
     "types-setuptools",
     "types-six",
     "types-ujson",
+]
+otel = [
+    "opentelemetry-api",
+    "opentelemetry-instrumentation-asyncpg",
+    "opentelemetry-instrumentation-botocore",
+    "opentelemetry-instrumentation-httpx",
+    "opentelemetry-instrumentation-mysql",
+    "opentelemetry-instrumentation-psycopg",
+    "opentelemetry-instrumentation-psycopg2",
+    "opentelemetry-instrumentation-pymongo",
+    "opentelemetry-instrumentation-redis",
+    "opentelemetry-instrumentation-requests",
+    "opentelemetry-instrumentation-sqlalchemy",
 ]
 
 [build-system]

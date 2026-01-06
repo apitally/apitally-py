@@ -1,6 +1,6 @@
-import asyncio
 import functools
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
+from inspect import iscoroutinefunction
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterator, ParamSpec, TypeVar, Union, overload
 
 
@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from httpx import Client as HttpxClient  # type: ignore[import-not-found]
     from mysql.connector.abstracts import MySQLConnectionAbstract  # type: ignore[import-not-found]
     from mysql.connector.pooling import PooledMySQLConnection  # type: ignore[import-not-found]
-    from opentelemetry.trace import Span  # type: ignore[import-not-found]
+    from opentelemetry.trace import Span
     from psycopg import AsyncConnection as PsycopgAsyncConnection  # type: ignore[import-not-found]
     from psycopg import Connection as PsycopgConnection  # type: ignore[import-not-found]
     from psycopg2._psycopg import connection as Psycopg2Connection  # type: ignore[import-not-found]
@@ -38,7 +38,7 @@ def instrument(func: Callable[P, R]) -> Union[Callable[P, R], Callable[P, Awaita
     tracer = trace.get_tracer("apitally.otel")
     span_name = f"{func.__module__}.{func.__qualname__}"
 
-    if asyncio.iscoroutinefunction(func):
+    if iscoroutinefunction(func):
 
         @functools.wraps(func)
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -70,7 +70,7 @@ def span(name: str) -> Iterator[Span]:
 
 def instrument_asyncpg(**kwargs: Any) -> None:
     try:
-        from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
     except ImportError:
         raise RuntimeError("`instrument_asyncpg()` requires the `opentelemetry-instrumentation-asyncpg` package")
 
@@ -79,7 +79,7 @@ def instrument_asyncpg(**kwargs: Any) -> None:
 
 def instrument_botocore(**kwargs: Any) -> None:
     try:
-        from opentelemetry.instrumentation.botocore import BotocoreInstrumentor  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
     except ImportError:
         raise RuntimeError("`instrument_botocore()` requires the `opentelemetry-instrumentation-botocore` package")
 
@@ -88,19 +88,19 @@ def instrument_botocore(**kwargs: Any) -> None:
 
 def instrument_httpx(client: Union[HttpxClient, HttpxAsyncClient, None] = None, **kwargs: Any) -> None:
     try:
-        from opentelemetry.instrumentation.httpx import HttpxInstrumentor  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
     except ImportError:
         raise RuntimeError("`instrument_httpx()` requires the `opentelemetry-instrumentation-httpx` package")
 
     if client is not None:
-        HttpxInstrumentor().instrument_client(client, **kwargs)
+        HTTPXClientInstrumentor().instrument_client(client, **kwargs)
     else:
-        HttpxInstrumentor().instrument(**kwargs)
+        HTTPXClientInstrumentor().instrument(**kwargs)
 
 
 def instrument_mysql(conn: Union[MySQLConnectionAbstract, PooledMySQLConnection, None] = None, **kwargs: Any) -> None:
     try:
-        from opentelemetry.instrumentation.mysql import MySQLInstrumentor  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.mysql import MySQLInstrumentor
     except ImportError:
         raise RuntimeError("`instrument_mysql()` requires the `opentelemetry-instrumentation-mysql` package")
 
@@ -112,7 +112,7 @@ def instrument_mysql(conn: Union[MySQLConnectionAbstract, PooledMySQLConnection,
 
 def instrument_psycopg(conn: Union[PsycopgConnection, PsycopgAsyncConnection, None] = None, **kwargs: Any) -> None:
     try:
-        from opentelemetry.instrumentation.psycopg import PsycopgInstrumentor  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.psycopg import PsycopgInstrumentor
     except ImportError:
         raise RuntimeError("`instrument_psycopg()` requires the `opentelemetry-instrumentation-psycopg` package")
 
@@ -124,7 +124,7 @@ def instrument_psycopg(conn: Union[PsycopgConnection, PsycopgAsyncConnection, No
 
 def instrument_psycopg2(conn: Union[Psycopg2Connection, None] = None, **kwargs: Any) -> None:
     try:
-        from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
     except ImportError:
         raise RuntimeError("`instrument_psycopg2()` requires the `opentelemetry-instrumentation-psycopg2` package")
 
@@ -136,7 +136,7 @@ def instrument_psycopg2(conn: Union[Psycopg2Connection, None] = None, **kwargs: 
 
 def instrument_pymongo(**kwargs: Any) -> None:
     try:
-        from opentelemetry.instrumentation.pymongo import PymongoInstrumentor  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
     except ImportError:
         raise RuntimeError("`instrument_pymongo()` requires the `opentelemetry-instrumentation-pymongo` package")
 
@@ -145,7 +145,7 @@ def instrument_pymongo(**kwargs: Any) -> None:
 
 def instrument_redis(**kwargs: Any) -> None:
     try:
-        from opentelemetry.instrumentation.redis import RedisInstrumentor  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.redis import RedisInstrumentor
     except ImportError:
         raise RuntimeError("`instrument_redis()` requires the `opentelemetry-instrumentation-redis` package")
 
@@ -154,7 +154,7 @@ def instrument_redis(**kwargs: Any) -> None:
 
 def instrument_requests(**kwargs: Any) -> None:
     try:
-        from opentelemetry.instrumentation.requests import RequestsInstrumentor  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.requests import RequestsInstrumentor
     except ImportError:
         raise RuntimeError("`instrument_requests()` requires the `opentelemetry-instrumentation-requests` package")
 
@@ -163,13 +163,14 @@ def instrument_requests(**kwargs: Any) -> None:
 
 def instrument_sqlalchemy(engine: Union[SQLAlchemyEngine, SQLAlchemyAsyncEngine, None], **kwargs: Any) -> None:
     try:
-        from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
     except ImportError:
         raise RuntimeError("`instrument_sqlalchemy()` requires the `opentelemetry-instrumentation-sqlalchemy` package")
 
-    from sqlalchemy.ext.asyncio import AsyncEngine  # type: ignore[import-not-found]
+    with suppress(ImportError):
+        from sqlalchemy.ext.asyncio import AsyncEngine  # type: ignore[import-not-found]
 
-    if isinstance(engine, AsyncEngine):
-        engine = engine.sync_engine
+        if isinstance(engine, AsyncEngine):
+            engine = engine.sync_engine
 
     SQLAlchemyInstrumentor().instrument(engine=engine, **kwargs)
