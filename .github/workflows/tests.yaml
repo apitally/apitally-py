@@ -32,7 +32,7 @@ jobs:
         run: uv python install 3.14
       - name: Install dependencies
         run: |
-          uv sync --all-extras --frozen
+          uv sync --all-groups --all-extras --frozen
           uv pip install drf-spectacular
       - name: Run checks
         run: uv run make check
