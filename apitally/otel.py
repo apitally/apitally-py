@@ -32,7 +32,7 @@ def instrument(func: Callable[P, R]) -> Callable[P, R]: ...
 def instrument(func: Callable[P, R]) -> Union[Callable[P, R], Callable[P, Awaitable[R]]]:
     try:
         from opentelemetry import trace
-    except ImportError:
+    except ImportError:  # pragma: no cover
         raise RuntimeError("`instrument()` requires the `opentelemetry-api` package")
 
     tracer = trace.get_tracer("apitally.otel")
@@ -60,7 +60,7 @@ def instrument(func: Callable[P, R]) -> Union[Callable[P, R], Callable[P, Awaita
 def span(name: str) -> Iterator[Span]:
     try:
         from opentelemetry import trace
-    except ImportError:
+    except ImportError:  # pragma: no cover
         raise RuntimeError("`span()` requires the `opentelemetry-api` package")
 
     tracer = trace.get_tracer("apitally.otel")
@@ -71,7 +71,7 @@ def span(name: str) -> Iterator[Span]:
 def instrument_asyncpg(**kwargs: Any) -> None:
     try:
         from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
-    except ImportError:
+    except ImportError:  # pragma: no cover
         raise RuntimeError("`instrument_asyncpg()` requires the `opentelemetry-instrumentation-asyncpg` package")
 
     AsyncPGInstrumentor().instrument(**kwargs)
@@ -80,7 +80,7 @@ def instrument_asyncpg(**kwargs: Any) -> None:
 def instrument_botocore(**kwargs: Any) -> None:
     try:
         from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
-    except ImportError:
+    except ImportError:  # pragma: no cover
         raise RuntimeError("`instrument_botocore()` requires the `opentelemetry-instrumentation-botocore` package")
 
     BotocoreInstrumentor().instrument(**kwargs)
@@ -89,7 +89,7 @@ def instrument_botocore(**kwargs: Any) -> None:
 def instrument_httpx(client: Union[HttpxClient, HttpxAsyncClient, None] = None, **kwargs: Any) -> None:
     try:
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-    except ImportError:
+    except ImportError:  # pragma: no cover
         raise RuntimeError("`instrument_httpx()` requires the `opentelemetry-instrumentation-httpx` package")
 
     if client is not None:
@@ -101,7 +101,7 @@ def instrument_httpx(client: Union[HttpxClient, HttpxAsyncClient, None] = None, 
 def instrument_mysql(conn: Union[MySQLConnectionAbstract, PooledMySQLConnection, None] = None, **kwargs: Any) -> None:
     try:
         from opentelemetry.instrumentation.mysql import MySQLInstrumentor
-    except ImportError:
+    except ImportError:  # pragma: no cover
         raise RuntimeError("`instrument_mysql()` requires the `opentelemetry-instrumentation-mysql` package")
 
     if conn is not None:
@@ -113,7 +113,7 @@ def instrument_mysql(conn: Union[MySQLConnectionAbstract, PooledMySQLConnection,
 def instrument_psycopg(conn: Union[PsycopgConnection, PsycopgAsyncConnection, None] = None, **kwargs: Any) -> None:
     try:
         from opentelemetry.instrumentation.psycopg import PsycopgInstrumentor
-    except ImportError:
+    except ImportError:  # pragma: no cover
         raise RuntimeError("`instrument_psycopg()` requires the `opentelemetry-instrumentation-psycopg` package")
 
     if conn is not None:
@@ -125,7 +125,7 @@ def instrument_psycopg(conn: Union[PsycopgConnection, PsycopgAsyncConnection, No
 def instrument_psycopg2(conn: Union[Psycopg2Connection, None] = None, **kwargs: Any) -> None:
     try:
         from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
-    except ImportError:
+    except ImportError:  # pragma: no cover
         raise RuntimeError("`instrument_psycopg2()` requires the `opentelemetry-instrumentation-psycopg2` package")
 
     if conn is not None:
@@ -137,7 +137,7 @@ def instrument_psycopg2(conn: Union[Psycopg2Connection, None] = None, **kwargs: 
 def instrument_pymongo(**kwargs: Any) -> None:
     try:
         from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
-    except ImportError:
+    except ImportError:  # pragma: no cover
         raise RuntimeError("`instrument_pymongo()` requires the `opentelemetry-instrumentation-pymongo` package")
 
     PymongoInstrumentor().instrument(**kwargs)
@@ -146,7 +146,7 @@ def instrument_pymongo(**kwargs: Any) -> None:
 def instrument_redis(**kwargs: Any) -> None:
     try:
         from opentelemetry.instrumentation.redis import RedisInstrumentor
-    except ImportError:
+    except ImportError:  # pragma: no cover
         raise RuntimeError("`instrument_redis()` requires the `opentelemetry-instrumentation-redis` package")
 
     RedisInstrumentor().instrument(**kwargs)
@@ -155,7 +155,7 @@ def instrument_redis(**kwargs: Any) -> None:
 def instrument_requests(**kwargs: Any) -> None:
     try:
         from opentelemetry.instrumentation.requests import RequestsInstrumentor
-    except ImportError:
+    except ImportError:  # pragma: no cover
         raise RuntimeError("`instrument_requests()` requires the `opentelemetry-instrumentation-requests` package")
 
     RequestsInstrumentor().instrument(**kwargs)
@@ -164,7 +164,7 @@ def instrument_requests(**kwargs: Any) -> None:
 def instrument_sqlalchemy(engine: Union[SQLAlchemyEngine, SQLAlchemyAsyncEngine, None], **kwargs: Any) -> None:
     try:
         from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-    except ImportError:
+    except ImportError:  # pragma: no cover
         raise RuntimeError("`instrument_sqlalchemy()` requires the `opentelemetry-instrumentation-sqlalchemy` package")
 
     with suppress(ImportError):
