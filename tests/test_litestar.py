@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import time
+import asyncio
 from importlib.util import find_spec
 from typing import TYPE_CHECKING, Optional
 
@@ -74,11 +74,11 @@ async def app(module_mocker: MockerFixture) -> Litestar:
     @get("/traces")
     async def traces() -> str:
         with span("outer_span"):
-            time.sleep(0.01)
+            await asyncio.sleep(0.01)
             with span("inner_span_1"):
-                time.sleep(0.01)
+                await asyncio.sleep(0.01)
             with span("inner_span_2"):
-                time.sleep(0.01)
+                await asyncio.sleep(0.01)
         return "traces"
 
     def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
