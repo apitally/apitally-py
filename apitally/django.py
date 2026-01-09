@@ -8,7 +8,7 @@ import time
 from contextvars import ContextVar
 from dataclasses import dataclass
 from importlib.util import find_spec
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 from warnings import warn
 
 from django.conf import settings
@@ -181,10 +181,12 @@ class ApitallyMiddleware:
                 response = self.get_response(request)
         finally:
             self.log_buffer_var.reset(token)
-            spans = self.client.span_collector.get_and_clear_spans(trace_id) if trace_id is not None else None
 
         response_time = time.perf_counter() - start_time
-        path = self.get_path(request)
+        name, path = self.get_route_name_and_path(request)
+
+        self.client.span_collector.set_root_span_name(trace_id, name)
+        spans = self.client.span_collector.get_and_clear_spans(trace_id)
 
         if path is None:
             return response
@@ -285,16 +287,16 @@ class ApitallyMiddleware:
         setattr(request, "unhandled_exception", exception)
         return None
 
-    def get_path(self, request: HttpRequest) -> Optional[str]:
+    def get_route_name_and_path(self, request: HttpRequest) -> Tuple[Optional[str], Optional[str]]:
         if (match := request.resolver_match) is not None:
             try:
                 if self.callbacks and match.func not in self.callbacks:
-                    return None
+                    return None, None
                 if self.drf_endpoint_enumerator is not None:
                     from rest_framework.schemas.generators import is_api_view
 
                     if is_api_view(match.func):
-                        return self.drf_endpoint_enumerator.get_path_from_regex(match.route)
+                        return match.view_name, self.drf_endpoint_enumerator.get_path_from_regex(match.route)
                 if self.ninja_available:
                     from ninja.operation import PathView
 
@@ -303,12 +305,12 @@ class ApitallyMiddleware:
                         and isinstance(match._func_path, str)
                         and match._func_path.startswith("ninja.")
                     ):
-                        return _transform_path(match.route)
+                        return match.view_name, _transform_path(match.route)
                 if self.include_django_views:
-                    return _transform_path(match.route)
+                    return match.view_name, _transform_path(match.route)
             except Exception:  # pragma: no cover
                 logger.exception("Failed to get path for request")
-        return None
+        return None, None
 
     def get_consumer(self, request: HttpRequest) -> Optional[ApitallyConsumer]:
         if hasattr(request, "apitally_consumer") and request.apitally_consumer:

@@ -44,9 +44,10 @@ def test_span_collector_enabled():
             span.set_attribute("key", "value")
 
     spans = collector.get_and_clear_spans(trace_id)
+    assert spans is not None
     assert not any(s["name"] == "outside_span" for s in spans)
     assert len(spans) == 2
-    assert {s["name"] for s in spans} == {"handle_request", "child_span"}
+    assert {s["name"] for s in spans} == {"root", "child_span"}
 
     # Verify cleanup
     assert collector.included_span_ids == {}

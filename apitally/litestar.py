@@ -194,14 +194,15 @@ class ApitallyPlugin(InitPluginProtocol):
                     await app(scope, receive_wrapper, send_wrapper)
             finally:
                 self.log_buffer_var.reset(token)
-                spans = self.client.span_collector.get_and_clear_spans(trace_id) if trace_id is not None else None
 
-            if response_status < 100:
+            name = self.get_route_name(request)
+            path = self.get_route_path(request)
+
+            self.client.span_collector.set_root_span_name(trace_id, name)
+            spans = self.client.span_collector.get_and_clear_spans(trace_id)
+
+            if response_status < 100 or self.filter_path(path):
                 return  # pragma: no cover
-
-            path = self.get_path(request)
-            if self.filter_path(path):
-                return
 
             if request_body_too_large:
                 request_body = BODY_TOO_LARGE
@@ -282,7 +283,13 @@ class ApitallyPlugin(InitPluginProtocol):
 
         return middleware
 
-    def get_path(self, request: Request) -> Optional[str]:
+    def get_route_name(self, request: Request) -> Optional[str]:
+        try:
+            return request.scope["route_handler"]._fn.__qualname__
+        except (KeyError, AttributeError):
+            return None
+
+    def get_route_path(self, request: Request) -> Optional[str]:
         if not request.route_handler.paths:
             return None
         path: List[str] = []

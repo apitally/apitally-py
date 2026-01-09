@@ -146,7 +146,6 @@ class ApitallyMiddleware:
                     response = self.wsgi_app(environ, catching_start_response)
             finally:
                 self.log_buffer_var.reset(token)
-                spans = self.client.span_collector.get_and_clear_spans(trace_id) if trace_id is not None else None
 
             response_time = time.perf_counter() - start_time
 
@@ -163,8 +162,11 @@ class ApitallyMiddleware:
                             response_body = BODY_TOO_LARGE
                             break
 
-            path = self.get_path(request.environ)
+            name, path = self.get_route_name_and_path(request.environ)
             response_size = response_headers.get("Content-Length", type=int)
+
+            self.client.span_collector.set_root_span_name(trace_id, name)
+            spans = self.client.span_collector.get_and_clear_spans(trace_id)
 
             consumer = self.get_consumer()
             consumer_identifier = consumer.identifier if consumer else None
@@ -222,14 +224,15 @@ class ApitallyMiddleware:
 
         self.app.handle_exception = handle_exception  # type: ignore[method-assign]
 
-    def get_path(self, environ: WSGIEnvironment) -> Optional[str]:
+    def get_route_name_and_path(self, environ: WSGIEnvironment) -> Tuple[Optional[str], Optional[str]]:
         url_adapter = self.app.url_map.bind_to_environ(environ)
         try:
             endpoint, _ = url_adapter.match()
             rule = self.app.url_map._rules_by_endpoint[endpoint][0]
-            return rule.rule
-        except NotFound:
-            return None
+            name = self.app.view_functions[endpoint].__qualname__
+            return name, rule.rule
+        except (NotFound, KeyError):
+            return None, None
 
     def get_consumer(self) -> Optional[ApitallyConsumer]:
         if "apitally_consumer" in g and g.apitally_consumer:

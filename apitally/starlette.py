@@ -200,7 +200,6 @@ class ApitallyMiddleware:
             raise
         finally:
             self.log_buffer_var.reset(token)
-            spans = self.client.span_collector.get_and_clear_spans(trace_id) if trace_id is not None else None
 
             if response_time is None:
                 response_time = time.perf_counter() - start_time
@@ -209,7 +208,11 @@ class ApitallyMiddleware:
             if response_body_too_large:
                 response_body = BODY_TOO_LARGE
 
-            path = self.get_path(request)
+            name = self.get_route_name(request)
+            path = self.get_route_path(request)
+
+            self.client.span_collector.set_root_span_name(trace_id, name)
+            spans = self.client.span_collector.get_and_clear_spans(trace_id)
 
             consumer = self.get_consumer(request)
             consumer_identifier = consumer.identifier if consumer else None
@@ -273,12 +276,18 @@ class ApitallyMiddleware:
                     spans=spans,
                 )
 
-    def get_path(self, request: Request, routes: Optional[List[BaseRoute]] = None) -> Optional[str]:
+    def get_route_name(self, request: Request) -> Optional[str]:
+        endpoint = request.scope.get("endpoint")
+        if endpoint is not None and hasattr(endpoint, "__qualname__"):
+            return endpoint.__qualname__
+        return None
+
+    def get_route_path(self, request: Request, routes: Optional[List[BaseRoute]] = None) -> Optional[str]:
         if routes is None:
             routes = request.app.routes
         for route in routes:
             if hasattr(route, "routes"):
-                path = self.get_path(request, routes=route.routes)
+                path = self.get_route_path(request, routes=route.routes)
                 if path is not None:
                     return path
             elif hasattr(route, "path"):

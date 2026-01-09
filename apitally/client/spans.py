@@ -58,7 +58,7 @@ class SpanCollector(_BaseClass):
             yield None
             return
 
-        with self.tracer.start_as_current_span("handle_request") as span:
+        with self.tracer.start_as_current_span("root") as span:
             ctx = span.get_span_context()
             with self.lock:
                 self.included_span_ids[ctx.trace_id] = {ctx.span_id}
@@ -91,8 +91,20 @@ class SpanCollector(_BaseClass):
             if data is not None:
                 self.collected_spans[ctx.trace_id].append(data)
 
-    def get_and_clear_spans(self, trace_id: int) -> list[SpanDict]:
+    def set_root_span_name(self, trace_id: Optional[int], name: Optional[str]) -> None:
+        if trace_id is None or name is None:
+            return
+        with self.lock:
+            if trace_id in self.collected_spans:
+                for span in reversed(self.collected_spans[trace_id]):
+                    if span["parent_span_id"] is None and span["kind"] == "INTERNAL" and span["name"] == "root":
+                        span["name"] = name
+                        break
+
+    def get_and_clear_spans(self, trace_id: Optional[int]) -> Optional[list[SpanDict]]:
         """Retrieve all collected spans for the given trace ID and clean up."""
+        if trace_id is None:
+            return None
         with self.lock:
             self.included_span_ids.pop(trace_id, None)
             return self.collected_spans.pop(trace_id, [])

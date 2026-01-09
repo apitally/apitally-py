@@ -234,14 +234,10 @@ def test_middleware_tracing(client: TestClient, mocker: MockerFixture):
     assert response.status_code == 200
     mock.assert_called_once()
     assert mock.call_args is not None
-    assert mock.call_args.kwargs["spans"] is not None
     assert len(mock.call_args.kwargs["spans"]) == 4
-    assert {s["name"] for s in mock.call_args.kwargs["spans"]} == {
-        "handle_request",
-        "outer_span",
-        "inner_span_1",
-        "inner_span_2",
-    }
+    span_names = {s["name"] for s in mock.call_args.kwargs["spans"]}
+    assert any(name.endswith(".<locals>.traces") for name in span_names)
+    assert {"outer_span", "inner_span_1", "inner_span_2"} <= span_names
 
 
 def test_get_startup_data(app: Litestar, mocker: MockerFixture):

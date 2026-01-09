@@ -132,8 +132,11 @@ types = [
     { name = "djangorestframework-types" },
     { name = "types-colorama" },
     { name = "types-docutils" },
+    { name = "types-gevent" },
+    { name = "types-pexpect" },
     { name = "types-psutil" },
     { name = "types-pygments" },
+    { name = "types-pysocks" },
     { name = "types-pyyaml" },
     { name = "types-requests" },
     { name = "types-setuptools" },
@@ -206,8 +209,11 @@ types = [
     { name = "djangorestframework-types" },
     { name = "types-colorama" },
     { name = "types-docutils" },
+    { name = "types-gevent" },
+    { name = "types-pexpect" },
     { name = "types-psutil" },
     { name = "types-pygments" },
+    { name = "types-pysocks" },
     { name = "types-pyyaml" },
     { name = "types-requests" },
     { name = "types-setuptools" },
@@ -2868,6 +2874,37 @@ wheels = [
 ]
 
 [[package]]
+name = "types-gevent"
+version = "25.9.0.20251228"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "types-greenlet" },
+    { name = "types-psutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/85/c5043c4472f82c8ee3d9e0673eb4093c7d16770a26541a137a53a1d096f6/types_gevent-25.9.0.20251228.tar.gz", hash = "sha256:423ef9891d25c5a3af236c3e9aace4c444c86ff773fe13ef22731bc61d59abef", size = 38063, upload-time = "2025-12-28T03:28:28.651Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c8/b7/a2d6b652ab5a26318b68cafd58c46fafb9b15c5313d2d76a70b838febb4b/types_gevent-25.9.0.20251228-py3-none-any.whl", hash = "sha256:e2e225af4fface9241c16044983eb2fc3993f2d13d801f55c2932848649b7f2f", size = 55486, upload-time = "2025-12-28T03:28:27.382Z" },
+]
+
+[[package]]
+name = "types-greenlet"
+version = "3.3.0.20251206"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fc/d3/23f4ab29a5ce239935bb3c157defcf50df8648c16c65965fae03980d67f3/types_greenlet-3.3.0.20251206.tar.gz", hash = "sha256:3e1ab312ab7154c08edc2e8110fbf00d9920323edc1144ad459b7b0052063055", size = 8901, upload-time = "2025-12-06T03:01:38.634Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7c/8f/aabde1b6e49b25a6804c12a707829e44ba0f5520563c09271f05d3196142/types_greenlet-3.3.0.20251206-py3-none-any.whl", hash = "sha256:8d11041c0b0db545619e8c8a1266aa4aaa4ebeae8ae6b4b7049917a6045a5590", size = 8809, upload-time = "2025-12-06T03:01:37.651Z" },
+]
+
+[[package]]
+name = "types-pexpect"
+version = "4.9.0.20250916"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0c/e6/cc43e306dc7de14ec7861c24ac4957f688741ae39ae685049695d796b587/types_pexpect-4.9.0.20250916.tar.gz", hash = "sha256:69e5fed6199687a730a572de780a5749248a4c5df2ff1521e194563475c9928d", size = 13322, upload-time = "2025-09-16T02:49:25.61Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/aa/6d/7740e235a9fb2570968da7d386d7feb511ce68cd23472402ff8cdf7fc78f/types_pexpect-4.9.0.20250916-py3-none-any.whl", hash = "sha256:7fa43cb96042ac58bc74f7c28e5d85782be0ee01344149886849e9d90936fe8a", size = 17057, upload-time = "2025-09-16T02:49:24.546Z" },
+]
+
+[[package]]
 name = "types-psutil"
 version = "7.2.1.20251231"
 source = { registry = "https://pypi.org/simple" }
@@ -2895,6 +2932,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/90/3b/cd650700ce9e26b56bd1a6aa4af397bbbc1784e22a03971cb633cdb0b601/types_pygments-2.19.0.20251121.tar.gz", hash = "sha256:eef114fde2ef6265365522045eac0f8354978a566852f69e75c531f0553822b1", size = 18590, upload-time = "2025-11-21T03:03:46.623Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/99/8a/9244b21f1d60dcc62e261435d76b02f1853b4771663d7ec7d287e47a9ba9/types_pygments-2.19.0.20251121-py3-none-any.whl", hash = "sha256:cb3bfde34eb75b984c98fb733ce4f795213bd3378f855c32e75b49318371bb25", size = 25674, upload-time = "2025-11-21T03:03:45.72Z" },
+]
+
+[[package]]
+name = "types-pysocks"
+version = "1.7.1.20251001"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/24/d7/421deaee04ffe69dc1449cbf57dc4d4d92e8f966f4a35b482ea3811b7980/types_pysocks-1.7.1.20251001.tar.gz", hash = "sha256:50a0e737d42527abbec09e891c64f76a9f66f302e673cd149bc112c15764869f", size = 8785, upload-time = "2025-10-01T03:04:13.85Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/36/07/6a8aafa0fa5fc0880a37c98b41348bf91bc28f76577bdac68f78bcf8a124/types_pysocks-1.7.1.20251001-py3-none-any.whl", hash = "sha256:dd9abcfc7747aeddf1bab270c8daab3a1309c3af9e07c8c2c52038ab8539f06c", size = 9620, upload-time = "2025-10-01T03:04:13.042Z" },
 ]
 
 [[package]]

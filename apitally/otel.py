@@ -44,7 +44,7 @@ def instrument(func: Callable[P, R]) -> Union[Callable[P, R], Callable[P, Awaita
         raise RuntimeError("`instrument()` requires the `opentelemetry-api` package")
 
     tracer = trace.get_tracer("apitally.otel")
-    span_name = f"{func.__module__}.{func.__qualname__}"
+    span_name = func.__qualname__
 
     if iscoroutinefunction(func):
 
