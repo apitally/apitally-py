@@ -42,7 +42,7 @@ blacksheep = ["blacksheep>=2", "httpx>=0.22.0"]
 django_ninja = [
     "django>=2.2,<5; python_version<'3.10'",
     "django>=2.2; python_version>='3.10'",
-    "django-ninja>=0.18.0",
+    "django-ninja>=1.0.0",
     "requests>=2.26.0",
 ]
 django_rest_framework = [
@@ -55,7 +55,7 @@ django_rest_framework = [
 ]
 fastapi = ["fastapi>=0.94.1", "starlette>=0.26.1,<1.0.0", "httpx>=0.22.0"]
 flask = ["flask>=2.0.0", "requests>=2.26.0"]
-litestar = ["litestar>=2.0.0", "httpx>=0.22.0"]
+litestar = ["litestar>=2.4.0", "httpx>=0.22.0"]
 sentry = ["sentry-sdk>=2.2.0"]
 starlette = ["starlette>=0.26.1,<1.0.0", "httpx>=0.22.0"]
 otel = ["opentelemetry-sdk>=1.39.1,<2.0.0"]
