@@ -278,8 +278,8 @@ class ApitallyMiddleware:
 
     def get_route_name(self, request: Request) -> Optional[str]:
         endpoint = request.scope.get("endpoint")
-        if endpoint is not None and hasattr(endpoint, "__qualname__"):
-            return endpoint.__qualname__
+        if endpoint is not None and hasattr(endpoint, "__name__"):
+            return endpoint.__name__
         return None
 
     def get_route_path(self, request: Request, routes: Optional[List[BaseRoute]] = None) -> Optional[str]:

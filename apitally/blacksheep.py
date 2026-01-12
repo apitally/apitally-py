@@ -67,7 +67,7 @@ def use_apitally(
         match = original_get_match(request)
         if match is not None:
             handler = match.handler.root_fn if hasattr(match.handler, "root_fn") else match.handler
-            setattr(request, "_route_name", handler.__qualname__)
+            setattr(request, "_route_name", handler.__name__)
             setattr(request, "_route_pattern", match.pattern.decode())
         return match
 

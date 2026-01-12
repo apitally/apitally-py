@@ -48,7 +48,13 @@ def test_instrument_sync_function(span_exporter: InMemorySpanExporter) -> None:
     assert result == 10
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert spans[0].name == "test_instrument_sync_function.<locals>.my_sync_function"
+    assert spans[0].name == "my_sync_function"
+    assert spans[0].attributes is not None
+    assert spans[0].attributes["code.file.path"] == __file__
+    assert (
+        spans[0].attributes["code.function.name"]
+        == "tests.test_otel.test_instrument_sync_function.<locals>.my_sync_function"
+    )
 
 
 async def test_instrument_async_function(span_exporter: InMemorySpanExporter) -> None:
@@ -63,7 +69,13 @@ async def test_instrument_async_function(span_exporter: InMemorySpanExporter) ->
     assert result == 10
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert spans[0].name == "test_instrument_async_function.<locals>.my_async_function"
+    assert spans[0].name == "my_async_function"
+    assert spans[0].attributes is not None
+    assert spans[0].attributes["code.file.path"] == __file__
+    assert (
+        spans[0].attributes["code.function.name"]
+        == "tests.test_otel.test_instrument_async_function.<locals>.my_async_function"
+    )
 
 
 def test_span_context_manager(span_exporter: InMemorySpanExporter) -> None:

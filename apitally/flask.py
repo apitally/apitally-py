@@ -229,7 +229,7 @@ class ApitallyMiddleware:
         try:
             endpoint, _ = url_adapter.match()
             rule = self.app.url_map._rules_by_endpoint[endpoint][0]
-            name = self.app.view_functions[endpoint].__qualname__
+            name = self.app.view_functions[endpoint].__name__
             return name, rule.rule
         except (NotFound, KeyError):
             return None, None

@@ -285,7 +285,7 @@ class ApitallyPlugin(InitPluginProtocol):
 
     def get_route_name(self, request: Request) -> Optional[str]:
         try:
-            return request.route_handler.fn.__qualname__
+            return request.route_handler.fn.__name__
         except Exception:  # pragma: no cover
             return None
 

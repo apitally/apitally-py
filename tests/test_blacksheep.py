@@ -211,7 +211,7 @@ async def test_middleware_tracing(app: Application, mocker: MockerFixture):
     assert mock.call_args.kwargs["spans"] is not None
     assert len(mock.call_args.kwargs["spans"]) == 4
     span_names = {s["name"] for s in mock.call_args.kwargs["spans"]}
-    assert any(name.endswith(".<locals>.traces") for name in span_names)
+    assert any(name == "traces" for name in span_names)
     assert {"outer_span", "inner_span_1", "inner_span_2"} <= span_names
 
 

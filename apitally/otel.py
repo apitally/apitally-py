@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from mysql.connector.abstracts import MySQLConnectionAbstract  # type: ignore[import-not-found]
     from mysql.connector.pooling import PooledMySQLConnection  # type: ignore[import-not-found]
     from opentelemetry.trace import Span
+    from opentelemetry.util.types import Attributes as SpanAttributes
     from psycopg import AsyncConnection as PsycopgAsyncConnection  # type: ignore[import-not-found]
     from psycopg import Connection as PsycopgConnection  # type: ignore[import-not-found]
     from psycopg2._psycopg import connection as Psycopg2Connection  # type: ignore[import-not-found]
@@ -44,13 +45,18 @@ def instrument(func: Callable[P, R]) -> Union[Callable[P, R], Callable[P, Awaita
         raise RuntimeError("`instrument()` requires the `opentelemetry-api` package")
 
     tracer = trace.get_tracer("apitally.otel")
-    span_name = func.__qualname__
+    span_name = func.__name__
+    span_attributes: dict[str, str | int] = {
+        "code.file.path": func.__code__.co_filename,
+        "code.line.number": func.__code__.co_firstlineno,
+        "code.function.name": f"{func.__module__}.{func.__qualname__}",
+    }
 
     if iscoroutinefunction(func):
 
         @functools.wraps(func)
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            with tracer.start_as_current_span(span_name):
+            with tracer.start_as_current_span(span_name, attributes=span_attributes):
                 return await func(*args, **kwargs)
 
         return async_wrapper
@@ -58,21 +64,21 @@ def instrument(func: Callable[P, R]) -> Union[Callable[P, R], Callable[P, Awaita
 
         @functools.wraps(func)
         def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            with tracer.start_as_current_span(span_name):
+            with tracer.start_as_current_span(span_name, attributes=span_attributes):
                 return func(*args, **kwargs)
 
         return sync_wrapper
 
 
 @contextmanager
-def span(name: str) -> Iterator[Span]:
+def span(name: str, attributes: SpanAttributes = None) -> Iterator[Span]:
     try:
         from opentelemetry import trace
     except ImportError:  # pragma: no cover
         raise RuntimeError("`span()` requires the `opentelemetry-api` package")
 
     tracer = trace.get_tracer("apitally.otel")
-    with tracer.start_as_current_span(name) as span:
+    with tracer.start_as_current_span(name, attributes=attributes) as span:
         yield span
 
 
