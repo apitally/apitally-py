@@ -11,7 +11,7 @@ from functools import lru_cache
 from io import BufferedReader
 from logging import LogRecord
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict, Mapping, Optional, TypedDict
+from typing import Any, AsyncIterator, Callable, Mapping, Optional, TypedDict
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
@@ -540,7 +540,7 @@ def _get_json_deserializer() -> Callable[[bytes], Any]:
         return json.loads
 
 
-def _skip_empty_values(data: Mapping) -> Dict:
+def _skip_empty_values(data: Mapping) -> dict:
     return {
         k: v for k, v in data.items() if v is not None and not (isinstance(v, (list, dict, bytes, str)) and len(v) == 0)
     }

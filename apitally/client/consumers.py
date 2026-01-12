@@ -21,7 +21,7 @@ class Consumer:
             return None
         return cls(identifier=consumer)
 
-    def update(self, name: str | None = None, group: str | None = None) -> bool:
+    def update(self, name: Optional[str] = None, group: Optional[str] = None) -> bool:
         name = str(name).strip()[:64] if name else None
         group = str(group).strip()[:64] if group else None
         updated = False
