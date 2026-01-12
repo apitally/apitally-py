@@ -1,40 +1,22 @@
 import threading
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Iterator, Optional
+from typing import Iterator, Optional
+
+from opentelemetry import context as context_api
+from opentelemetry import trace as trace_api
+from opentelemetry.sdk.trace import ReadableSpan, Span, TracerProvider
+from opentelemetry.sdk.trace.export import SpanProcessor
 
 from apitally.client.logging import get_logger
 from apitally.client.request_logging import SpanDict
 
 
-try:
-    from opentelemetry import context as context_api
-    from opentelemetry import trace as trace_api
-    from opentelemetry.sdk.trace import ReadableSpan, Span, TracerProvider
-    from opentelemetry.sdk.trace.export import SpanProcessor
-
-    OPENTELEMETRY_INSTALLED = True
-except ImportError:  # pragma: no cover
-    OPENTELEMETRY_INSTALLED = False
-
-if TYPE_CHECKING:
-    from opentelemetry import context as context_api
-    from opentelemetry import trace as trace_api
-    from opentelemetry.sdk.trace import ReadableSpan, Span, TracerProvider
-    from opentelemetry.sdk.trace.export import SpanProcessor
-
-
 logger = get_logger(__name__)
 
-_BaseClass: Any = SpanProcessor if OPENTELEMETRY_INSTALLED else object
 
-
-class SpanCollector(_BaseClass):
+class SpanCollector(SpanProcessor):
     def __init__(self, enabled: bool = True) -> None:
-        if enabled and not OPENTELEMETRY_INSTALLED:
-            logger.warning("`capture_traces=True` requires the `opentelemetry-sdk` package")
-            enabled = False
-
         self.enabled = enabled
         self.included_span_ids: dict[int, set[int]] = {}
         self.collected_spans: dict[int, list[SpanDict]] = defaultdict(list)

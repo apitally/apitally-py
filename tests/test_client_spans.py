@@ -1,9 +1,3 @@
-from importlib.util import find_spec
-
-import pytest
-from pytest_mock import MockerFixture
-
-
 def test_span_collector_disabled():
     from apitally.client.spans import SpanCollector
 
@@ -21,7 +15,6 @@ def test_span_collector_disabled():
     assert spans == []
 
 
-@pytest.mark.skipif(find_spec("opentelemetry.sdk") is None, reason="opentelemetry-sdk not installed")
 def test_span_collector_enabled():
     from opentelemetry import trace as trace_api
 
@@ -52,14 +45,3 @@ def test_span_collector_enabled():
     # Verify cleanup
     assert collector.included_span_ids == {}
     assert collector.collected_spans == {}
-
-
-def test_span_collector_enabled_otel_not_installed(mocker: MockerFixture):
-    from apitally.client.spans import SpanCollector
-
-    mocker.patch("apitally.client.spans.OPENTELEMETRY_INSTALLED", False)
-    logger_mock = mocker.patch("apitally.client.spans.logger")
-
-    collector = SpanCollector(enabled=True)
-    assert not collector.enabled
-    logger_mock.warning.assert_called_once()
