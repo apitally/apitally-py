@@ -2,7 +2,7 @@ import json
 import logging
 import time
 from contextvars import ContextVar
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Optional, Union
 from warnings import warn
 
 from httpx import Proxy
@@ -85,7 +85,7 @@ class ApitallyPlugin(InitPluginProtocol):
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
-        self.log_buffer_var: ContextVar[Optional[List[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
+        self.log_buffer_var: ContextVar[Optional[list[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
         self.log_handler: Optional[LogHandler] = None
 
         if self.client.request_logger.config.capture_logs:
@@ -139,7 +139,7 @@ class ApitallyPlugin(InitPluginProtocol):
             response_size: Optional[int] = None
             response_chunked = False
             response_content_type: Optional[str] = None
-            logs: List[logging.LogRecord] = []
+            logs: list[logging.LogRecord] = []
             trace_id: Optional[int] = None
             start_time = time.perf_counter()
 
@@ -292,7 +292,7 @@ class ApitallyPlugin(InitPluginProtocol):
     def get_route_path(self, request: Request) -> Optional[str]:
         if not request.route_handler.paths:
             return None
-        path: List[str] = []
+        path: list[str] = []
         for layer in request.route_handler.ownership_layers:
             if isinstance(layer, HTTPRouteHandler):
                 if len(layer.paths) == 0:
@@ -333,7 +333,7 @@ def _get_openapi(app: Litestar) -> str:
     return json.dumps(schema)
 
 
-def _get_routes(app: Litestar) -> List[Dict[str, str]]:
+def _get_routes(app: Litestar) -> list[dict[str, str]]:
     return [
         {"method": method, "path": route.path}
         for route in app.routes

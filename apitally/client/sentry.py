@@ -1,9 +1,9 @@
 import asyncio
 import contextlib
-from typing import Callable, Set
+from typing import Callable
 
 
-_tasks: Set[asyncio.Task] = set()
+_tasks: set[asyncio.Task] = set()
 
 
 def get_sentry_event_id_async(cb: Callable[[str], None], raise_on_error: bool = False) -> None:

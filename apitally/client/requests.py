@@ -5,7 +5,7 @@ import threading
 from collections import Counter
 from dataclasses import dataclass
 from math import floor
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 
 @dataclass(frozen=True)
@@ -21,9 +21,9 @@ class RequestCounter:
         self.request_counts: Counter[RequestInfo] = Counter()
         self.request_size_sums: Counter[RequestInfo] = Counter()
         self.response_size_sums: Counter[RequestInfo] = Counter()
-        self.response_times: Dict[RequestInfo, Counter[int]] = {}
-        self.request_sizes: Dict[RequestInfo, Counter[int]] = {}
-        self.response_sizes: Dict[RequestInfo, Counter[int]] = {}
+        self.response_times: dict[RequestInfo, Counter[int]] = {}
+        self.request_sizes: dict[RequestInfo, Counter[int]] = {}
+        self.response_sizes: dict[RequestInfo, Counter[int]] = {}
         self._lock = threading.Lock()
 
     def add_request(
@@ -61,8 +61,8 @@ class RequestCounter:
                         self.response_size_sums[request_info] += response_size
                         self.response_sizes.setdefault(request_info, Counter())[response_size_kb_bin] += 1
 
-    def get_and_reset_requests(self) -> List[Dict[str, Any]]:
-        data: List[Dict[str, Any]] = []
+    def get_and_reset_requests(self) -> list[dict[str, Any]]:
+        data: list[dict[str, Any]] = []
         with self._lock:
             for request_info, count in self.request_counts.items():
                 data.append(

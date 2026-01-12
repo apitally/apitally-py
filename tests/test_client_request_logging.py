@@ -4,7 +4,7 @@ import base64
 import gzip
 import json
 import time
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Iterator, Optional
 from urllib.parse import quote
 
 import pytest
@@ -56,7 +56,7 @@ def response_dict() -> ResponseDict:
     }
 
 
-def get_logged_items(request_logger: RequestLogger) -> List[Dict[str, Any]]:
+def get_logged_items(request_logger: RequestLogger) -> list[dict[str, Any]]:
     request_logger.write_to_file()
     request_logger.rotate_file()
     file = request_logger.get_file()

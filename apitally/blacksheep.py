@@ -1,7 +1,7 @@
 import logging
 import time
 from contextvars import ContextVar
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Awaitable, Callable, Optional, Union
 from warnings import warn
 
 from blacksheep import Application, Headers, Request, Response
@@ -115,7 +115,7 @@ class ApitallyMiddleware:
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
-        self.log_buffer_var: ContextVar[Optional[List[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
+        self.log_buffer_var: ContextVar[Optional[list[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
         self.log_handler: Optional[LogHandler] = None
 
         if self.client.request_logger.config.capture_logs:
@@ -147,7 +147,7 @@ class ApitallyMiddleware:
         start_time = time.perf_counter()
         response: Optional[Response] = None
         exception: Optional[BaseException] = None
-        logs: List[logging.LogRecord] = []
+        logs: list[logging.LogRecord] = []
         trace_id: Optional[int] = None
 
         try:
@@ -263,11 +263,11 @@ def _get_full_url(request: Request) -> str:
     return f"{request.scheme}://{request.host}/{str(request.url).lstrip('/')}"
 
 
-def _transform_headers(headers: Headers) -> List[Tuple[str, str]]:
+def _transform_headers(headers: Headers) -> list[tuple[str, str]]:
     return [(key.decode(), value.decode()) for key, value in headers.items()]
 
 
-def _get_startup_data(app: Application, app_version: Optional[str] = None) -> Dict[str, Any]:
+def _get_startup_data(app: Application, app_version: Optional[str] = None) -> dict[str, Any]:
     return {
         "paths": _get_paths(app),
         "versions": get_versions("blacksheep", app_version=app_version),
@@ -275,7 +275,7 @@ def _get_startup_data(app: Application, app_version: Optional[str] = None) -> Di
     }
 
 
-def _get_paths(app: Application) -> List[Dict[str, str]]:
+def _get_paths(app: Application) -> list[dict[str, str]]:
     openapi = OpenAPIHandler(info=Info(title="", version=""))
     paths = []
     methods = ("get", "put", "post", "delete", "patch")

@@ -5,7 +5,7 @@ import re
 import threading
 import time
 from abc import ABC
-from typing import Any, Dict, Optional, Type, TypeVar, cast
+from typing import Any, Optional, Type, TypeVar, cast
 from uuid import UUID, uuid4
 
 from apitally.client.consumers import ConsumerRegistry
@@ -69,7 +69,7 @@ class ApitallyClientBase(ABC):
             enabled=self.enabled and self.request_logger.enabled and self.request_logger.config.capture_traces
         )
 
-        self._startup_data: Optional[Dict[str, Any]] = None
+        self._startup_data: Optional[dict[str, Any]] = None
         self._startup_data_sent = False
         self._started_at = time.time()
 
@@ -89,7 +89,7 @@ class ApitallyClientBase(ABC):
     def hub_url(self) -> str:
         return f"{HUB_BASE_URL}/{HUB_VERSION}/{self.client_id}/{self.env}"
 
-    def add_uuids_to_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def add_uuids_to_data(self, data: dict[str, Any]) -> dict[str, Any]:
         data_with_uuids = {
             "instance_uuid": self.instance_uuid,
             "message_uuid": str(uuid4()),
@@ -97,7 +97,7 @@ class ApitallyClientBase(ABC):
         data_with_uuids.update(data)
         return data_with_uuids
 
-    def get_sync_data(self) -> Dict[str, Any]:
+    def get_sync_data(self) -> dict[str, Any]:
         data = {
             "timestamp": time.time(),
             "requests": self.request_counter.get_and_reset_requests(),
