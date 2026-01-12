@@ -28,10 +28,12 @@ class SpanCollector(SpanProcessor):
 
     def _setup_tracer_provider(self) -> None:
         provider = trace_api.get_tracer_provider()
-        if not isinstance(provider, TracerProvider):
+        if hasattr(provider, "add_span_processor") and callable(provider.add_span_processor):
+            provider.add_span_processor(self)
+        else:
             provider = TracerProvider()
             trace_api.set_tracer_provider(provider)
-        provider.add_span_processor(self)
+            provider.add_span_processor(self)
         self.tracer = provider.get_tracer("apitally")
 
     @contextmanager
