@@ -1,8 +1,11 @@
+import time
 from typing import Dict
 
 from django.http import HttpRequest
 from django.urls import path
 from ninja import NinjaAPI, Schema
+
+from apitally.otel import span
 
 
 api = NinjaAPI()
@@ -36,6 +39,17 @@ def baz(request: HttpRequest) -> str:
 @api.get("/val")
 def val(request: HttpRequest, foo: int) -> str:
     return "val"
+
+
+@api.get("/traces")
+def traces(request: HttpRequest) -> str:
+    with span("outer_span"):
+        time.sleep(0.01)
+        with span("inner_span_1"):
+            time.sleep(0.01)
+        with span("inner_span_2"):
+            time.sleep(0.01)
+    return "traces"
 
 
 urlpatterns = [

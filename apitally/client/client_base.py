@@ -14,6 +14,7 @@ from apitally.client.request_logging import RequestLogger, RequestLoggingConfig
 from apitally.client.requests import RequestCounter
 from apitally.client.resources import get_cpu_memory_usage
 from apitally.client.server_errors import ServerErrorCounter
+from apitally.client.spans import SpanCollector
 from apitally.client.validation_errors import ValidationErrorCounter
 
 
@@ -64,6 +65,9 @@ class ApitallyClientBase(ABC):
         self.server_error_counter = ServerErrorCounter()
         self.consumer_registry = ConsumerRegistry()
         self.request_logger = RequestLogger(request_logging_config)
+        self.span_collector = SpanCollector(
+            enabled=self.enabled and self.request_logger.enabled and self.request_logger.config.capture_traces
+        )
 
         self._startup_data: Optional[Dict[str, Any]] = None
         self._startup_data_sent = False

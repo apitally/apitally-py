@@ -26,7 +26,7 @@ from apitally.client.server_errors import (
 
 try:
     from typing import NotRequired
-except ImportError:
+except ImportError:  # pragma: no cover
     from typing_extensions import NotRequired
 
 
@@ -131,12 +131,24 @@ class LogRecordDict(TypedDict):
     line: int
 
 
+class SpanDict(TypedDict):
+    span_id: str
+    parent_span_id: Optional[str]
+    name: str
+    kind: str
+    start_time: int
+    end_time: int
+    status: NotRequired[str]
+    attributes: NotRequired[dict[str, Any]]
+
+
 class RequestLogItem(TypedDict):
     uuid: str
     request: RequestDict
     response: ResponseDict
     exception: NotRequired[ExceptionDict]
     logs: NotRequired[List[LogRecordDict]]
+    spans: NotRequired[List[SpanDict]]
 
 
 class RequestLoggingKwargs(TypedDict, total=False):
@@ -148,6 +160,7 @@ class RequestLoggingKwargs(TypedDict, total=False):
     log_response_body: bool
     log_exception: bool
     capture_logs: bool
+    capture_traces: bool
     mask_query_params: List[str]
     mask_headers: List[str]
     mask_body_fields: List[str]
@@ -167,6 +180,7 @@ class RequestLoggingConfig:
     log_response_body: bool = False
     log_exception: bool = True
     capture_logs: bool = False
+    capture_traces: bool = False
     mask_query_params: List[str] = field(default_factory=list)
     mask_headers: List[str] = field(default_factory=list)
     mask_body_fields: List[str] = field(default_factory=list)
@@ -242,6 +256,7 @@ class RequestLogger:
         response: ResponseDict,
         exception: Optional[BaseException] = None,
         logs: Optional[List[LogRecord]] = None,
+        spans: Optional[List[SpanDict]] = None,
     ) -> None:
         if not self.enabled or self.suspend_until is not None:
             return
@@ -291,6 +306,9 @@ class RequestLogger:
                 }
                 for log_record in logs
             ]
+
+        if spans is not None and len(spans) > 0:
+            item["spans"] = spans
 
         self.write_deque.append(item)
 

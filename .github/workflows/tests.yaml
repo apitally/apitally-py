@@ -32,7 +32,7 @@ jobs:
         run: uv python install 3.14
       - name: Install dependencies
         run: |
-          uv sync --all-extras --frozen
+          uv sync --all-groups --all-extras --frozen
           uv pip install drf-spectacular
       - name: Run checks
         run: uv run make check
@@ -63,14 +63,12 @@ jobs:
           - django-ninja django
           - django-ninja==1.5.1 django==6.*
           - django-ninja==1.4.5 django==5.*
-          - django-ninja==0.18.0 django==4.*
+          - django-ninja==1.0.0 django==4.*
           - litestar
-          - litestar==2.0.1
+          - litestar==2.4.0
           - blacksheep
           - blacksheep==2.1.0
         exclude:
-          - python: "3.9"
-            deps: litestar==2.0.1
           - python: "3.9"
             deps: django-ninja==1.4.5 django==5.*
           - python: "3.9"
@@ -83,14 +81,10 @@ jobs:
             deps: djangorestframework==3.12.* django==3.2.* uritemplate
           - python: "3.12"
             deps: djangorestframework==3.10.* django==2.2.* uritemplate
-          - python: "3.12"
-            deps: litestar==2.0.1
           - python: "3.13"
             deps: djangorestframework==3.12.* django==3.2.* uritemplate
           - python: "3.13"
             deps: djangorestframework==3.10.* django==2.2.* uritemplate
-          - python: "3.13"
-            deps: litestar==2.0.1
           - python: "3.14"
             deps: fastapi==0.94.1 starlette
           - python: "3.14"
@@ -100,9 +94,9 @@ jobs:
           - python: "3.14"
             deps: djangorestframework==3.10.* django==2.2.* uritemplate
           - python: "3.14"
-            deps: django-ninja==0.18.0 django==4.*
+            deps: django-ninja==1.0.0 django==4.*
           - python: "3.14"
-            deps: litestar==2.0.1
+            deps: litestar==2.4.0
     steps:
       - uses: actions/checkout@v6
       - name: Install uv

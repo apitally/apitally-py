@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from importlib.util import find_spec
 from typing import TYPE_CHECKING, Optional
@@ -42,6 +43,7 @@ def get_starlette_app() -> Starlette:
     from starlette.responses import PlainTextResponse, StreamingResponse
     from starlette.routing import Mount, Route
 
+    from apitally.otel import span
     from apitally.starlette import ApitallyConsumer, ApitallyMiddleware, set_consumer
 
     logging.getLogger().setLevel(logging.INFO)
@@ -80,6 +82,15 @@ def get_starlette_app() -> Starlette:
         tasks.add_task(task_func_with_error)
         return PlainTextResponse("ok", background=tasks)
 
+    async def traces(request: Request):
+        with span("outer_span"):
+            await asyncio.sleep(0.01)
+            with span("inner_span_1"):
+                await asyncio.sleep(0.01)
+            with span("inner_span_2"):
+                await asyncio.sleep(0.01)
+        return PlainTextResponse("traces")
+
     def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
         return ApitallyConsumer("test", name="Test")
 
@@ -102,6 +113,7 @@ def get_starlette_app() -> Starlette:
                 ],
             ),
             Route("/stream", stream),
+            Route("/traces", traces),
         ]
     )
     app.add_middleware(
@@ -113,6 +125,7 @@ def get_starlette_app() -> Starlette:
         log_request_body=True,
         log_response_body=True,
         capture_logs=True,
+        capture_traces=True,
     )
     return app
 
@@ -122,6 +135,7 @@ def get_fastapi_app() -> Starlette:
     from fastapi.responses import PlainTextResponse, StreamingResponse
 
     from apitally.fastapi import ApitallyConsumer, ApitallyMiddleware
+    from apitally.otel import span
 
     def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
         return ApitallyConsumer("test", name="Test")
@@ -135,6 +149,8 @@ def get_fastapi_app() -> Starlette:
         enable_request_logging=True,
         log_request_body=True,
         log_response_body=True,
+        capture_logs=True,
+        capture_traces=True,
     )
 
     router = APIRouter()
@@ -175,6 +191,16 @@ def get_fastapi_app() -> Starlette:
 
         background_tasks.add_task(task_func_with_error)
         return "ok"
+
+    @app.get("/traces")
+    async def traces():
+        with span("outer_span"):
+            await asyncio.sleep(0.01)
+            with span("inner_span_1"):
+                await asyncio.sleep(0.01)
+            with span("inner_span_2"):
+                await asyncio.sleep(0.01)
+        return "traces"
 
     app.include_router(router, prefix="/api")
 
@@ -319,6 +345,22 @@ def test_middleware_request_logging(app: Starlette, mocker: MockerFixture):
         assert mock.call_args.kwargs["response"]["body"] == BODY_TOO_LARGE
 
 
+def test_middleware_tracing(app: Starlette, mocker: MockerFixture):
+    from starlette.testclient import TestClient
+
+    mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
+
+    with TestClient(app) as client:
+        response = client.get("/traces")
+        assert response.status_code == 200
+        mock.assert_called_once()
+        assert mock.call_args is not None
+        assert len(mock.call_args.kwargs["spans"]) == 4
+        span_names = {s["name"] for s in mock.call_args.kwargs["spans"]}
+        assert any(name == "traces" for name in span_names)
+        assert {"outer_span", "inner_span_1", "inner_span_2"} <= span_names
+
+
 def test_get_startup_data(app: Starlette, mocker: MockerFixture):
     from apitally.starlette import _get_startup_data
 
@@ -327,7 +369,7 @@ def test_get_startup_data(app: Starlette, mocker: MockerFixture):
         app.middleware_stack = app.build_middleware_stack()
 
     data = _get_startup_data(app=app.middleware_stack, app_version="1.2.3", openapi_url=None)
-    assert len(data["paths"]) == 7
+    assert len(data["paths"]) == 8
     assert {"method": "get", "path": "/api/foo"} in data["paths"]
     assert {"method": "post", "path": "/test/task"} in data["paths"]
     assert {"method": "get", "path": "/stream"} in data["paths"]

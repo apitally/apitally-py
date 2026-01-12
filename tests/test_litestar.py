@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from importlib.util import find_spec
 from typing import TYPE_CHECKING, Optional
 
@@ -29,6 +30,7 @@ async def app(module_mocker: MockerFixture) -> Litestar:
     from litestar.response import Stream
 
     from apitally.litestar import ApitallyConsumer, ApitallyPlugin, set_consumer
+    from apitally.otel import span
 
     async def mocked_handle_shutdown(_):
         # Empty function instead of Mock to avoid the following error in Python 3.10:
@@ -69,6 +71,16 @@ async def app(module_mocker: MockerFixture) -> Litestar:
 
         return Stream(stream_response())
 
+    @get("/traces")
+    async def traces() -> str:
+        with span("outer_span"):
+            await asyncio.sleep(0.01)
+            with span("inner_span_1"):
+                await asyncio.sleep(0.01)
+            with span("inner_span_2"):
+                await asyncio.sleep(0.01)
+        return "traces"
+
     def identify_consumer(request: Request) -> Optional[ApitallyConsumer]:
         return ApitallyConsumer("test1", name="Test 1") if "/foo" in request.route_handler.paths else None
 
@@ -81,9 +93,10 @@ async def app(module_mocker: MockerFixture) -> Litestar:
         log_request_body=True,
         log_response_body=True,
         capture_logs=True,
+        capture_traces=True,
     )
     app = Litestar(
-        route_handlers=[foo, foo_bar, bar, baz, val, stream],
+        route_handlers=[foo, foo_bar, bar, baz, val, stream, traces],
         plugins=[plugin],
     )
     return app
@@ -214,13 +227,26 @@ def test_middleware_request_logging(client: TestClient, mocker: MockerFixture):
     assert mock.call_args.kwargs["response"]["body"] == BODY_TOO_LARGE
 
 
+def test_middleware_tracing(client: TestClient, mocker: MockerFixture):
+    mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
+
+    response = client.get("/traces")
+    assert response.status_code == 200
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert len(mock.call_args.kwargs["spans"]) == 4
+    span_names = {s["name"] for s in mock.call_args.kwargs["spans"]}
+    assert any(name == "traces" for name in span_names)
+    assert {"outer_span", "inner_span_1", "inner_span_2"} <= span_names
+
+
 def test_get_startup_data(app: Litestar, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.client_asyncio.ApitallyClient.set_startup_data")
     app.on_startup[0](app)  # type: ignore[call-arg]
     mock.assert_called_once()
     data = mock.call_args.args[0]
     assert len(data["openapi"]) > 0
-    assert len(data["paths"]) == 6
+    assert len(data["paths"]) == 7
     assert data["versions"]["litestar"]
     assert data["versions"]["app"] == "1.2.3"
     assert data["client"] == "python:litestar"

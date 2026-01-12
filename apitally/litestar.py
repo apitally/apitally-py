@@ -30,7 +30,7 @@ from apitally.common import get_versions, parse_int, try_json_loads
 
 try:
     from typing import Unpack
-except ImportError:
+except ImportError:  # pragma: no cover
     from typing_extensions import Unpack
 
 
@@ -140,6 +140,7 @@ class ApitallyPlugin(InitPluginProtocol):
             response_chunked = False
             response_content_type: Optional[str] = None
             logs: List[logging.LogRecord] = []
+            trace_id: Optional[int] = None
             start_time = time.perf_counter()
 
             async def receive_wrapper():
@@ -189,16 +190,19 @@ class ApitallyPlugin(InitPluginProtocol):
 
             try:
                 token = self.log_buffer_var.set(logs)
-                await app(scope, receive_wrapper, send_wrapper)
+                with self.client.span_collector.collect() as trace_id:
+                    await app(scope, receive_wrapper, send_wrapper)
             finally:
                 self.log_buffer_var.reset(token)
 
-            if response_status < 100:
-                return  # pragma: no cover
+            name = self.get_route_name(request)
+            path = self.get_route_path(request)
 
-            path = self.get_path(request)
-            if self.filter_path(path):
-                return
+            self.client.span_collector.set_root_span_name(trace_id, name)
+            spans = self.client.span_collector.get_and_clear_spans(trace_id)
+
+            if response_status < 100 or self.filter_path(path):
+                return  # pragma: no cover
 
             if request_body_too_large:
                 request_body = BODY_TOO_LARGE
@@ -274,11 +278,18 @@ class ApitallyPlugin(InitPluginProtocol):
                     },
                     exception=request.state["exception"] if "exception" in request.state else None,
                     logs=logs,
+                    spans=spans,
                 )
 
         return middleware
 
-    def get_path(self, request: Request) -> Optional[str]:
+    def get_route_name(self, request: Request) -> Optional[str]:
+        try:
+            return request.route_handler.fn.__name__
+        except Exception:  # pragma: no cover
+            return None
+
+    def get_route_path(self, request: Request) -> Optional[str]:
         if not request.route_handler.paths:
             return None
         path: List[str] = []

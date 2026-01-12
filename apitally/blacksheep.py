@@ -23,7 +23,7 @@ from apitally.common import get_versions, parse_int
 
 try:
     from typing import Unpack
-except ImportError:
+except ImportError:  # pragma: no cover
     from typing_extensions import Unpack
 
 
@@ -66,6 +66,8 @@ def use_apitally(
     def _wrapped_router_get_match(request: Request) -> Optional[RouteMatch]:
         match = original_get_match(request)
         if match is not None:
+            handler = match.handler.root_fn if hasattr(match.handler, "root_fn") else match.handler
+            setattr(request, "_route_name", handler.__name__)
             setattr(request, "_route_pattern", match.pattern.decode())
         return match
 
@@ -146,10 +148,12 @@ class ApitallyMiddleware:
         response: Optional[Response] = None
         exception: Optional[BaseException] = None
         logs: List[logging.LogRecord] = []
+        trace_id: Optional[int] = None
 
         try:
             token = self.log_buffer_var.set(logs)
-            response = await handler(request)
+            with self.client.span_collector.collect() as trace_id:
+                response = await handler(request)
         except BaseException as e:
             exception = e
             raise
@@ -162,6 +166,7 @@ class ApitallyMiddleware:
             self.client.consumer_registry.add_or_update_consumer(consumer)
 
             route_pattern: Optional[str] = getattr(request, "_route_pattern", None)
+            route_name: Optional[str] = getattr(request, "_route_name", None)
             request_size = parse_int(request.get_first_header(b"Content-Length"))
             request_content_type = (request.content_type() or b"").decode() or None
             request_body = b""
@@ -170,6 +175,9 @@ class ApitallyMiddleware:
             response_size: Optional[int] = None
             response_headers = Headers()
             response_body = b""
+
+            self.client.span_collector.set_root_span_name(trace_id, route_name)
+            spans = self.client.span_collector.get_and_clear_spans(trace_id)
 
             # Route pattern is "*" if the request doesn't match any route since v2.4.4
             if route_pattern == "*":
@@ -245,6 +253,7 @@ class ApitallyMiddleware:
                     },
                     exception=exception,
                     logs=logs,
+                    spans=spans,
                 )
 
         return response

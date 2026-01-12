@@ -54,6 +54,7 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
             "log_request_body": True,
             "log_response_body": True,
             "capture_logs": True,
+            "capture_traces": True,
         },
     )
     django.setup()
@@ -169,13 +170,27 @@ def test_middleware_request_logging(client: Client, mocker: MockerFixture):
     assert mock.call_args.kwargs["response"]["body"] == BODY_TOO_LARGE
 
 
+def test_middleware_tracing(client: Client, mocker: MockerFixture):
+    mock = mocker.patch("apitally.client.request_logging.RequestLogger.log_request")
+
+    response = client.get("/api/traces")
+    assert response.status_code == 200
+    mock.assert_called_once()
+    assert mock.call_args is not None
+    assert mock.call_args.kwargs["spans"] is not None
+    assert len(mock.call_args.kwargs["spans"]) == 4
+    span_names = {s["name"] for s in mock.call_args.kwargs["spans"]}
+    assert any(name == "api-1.0.0:traces" for name in span_names)
+    assert {"outer_span", "inner_span_1", "inner_span_2"} <= span_names
+
+
 def test_get_startup_data():
     from apitally.django import _get_startup_data
 
     data = _get_startup_data(app_version="1.2.3", urlconfs=[None])
     openapi = json.loads(data["openapi"])
-    assert len(data["paths"]) == 5
-    assert len(openapi["paths"]) == 5
+    assert len(data["paths"]) == 6
+    assert len(openapi["paths"]) == 6
 
     assert data["versions"]["django"]
     assert data["versions"]["django-ninja"]
@@ -198,7 +213,7 @@ def test_get_ninja_api_endpoints():
     from apitally.django import _get_ninja_paths
 
     endpoints = _get_ninja_paths([None])
-    assert len(endpoints) == 5
+    assert len(endpoints) == 6
     assert all(len(e["summary"]) > 0 for e in endpoints)
     assert any(e["description"] is not None and len(e["description"]) > 0 for e in endpoints)
 
