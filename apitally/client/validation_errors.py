@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 
 @dataclass(frozen=True)
@@ -11,7 +11,7 @@ class ValidationError:
     consumer: Optional[str]
     method: str
     path: str
-    loc: Tuple[str, ...]
+    loc: tuple[str, ...]
     msg: str
     type: str
 
@@ -22,7 +22,7 @@ class ValidationErrorCounter:
         self._lock = threading.Lock()
 
     def add_validation_errors(
-        self, consumer: Optional[str], method: str, path: str, detail: List[Dict[str, Any]]
+        self, consumer: Optional[str], method: str, path: str, detail: list[dict[str, Any]]
     ) -> None:
         with self._lock:
             for error in detail:
@@ -39,8 +39,8 @@ class ValidationErrorCounter:
                 except (KeyError, TypeError):  # pragma: no cover
                     pass
 
-    def get_and_reset_validation_errors(self) -> List[Dict[str, Any]]:
-        data: List[Dict[str, Any]] = []
+    def get_and_reset_validation_errors(self) -> list[dict[str, Any]]:
+        data: list[dict[str, Any]] = []
         with self._lock:
             for validation_error, count in self.error_counts.items():
                 data.append(

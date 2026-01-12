@@ -5,7 +5,7 @@ import time
 from contextvars import ContextVar
 from io import BytesIO
 from threading import Timer
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Iterable, Optional
 from warnings import warn
 
 from flask import Flask, g
@@ -90,7 +90,7 @@ class ApitallyMiddleware:
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
-        self.log_buffer_var: ContextVar[Optional[List[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
+        self.log_buffer_var: ContextVar[Optional[list[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
         self.log_handler: Optional[LogHandler] = None
 
         if self.client.request_logger.config.capture_logs:
@@ -119,7 +119,7 @@ class ApitallyMiddleware:
         response_headers = Headers([])
         status_code = 0
 
-        def catching_start_response(status: str, headers: List[Tuple[str, str]], exc_info=None):
+        def catching_start_response(status: str, headers: list[tuple[str, str]], exc_info=None):
             nonlocal status_code, response_headers
             status_code = int(status.split(" ")[0])
             response_headers = Headers(headers)
@@ -136,7 +136,7 @@ class ApitallyMiddleware:
                     else BODY_TOO_LARGE
                 )
 
-            logs: List[logging.LogRecord] = []
+            logs: list[logging.LogRecord] = []
             trace_id: Optional[int] = None
             start_time = time.perf_counter()
 
@@ -224,7 +224,7 @@ class ApitallyMiddleware:
 
         self.app.handle_exception = handle_exception  # type: ignore[method-assign]
 
-    def get_route_name_and_path(self, environ: WSGIEnvironment) -> Tuple[Optional[str], Optional[str]]:
+    def get_route_name_and_path(self, environ: WSGIEnvironment) -> tuple[Optional[str], Optional[str]]:
         url_adapter = self.app.url_map.bind_to_environ(environ)
         try:
             endpoint, _ = url_adapter.match()
@@ -254,8 +254,8 @@ def set_consumer(identifier: str, name: Optional[str] = None, group: Optional[st
 
 def _get_startup_data(
     app: Flask, app_version: Optional[str] = None, openapi_url: Optional[str] = None
-) -> Dict[str, Any]:
-    data: Dict[str, Any] = {}
+) -> dict[str, Any]:
+    data: dict[str, Any] = {}
     if openapi_url and (openapi := _get_openapi(app, openapi_url)):
         data["openapi"] = openapi
     if paths := _get_paths(app.url_map):
@@ -265,7 +265,7 @@ def _get_startup_data(
     return data
 
 
-def _get_paths(url_map: Map) -> List[Dict[str, str]]:
+def _get_paths(url_map: Map) -> list[dict[str, str]]:
     return [
         {"path": rule.rule, "method": method}
         for rule in url_map.iter_rules()

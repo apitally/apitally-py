@@ -11,7 +11,7 @@ from functools import lru_cache
 from io import BufferedReader
 from logging import LogRecord
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict, List, Mapping, Optional, Tuple, TypedDict
+from typing import Any, AsyncIterator, Callable, Dict, Mapping, Optional, TypedDict
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
@@ -101,7 +101,7 @@ class RequestDict(TypedDict):
     method: str
     path: Optional[str]
     url: str
-    headers: List[Tuple[str, str]]
+    headers: list[tuple[str, str]]
     size: Optional[int]
     consumer: Optional[str]
     body: Optional[bytes]
@@ -110,7 +110,7 @@ class RequestDict(TypedDict):
 class ResponseDict(TypedDict):
     status_code: int
     response_time: float
-    headers: List[Tuple[str, str]]
+    headers: list[tuple[str, str]]
     size: Optional[int]
     body: Optional[bytes]
 
@@ -147,8 +147,8 @@ class RequestLogItem(TypedDict):
     request: RequestDict
     response: ResponseDict
     exception: NotRequired[ExceptionDict]
-    logs: NotRequired[List[LogRecordDict]]
-    spans: NotRequired[List[SpanDict]]
+    logs: NotRequired[list[LogRecordDict]]
+    spans: NotRequired[list[SpanDict]]
 
 
 class RequestLoggingKwargs(TypedDict, total=False):
@@ -161,12 +161,12 @@ class RequestLoggingKwargs(TypedDict, total=False):
     log_exception: bool
     capture_logs: bool
     capture_traces: bool
-    mask_query_params: List[str]
-    mask_headers: List[str]
-    mask_body_fields: List[str]
+    mask_query_params: list[str]
+    mask_headers: list[str]
+    mask_body_fields: list[str]
     mask_request_body_callback: Optional[Callable[[RequestDict], Optional[bytes]]]
     mask_response_body_callback: Optional[Callable[[RequestDict, ResponseDict], Optional[bytes]]]
-    exclude_paths: List[str]
+    exclude_paths: list[str]
     exclude_callback: Optional[Callable[[RequestDict, ResponseDict], bool]]
 
 
@@ -181,12 +181,12 @@ class RequestLoggingConfig:
     log_exception: bool = True
     capture_logs: bool = False
     capture_traces: bool = False
-    mask_query_params: List[str] = field(default_factory=list)
-    mask_headers: List[str] = field(default_factory=list)
-    mask_body_fields: List[str] = field(default_factory=list)
+    mask_query_params: list[str] = field(default_factory=list)
+    mask_headers: list[str] = field(default_factory=list)
+    mask_body_fields: list[str] = field(default_factory=list)
     mask_request_body_callback: Optional[Callable[[RequestDict], Optional[bytes]]] = None
     mask_response_body_callback: Optional[Callable[[RequestDict, ResponseDict], Optional[bytes]]] = None
-    exclude_paths: List[str] = field(default_factory=list)
+    exclude_paths: list[str] = field(default_factory=list)
     exclude_callback: Optional[Callable[[RequestDict, ResponseDict], bool]] = None
 
     @classmethod
@@ -255,8 +255,8 @@ class RequestLogger:
         request: RequestDict,
         response: ResponseDict,
         exception: Optional[BaseException] = None,
-        logs: Optional[List[LogRecord]] = None,
-        spans: Optional[List[SpanDict]] = None,
+        logs: Optional[list[LogRecord]] = None,
+        spans: Optional[list[SpanDict]] = None,
     ) -> None:
         if not self.enabled or self.suspend_until is not None:
             return
@@ -444,7 +444,7 @@ class RequestLogger:
         masked_query_params = [(k, v if not self._should_mask_query_param(k) else MASKED) for k, v in query_params]
         return urlencode(masked_query_params)
 
-    def _mask_headers(self, headers: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+    def _mask_headers(self, headers: list[tuple[str, str]]) -> list[tuple[str, str]]:
         return [(k, v if not self._should_mask_header(k) else MASKED) for k, v in headers]
 
     def _mask_body(self, data: Any) -> Any:
@@ -473,23 +473,23 @@ class RequestLogger:
         return self._match_patterns(field_name, patterns)
 
     @staticmethod
-    def _match_patterns(value: str, patterns: List[str]) -> bool:
+    def _match_patterns(value: str, patterns: list[str]) -> bool:
         for pattern in patterns:
             if re.search(pattern, value, re.I) is not None:
                 return True
         return False
 
     @staticmethod
-    def _get_user_agent(headers: List[Tuple[str, str]]) -> Optional[str]:
+    def _get_user_agent(headers: list[tuple[str, str]]) -> Optional[str]:
         return next((v for k, v in headers if k.lower() == "user-agent"), None)
 
     @staticmethod
-    def _has_supported_content_type(headers: List[Tuple[str, str]]) -> bool:
+    def _has_supported_content_type(headers: list[tuple[str, str]]) -> bool:
         content_type = next((v.lower() for k, v in headers if k.lower() == "content-type"), None)
         return RequestLogger.is_supported_content_type(content_type)
 
     @staticmethod
-    def _has_json_content_type(headers: List[Tuple[str, str]]) -> Optional[bool]:
+    def _has_json_content_type(headers: list[tuple[str, str]]) -> Optional[bool]:
         content_type = next((v.lower() for k, v in headers if k.lower() == "content-type"), None)
         return None if content_type is None else (re.search(r"\bjson\b", content_type) is not None)
 

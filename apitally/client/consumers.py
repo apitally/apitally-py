@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Optional, Union
 
 
 class Consumer:
@@ -36,8 +36,8 @@ class Consumer:
 
 class ConsumerRegistry:
     def __init__(self) -> None:
-        self.consumers: Dict[str, Consumer] = {}
-        self.updated: Set[str] = set()
+        self.consumers: dict[str, Consumer] = {}
+        self.updated: set[str] = set()
         self._lock = threading.Lock()
 
     def add_or_update_consumer(self, consumer: Optional[Consumer]) -> None:
@@ -50,8 +50,8 @@ class ConsumerRegistry:
             elif self.consumers[consumer.identifier].update(name=consumer.name, group=consumer.group):
                 self.updated.add(consumer.identifier)
 
-    def get_and_reset_updated_consumers(self) -> List[Dict[str, Any]]:
-        data: List[Dict[str, Any]] = []
+    def get_and_reset_updated_consumers(self) -> list[dict[str, Any]]:
+        data: list[dict[str, Any]] = []
         with self._lock:
             for identifier in self.updated:
                 if consumer := self.consumers.get(identifier):

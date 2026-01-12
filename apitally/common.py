@@ -2,7 +2,7 @@ import gzip
 import json
 import sys
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
 
 def parse_int(x: Union[str, bytes, int, None]) -> Optional[int]:
@@ -26,7 +26,7 @@ def try_json_loads(s: bytes, encoding: Optional[str] = None) -> Any:
         return None
 
 
-def get_versions(*packages, app_version: Optional[str] = None) -> Dict[str, str]:
+def get_versions(*packages, app_version: Optional[str] = None) -> dict[str, str]:
     versions = _get_common_package_versions()
     for package in packages:
         versions[package] = _get_package_version(package)
@@ -35,7 +35,7 @@ def get_versions(*packages, app_version: Optional[str] = None) -> Dict[str, str]
     return {n: v for n, v in versions.items() if v is not None}
 
 
-def _get_common_package_versions() -> Dict[str, Optional[str]]:
+def _get_common_package_versions() -> dict[str, Optional[str]]:
     return {
         "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         "apitally": _get_package_version("apitally"),

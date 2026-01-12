@@ -6,7 +6,7 @@ import threading
 import traceback
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Optional
 
 from apitally.client.sentry import get_sentry_event_id_async
 
@@ -28,9 +28,9 @@ class ServerError:
 class ServerErrorCounter:
     def __init__(self) -> None:
         self.error_counts: Counter[ServerError] = Counter()
-        self.sentry_event_ids: Dict[ServerError, str] = {}
+        self.sentry_event_ids: dict[ServerError, str] = {}
         self._lock = threading.Lock()
-        self._tasks: Set[asyncio.Task] = set()
+        self._tasks: set[asyncio.Task] = set()
 
     def add_server_error(self, consumer: Optional[str], method: str, path: str, exception: BaseException) -> None:
         if not isinstance(exception, BaseException):
@@ -47,8 +47,8 @@ class ServerErrorCounter:
             self.error_counts[server_error] += 1
         get_sentry_event_id_async(lambda event_id: self.sentry_event_ids.update({server_error: event_id}))
 
-    def get_and_reset_server_errors(self) -> List[Dict[str, Any]]:
-        data: List[Dict[str, Any]] = []
+    def get_and_reset_server_errors(self) -> list[dict[str, Any]]:
+        data: list[dict[str, Any]] = []
         with self._lock:
             for server_error, count in self.error_counts.items():
                 data.append(

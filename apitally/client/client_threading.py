@@ -8,7 +8,7 @@ from functools import partial
 from io import BufferedReader
 from queue import Queue
 from threading import Event, Thread
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Optional
 from uuid import UUID
 
 import backoff
@@ -58,7 +58,7 @@ class ApitallyClient(ApitallyClientBase):
         self.proxies = {"https": proxy} if proxy else None
         self._thread: Optional[Thread] = None
         self._stop_sync_loop = Event()
-        self._sync_data_queue: Queue[Dict[str, Any]] = Queue()
+        self._sync_data_queue: Queue[dict[str, Any]] = Queue()
 
     def start_sync_loop(self) -> None:
         if not self.enabled:
@@ -108,7 +108,7 @@ class ApitallyClient(ApitallyClientBase):
             self._thread.join()
             self._thread = None
 
-    def set_startup_data(self, data: Dict[str, Any]) -> None:
+    def set_startup_data(self, data: dict[str, Any]) -> None:
         self._startup_data_sent = False
         self._startup_data = self.add_uuids_to_data(data)
 
@@ -153,7 +153,7 @@ class ApitallyClient(ApitallyClientBase):
                 break
 
     @retry(raise_on_giveup=False)
-    def _send_startup_data(self, session: requests.Session, data: Dict[str, Any]) -> None:
+    def _send_startup_data(self, session: requests.Session, data: dict[str, Any]) -> None:
         logger.debug("Sending startup data to Apitally hub")
         response = session.post(
             url=f"{self.hub_url}/startup",
@@ -166,7 +166,7 @@ class ApitallyClient(ApitallyClientBase):
         self._startup_data = None
 
     @retry()
-    def _send_sync_data(self, session: requests.Session, data: Dict[str, Any]) -> None:
+    def _send_sync_data(self, session: requests.Session, data: dict[str, Any]) -> None:
         logger.debug("Synchronizing data with Apitally hub")
         response = session.post(
             url=f"{self.hub_url}/sync",

@@ -8,7 +8,7 @@ import time
 from contextvars import ContextVar
 from dataclasses import dataclass
 from importlib.util import find_spec
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 from warnings import warn
 
 from django.conf import settings
@@ -54,7 +54,7 @@ class ApitallyMiddlewareConfig:
     request_logging_config: Optional[RequestLoggingConfig]
     consumer_callback: Optional[Callable[[HttpRequest], Union[str, ApitallyConsumer, None]]]
     include_django_views: bool
-    urlconfs: List[Optional[str]]
+    urlconfs: list[Optional[str]]
     proxy: Optional[str]
 
 
@@ -107,7 +107,7 @@ class ApitallyMiddleware:
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
-        self.log_buffer_var: ContextVar[Optional[List[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
+        self.log_buffer_var: ContextVar[Optional[list[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
         self.log_handler: Optional[LogHandler] = None
 
         if self.client.request_logger.config.capture_logs:
@@ -122,7 +122,7 @@ class ApitallyMiddleware:
         app_version: Optional[str] = None,
         consumer_callback: Optional[str] = None,
         include_django_views: bool = False,
-        urlconf: Optional[Union[List[Optional[str]], str]] = None,
+        urlconf: Optional[Union[list[Optional[str]], str]] = None,
         proxy: Optional[str] = None,
         identify_consumer_callback: Optional[str] = None,
         request_logging_config: Optional[RequestLoggingConfig] = None,
@@ -171,7 +171,7 @@ class ApitallyMiddleware:
                 else BODY_TOO_LARGE
             )
 
-        logs: List[logging.LogRecord] = []
+        logs: list[logging.LogRecord] = []
         trace_id: Optional[int] = None
         start_time = time.perf_counter()
 
@@ -287,7 +287,7 @@ class ApitallyMiddleware:
         setattr(request, "unhandled_exception", exception)
         return None
 
-    def get_route_name_and_path(self, request: HttpRequest) -> Tuple[Optional[str], Optional[str]]:
+    def get_route_name_and_path(self, request: HttpRequest) -> tuple[Optional[str], Optional[str]]:
         if (match := request.resolver_match) is not None:
             try:
                 if self.callbacks and match.func not in self.callbacks:
@@ -330,9 +330,9 @@ class ApitallyMiddleware:
 
 
 def _get_startup_data(
-    app_version: Optional[str], urlconfs: List[Optional[str]], include_django_views: bool = False
-) -> Dict[str, Any]:
-    data: Dict[str, Any] = {}
+    app_version: Optional[str], urlconfs: list[Optional[str]], include_django_views: bool = False
+) -> dict[str, Any]:
+    data: dict[str, Any] = {}
     try:
         data["paths"] = _get_paths(urlconfs, include_django_views=include_django_views)
     except Exception:  # pragma: no cover
@@ -347,7 +347,7 @@ def _get_startup_data(
     return data
 
 
-def _get_openapi(urlconfs: List[Optional[str]]) -> Optional[str]:
+def _get_openapi(urlconfs: list[Optional[str]]) -> Optional[str]:
     rest_framework_settings = getattr(settings, "REST_FRAMEWORK", {})
     schema_class = rest_framework_settings.get("DEFAULT_SCHEMA_CLASS", "")
 
@@ -370,7 +370,7 @@ def _get_openapi(urlconfs: List[Optional[str]]) -> Optional[str]:
     return None  # pragma: no cover
 
 
-def _get_paths(urlconfs: List[Optional[str]], include_django_views: bool = False) -> List[Dict[str, str]]:
+def _get_paths(urlconfs: list[Optional[str]], include_django_views: bool = False) -> list[dict[str, str]]:
     paths = []
     with contextlib.suppress(ImportError):
         paths.extend(_get_drf_paths(urlconfs))
@@ -381,7 +381,7 @@ def _get_paths(urlconfs: List[Optional[str]], include_django_views: bool = False
     return _deduplicate_paths(paths)
 
 
-def _deduplicate_paths(paths: List[Dict[str, str]]) -> List[Dict[str, str]]:
+def _deduplicate_paths(paths: list[dict[str, str]]) -> list[dict[str, str]]:
     seen = set()
     deduplicated_paths = []
     for path in paths:
@@ -392,7 +392,7 @@ def _deduplicate_paths(paths: List[Dict[str, str]]) -> List[Dict[str, str]]:
     return deduplicated_paths
 
 
-def _get_drf_paths(urlconfs: List[Optional[str]]) -> List[Dict[str, str]]:
+def _get_drf_paths(urlconfs: list[Optional[str]]) -> list[dict[str, str]]:
     from rest_framework.schemas.generators import EndpointEnumerator
 
     enumerators = [EndpointEnumerator(urlconf=urlconf) for urlconf in urlconfs]
@@ -407,14 +407,14 @@ def _get_drf_paths(urlconfs: List[Optional[str]]) -> List[Dict[str, str]]:
     ]
 
 
-def _get_drf_callbacks(urlconfs: List[Optional[str]]) -> Set[Callable]:
+def _get_drf_callbacks(urlconfs: list[Optional[str]]) -> set[Callable]:
     from rest_framework.schemas.generators import EndpointEnumerator
 
     enumerators = [EndpointEnumerator(urlconf=urlconf) for urlconf in urlconfs]
     return {callback for enumerator in enumerators for _, _, callback in enumerator.get_api_endpoints()}
 
 
-def _get_drf_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[str, Any]]:
+def _get_drf_schema(urlconfs: list[Optional[str]]) -> Optional[dict[str, Any]]:
     from rest_framework.schemas.openapi import SchemaGenerator
 
     schemas = []
@@ -429,7 +429,7 @@ def _get_drf_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[str, Any]]:
     return None if len(schemas) != 1 else schemas[0]  # type: ignore[return-value]
 
 
-def _get_drf_spectacular_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[str, Any]]:
+def _get_drf_spectacular_schema(urlconfs: list[Optional[str]]) -> Optional[dict[str, Any]]:
     from drf_spectacular.generators import SchemaGenerator  # type: ignore[import-not-found]
 
     schemas = []
@@ -441,7 +441,7 @@ def _get_drf_spectacular_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[
     return None if len(schemas) != 1 else schemas[0]
 
 
-def _get_ninja_paths(urlconfs: List[Optional[str]]) -> List[Dict[str, str]]:
+def _get_ninja_paths(urlconfs: list[Optional[str]]) -> list[dict[str, str]]:
     endpoints = []
     for api in _get_ninja_api_instances(urlconfs=urlconfs):
         schema = api.get_openapi_schema()
@@ -459,7 +459,7 @@ def _get_ninja_paths(urlconfs: List[Optional[str]]) -> List[Dict[str, str]]:
     return endpoints
 
 
-def _get_ninja_callbacks(urlconfs: List[Optional[str]]) -> Set[Callable]:
+def _get_ninja_callbacks(urlconfs: list[Optional[str]]) -> set[Callable]:
     return {
         path_view.get_view()
         for api in _get_ninja_api_instances(urlconfs=urlconfs)
@@ -468,7 +468,7 @@ def _get_ninja_callbacks(urlconfs: List[Optional[str]]) -> Set[Callable]:
     }
 
 
-def _get_ninja_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[str, Any]]:
+def _get_ninja_schema(urlconfs: list[Optional[str]]) -> Optional[dict[str, Any]]:
     schemas = []
     for api in _get_ninja_api_instances(urlconfs=urlconfs):
         schema = api.get_openapi_schema()
@@ -478,9 +478,9 @@ def _get_ninja_schema(urlconfs: List[Optional[str]]) -> Optional[Dict[str, Any]]
 
 
 def _get_ninja_api_instances(
-    urlconfs: Optional[List[Optional[str]]] = None,
-    patterns: Optional[List[Any]] = None,
-) -> Set[NinjaAPI]:
+    urlconfs: Optional[list[Optional[str]]] = None,
+    patterns: Optional[list[Any]] = None,
+) -> set[NinjaAPI]:
     from ninja import NinjaAPI
 
     if urlconfs is None:
@@ -490,7 +490,7 @@ def _get_ninja_api_instances(
         for urlconf in urlconfs:
             patterns.extend(get_resolver(urlconf).url_patterns)
 
-    apis: Set[NinjaAPI] = set()
+    apis: set[NinjaAPI] = set()
     for p in patterns:
         if isinstance(p, URLResolver):
             if p.app_name != "ninja":
@@ -507,7 +507,7 @@ def _get_ninja_api_instances(
     return apis
 
 
-def _get_django_paths(urlconfs: Optional[List[Optional[str]]] = None) -> List[Dict[str, str]]:
+def _get_django_paths(urlconfs: Optional[list[Optional[str]]] = None) -> list[dict[str, str]]:
     if urlconfs is None:
         urlconfs = [None]
     return [
@@ -523,7 +523,7 @@ def _get_django_paths(urlconfs: Optional[List[Optional[str]]] = None) -> List[Di
     ]
 
 
-def _get_django_callbacks(urlconfs: Optional[List[Optional[str]]] = None) -> Set[Callable]:
+def _get_django_callbacks(urlconfs: Optional[list[Optional[str]]] = None) -> set[Callable]:
     if urlconfs is None:
         urlconfs = [None]
     return {

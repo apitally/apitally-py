@@ -4,7 +4,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
+from typing import Any, Awaitable, Callable, Optional, Union
 from warnings import warn
 
 from httpx import HTTPStatusError, Proxy
@@ -97,7 +97,7 @@ class ApitallyMiddleware:
             self.client.request_logger.config.enabled and self.client.request_logger.config.log_response_body
         )
 
-        self.log_buffer_var: ContextVar[Optional[List[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
+        self.log_buffer_var: ContextVar[Optional[list[logging.LogRecord]]] = ContextVar("log_buffer", default=None)
         self.log_handler: Optional[LogHandler] = None
 
         if self.client.request_logger.config.capture_logs:
@@ -134,7 +134,7 @@ class ApitallyMiddleware:
         response_chunked = False
         response_content_type: Optional[str] = None
         exception: Optional[BaseException] = None
-        logs: List[logging.LogRecord] = []
+        logs: list[logging.LogRecord] = []
         trace_id: Optional[int] = None
         start_time = time.perf_counter()
 
@@ -282,7 +282,7 @@ class ApitallyMiddleware:
             return endpoint.__name__
         return None
 
-    def get_route_path(self, request: Request, routes: Optional[List[BaseRoute]] = None) -> Optional[str]:
+    def get_route_path(self, request: Request, routes: Optional[list[BaseRoute]] = None) -> Optional[str]:
         if routes is None:
             routes = request.app.routes
         for route in routes:
@@ -318,8 +318,8 @@ def set_consumer(request: Request, identifier: str, name: Optional[str] = None, 
 
 def _get_startup_data(
     app: ASGIApp, app_version: Optional[str] = None, openapi_url: Optional[str] = None
-) -> Dict[str, Any]:
-    data: Dict[str, Any] = {}
+) -> dict[str, Any]:
+    data: dict[str, Any] = {}
     if openapi_url and (openapi := _get_openapi(app, openapi_url)):
         data["openapi"] = openapi
     if endpoints := _get_endpoint_info(app):
@@ -339,13 +339,13 @@ def _get_openapi(app: ASGIApp, openapi_url: str) -> Optional[str]:
         return None
 
 
-def _get_endpoint_info(app: ASGIApp) -> List[EndpointInfo]:
+def _get_endpoint_info(app: ASGIApp) -> list[EndpointInfo]:
     routes = _get_routes(app)
     schemas = SchemaGenerator({})
     return schemas.get_endpoints(routes)
 
 
-def _get_routes(app: Union[ASGIApp, Router]) -> List[BaseRoute]:
+def _get_routes(app: Union[ASGIApp, Router]) -> list[BaseRoute]:
     if isinstance(app, Router):
         return app.routes
     elif hasattr(app, "app"):

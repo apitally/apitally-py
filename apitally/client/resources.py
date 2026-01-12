@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 import psutil
 
@@ -7,7 +7,7 @@ _is_first_interval = True
 _process = psutil.Process()
 
 
-def get_cpu_memory_usage() -> Optional[Dict[str, Union[float, int]]]:
+def get_cpu_memory_usage() -> Optional[dict[str, Union[float, int]]]:
     global _is_first_interval
     try:
         data = {

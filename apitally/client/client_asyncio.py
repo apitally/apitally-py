@@ -6,7 +6,7 @@ import random
 import time
 from contextlib import suppress
 from functools import partial
-from typing import Any, AsyncIterator, Dict, Optional, Union
+from typing import Any, AsyncIterator, Optional, Union
 from uuid import UUID
 
 import backoff
@@ -40,7 +40,7 @@ class ApitallyClient(ApitallyClientBase):
         self.proxy = proxy
         self._stop_sync_loop = False
         self._sync_loop_task: Optional[asyncio.Task] = None
-        self._sync_data_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
+        self._sync_data_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
     def get_http_client(self) -> httpx.AsyncClient:
         if httpx.__version__ >= "0.26.0":
@@ -94,7 +94,7 @@ class ApitallyClient(ApitallyClientBase):
             await self.send_sync_data(client)
             await self.send_log_data(client)
 
-    def set_startup_data(self, data: Dict[str, Any]) -> None:
+    def set_startup_data(self, data: dict[str, Any]) -> None:
         self._startup_data_sent = False
         self._startup_data = self.add_uuids_to_data(data)
 
@@ -139,7 +139,7 @@ class ApitallyClient(ApitallyClientBase):
                 break
 
     @retry(raise_on_giveup=False)
-    async def _send_startup_data(self, client: httpx.AsyncClient, data: Dict[str, Any]) -> None:
+    async def _send_startup_data(self, client: httpx.AsyncClient, data: dict[str, Any]) -> None:
         logger.debug("Sending startup data to Apitally hub")
         response = await client.post(url="/startup", json=data)
         self._handle_hub_response(response)
@@ -147,7 +147,7 @@ class ApitallyClient(ApitallyClientBase):
         self._startup_data = None
 
     @retry()
-    async def _send_sync_data(self, client: httpx.AsyncClient, data: Dict[str, Any]) -> None:
+    async def _send_sync_data(self, client: httpx.AsyncClient, data: dict[str, Any]) -> None:
         logger.debug("Synchronizing data with Apitally hub")
         response = await client.post(url="/sync", json=data)
         self._handle_hub_response(response)
