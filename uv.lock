@@ -44,6 +44,7 @@ name = "apitally"
 source = { editable = "." }
 dependencies = [
     { name = "backoff" },
+    { name = "opentelemetry-sdk" },
     { name = "psutil" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
@@ -84,12 +85,6 @@ litestar = [
     { name = "httpx" },
     { name = "litestar" },
 ]
-otel = [
-    { name = "opentelemetry-sdk" },
-]
-sentry = [
-    { name = "sentry-sdk" },
-]
 starlette = [
     { name = "httpx" },
     { name = "starlette", version = "0.49.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -115,6 +110,9 @@ otel = [
     { name = "opentelemetry-instrumentation-redis" },
     { name = "opentelemetry-instrumentation-requests" },
     { name = "opentelemetry-instrumentation-sqlalchemy" },
+]
+sentry = [
+    { name = "sentry-sdk" },
 ]
 test = [
     { name = "blacksheep", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, extra = ["full"], marker = "python_full_version < '3.10'" },
@@ -162,18 +160,17 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'starlette'", specifier = ">=0.22.0" },
     { name = "inflection", marker = "extra == 'django-rest-framework'", specifier = ">=0.5.1" },
     { name = "litestar", marker = "extra == 'litestar'", specifier = ">=2.4.0" },
-    { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.39.1,<2.0.0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.39.1,<2.0.0" },
     { name = "psutil", specifier = ">=5.9.6" },
     { name = "requests", marker = "extra == 'django-ninja'", specifier = ">=2.26.0" },
     { name = "requests", marker = "extra == 'django-rest-framework'", specifier = ">=2.26.0" },
     { name = "requests", marker = "extra == 'flask'", specifier = ">=2.26.0" },
-    { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.2.0" },
     { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.26.1,<1.0.0" },
     { name = "starlette", marker = "extra == 'starlette'", specifier = ">=0.26.1,<1.0.0" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'", specifier = ">=4.0.0" },
     { name = "uritemplate", marker = "extra == 'django-rest-framework'", specifier = ">=3.0.0" },
 ]
-provides-extras = ["blacksheep", "django-ninja", "django-rest-framework", "fastapi", "flask", "litestar", "otel", "sentry", "starlette"]
+provides-extras = ["blacksheep", "django-ninja", "django-rest-framework", "fastapi", "flask", "litestar", "starlette"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -195,6 +192,7 @@ otel = [
     { name = "opentelemetry-instrumentation-requests" },
     { name = "opentelemetry-instrumentation-sqlalchemy" },
 ]
+sentry = [{ name = "sentry-sdk", specifier = ">=2.2.0" }]
 test = [
     { name = "blacksheep", extras = ["full"] },
     { name = "pytest", specifier = "~=8.4.0" },
@@ -2744,15 +2742,15 @@ wheels = [
 
 [[package]]
 name = "sentry-sdk"
-version = "2.48.0"
+version = "2.49.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/40/f0/0e9dc590513d5e742d7799e2038df3a05167cba084c6ca4f3cdd75b55164/sentry_sdk-2.48.0.tar.gz", hash = "sha256:5213190977ff7fdff8a58b722fb807f8d5524a80488626ebeda1b5676c0c1473", size = 384828, upload-time = "2025-12-16T14:55:41.722Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/02/94/23ac26616a883f492428d9ee9ad6eee391612125326b784dbfc30e1e7bab/sentry_sdk-2.49.0.tar.gz", hash = "sha256:c1878599cde410d481c04ef50ee3aedd4f600e4d0d253f4763041e468b332c30", size = 387228, upload-time = "2026-01-08T09:56:25.642Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4d/19/8d77f9992e5cbfcaa9133c3bf63b4fbbb051248802e1e803fed5c552fbb2/sentry_sdk-2.48.0-py2.py3-none-any.whl", hash = "sha256:6b12ac256769d41825d9b7518444e57fa35b5642df4c7c5e322af4d2c8721172", size = 414555, upload-time = "2025-12-16T14:55:40.152Z" },
+    { url = "https://files.pythonhosted.org/packages/88/43/1c586f9f413765201234541857cb82fda076f4b0f7bad4a0ec248da39cf3/sentry_sdk-2.49.0-py2.py3-none-any.whl", hash = "sha256:6ea78499133874445a20fe9c826c9e960070abeb7ae0cdf930314ab16bb97aa0", size = 415693, upload-time = "2026-01-08T09:56:21.872Z" },
 ]
 
 [[package]]
