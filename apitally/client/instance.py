@@ -4,6 +4,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Union
 from uuid import UUID, uuid4
 
 
@@ -12,7 +13,7 @@ MAX_SLOTS = 100
 MAX_LOCK_AGE_SECONDS = 24 * 60 * 60
 
 
-def get_or_create_instance_uuid(client_id: str, env: str) -> tuple[str, int | None]:
+def get_or_create_instance_uuid(client_id: str, env: str) -> tuple[str, Union[int, None]]:
     """
     Get or create a stable instance UUID using file-based locking.
 
