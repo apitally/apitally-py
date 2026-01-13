@@ -4,7 +4,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 from uuid import UUID, uuid4
 
 
@@ -37,7 +37,7 @@ def get_or_create_instance_uuid(client_id: str, env: str) -> tuple[str, Union[in
 
     for slot in range(MAX_SLOTS):
         lock_file = LOCK_DIR / f"instance_{app_env_hash}_{slot}.lock"
-        fd: int | None = None
+        fd: Optional[int] = None
         try:
             fd = os.open(str(lock_file), os.O_RDWR | os.O_CREAT)
 
@@ -76,7 +76,7 @@ def _get_app_env_hash(client_id: str, env: str) -> str:
     return hashlib.sha256(combined.encode()).hexdigest()[:8]
 
 
-def _validate_uuid(value: str) -> str | None:
+def _validate_uuid(value: str) -> Optional[str]:
     try:
         uuid = UUID(value)
         return str(uuid)
