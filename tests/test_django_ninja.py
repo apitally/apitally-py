@@ -26,7 +26,7 @@ def identify_consumer(request: HttpRequest) -> Optional[str]:
 @pytest.fixture(scope="module")
 def reset_modules() -> None:
     for module in list(sys.modules):
-        if (module.startswith("django.") or module.startswith("apitally.")) and module != "apitally.client.instance":
+        if module.startswith("django.") or module.startswith("apitally."):
             del sys.modules[module]
 
 

@@ -26,7 +26,7 @@ def reset_modules() -> None:
             or module.startswith("rest_framework.")
             or module.startswith("apitally.")
             or module == "tests.django_rest_framework_urls"
-        ) and module != "apitally.client.instance":
+        ):
             del sys.modules[module]
 
 

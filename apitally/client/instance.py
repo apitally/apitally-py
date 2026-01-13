@@ -1,14 +1,15 @@
-from __future__ import annotations
-
 import hashlib
 import os
 import sys
+import tempfile
+import time
 from pathlib import Path
 from uuid import UUID, uuid4
 
 
-LOCK_DIR = Path(".apitally")
+LOCK_DIR = Path(tempfile.gettempdir()) / "apitally"
 MAX_SLOTS = 100
+MAX_LOCK_AGE_SECONDS = 24 * 60 * 60
 
 
 def get_or_create_instance_uuid(client_id: str, env: str) -> tuple[str, int | None]:
@@ -83,18 +84,24 @@ def _validate_uuid(value: str) -> str | None:
 
 
 def _validate_lock_files(app_env_hash: str) -> None:
-    """Delete lock files with invalid or duplicate UUIDs."""
+    """Delete lock files with invalid UUIDs, duplicates, or older than 24 hours."""
     lock_files = sorted(LOCK_DIR.glob(f"instance_{app_env_hash}_*.lock"))
     seen_uuids: set[str] = set()
+    now = time.time()
 
     for lock_file in lock_files:
         try:
+            if now - lock_file.stat().st_mtime > MAX_LOCK_AGE_SECONDS:
+                lock_file.unlink(missing_ok=True)
+                continue
+
             content = lock_file.read_text().replace("\0", "").strip()
             uuid = _validate_uuid(content)
             if uuid is None or uuid in seen_uuids:
                 lock_file.unlink(missing_ok=True)
-            else:
-                seen_uuids.add(uuid)
+                continue
+
+            seen_uuids.add(uuid)
         except OSError:  # pragma: no cover
             pass
 

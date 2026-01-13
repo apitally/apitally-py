@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from uuid import uuid4
 
 
@@ -160,6 +161,34 @@ def test_validate_lock_files_removes_duplicates() -> None:
     # First file (sorted order) should remain, second should be removed
     assert file1.exists()
     assert not file2.exists()
+
+
+def test_validate_lock_files_removes_old_files() -> None:
+    from apitally.client.instance import LOCK_DIR, MAX_LOCK_AGE_SECONDS, _get_app_env_hash, _validate_lock_files
+
+    client_id, env = str(uuid4()), "test"
+    app_env_hash = _get_app_env_hash(client_id, env)
+    LOCK_DIR.mkdir(exist_ok=True)
+
+    # Create lock file with valid content
+    old_uuid = "550e8400-e29b-41d4-a716-446655440000"
+    old_file = LOCK_DIR / f"instance_{app_env_hash}_0.lock"
+    old_file.write_text(old_uuid)
+
+    # Set mtime to 25 hours ago
+    old_mtime = time.time() - MAX_LOCK_AGE_SECONDS - 3600
+    os.utime(old_file, (old_mtime, old_mtime))
+
+    # Create recent lock file
+    new_uuid = "660e8400-e29b-41d4-a716-446655440000"
+    new_file = LOCK_DIR / f"instance_{app_env_hash}_1.lock"
+    new_file.write_text(new_uuid)
+
+    _validate_lock_files(app_env_hash)
+
+    # Old file should be removed, new file should remain
+    assert not old_file.exists()
+    assert new_file.exists()
 
 
 def test_get_or_create_instance_uuid_handles_corrupted_file() -> None:
