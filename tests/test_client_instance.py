@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 from uuid import uuid4
+
+import pytest
+from pytest_mock import MockerFixture
+
+
+@pytest.fixture(autouse=True)
+def mock_lock_dir(tmp_path: Path, mocker: MockerFixture) -> None:
+    mocker.patch("apitally.client.instance.LOCK_DIR", tmp_path)
 
 
 def test_get_app_env_hash() -> None:
