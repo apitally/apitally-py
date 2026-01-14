@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Optional, Union
 from uuid import UUID, uuid4
@@ -29,7 +30,7 @@ def get_or_create_instance_uuid(client_id: str, env: str) -> tuple[str, Union[in
     app_env_hash = _get_app_env_hash(client_id, env)
 
     try:
-        LOCK_DIR.mkdir(exist_ok=True)
+        LOCK_DIR.mkdir(parents=True, exist_ok=True)
     except OSError:  # pragma: no cover
         return str(uuid4()), None
 
@@ -58,13 +59,10 @@ def get_or_create_instance_uuid(client_id: str, env: str) -> tuple[str, Union[in
             os.write(fd, new_uuid.encode())
             return new_uuid, fd
 
-        except OSError:  # pragma: no cover
+        except Exception:  # pragma: no cover
             if fd is not None:
-                try:
+                with suppress(OSError):
                     os.close(fd)
-                except OSError:
-                    pass
-            continue
 
     # All slots taken, fall back to random UUID
     return str(uuid4()), None
@@ -76,14 +74,6 @@ def _get_app_env_hash(client_id: str, env: str) -> str:
     return hashlib.sha256(combined.encode()).hexdigest()[:8]
 
 
-def _validate_uuid(value: str) -> Optional[str]:
-    try:
-        uuid = UUID(value)
-        return str(uuid)
-    except ValueError:
-        return None
-
-
 def _validate_lock_files(app_env_hash: str) -> None:
     """Delete lock files with invalid UUIDs, duplicates, or older than 24 hours."""
     lock_files = sorted(LOCK_DIR.glob(f"instance_{app_env_hash}_*.lock"))
@@ -91,7 +81,7 @@ def _validate_lock_files(app_env_hash: str) -> None:
     now = time.time()
 
     for lock_file in lock_files:
-        try:
+        with suppress(Exception):
             if now - lock_file.stat().st_mtime > MAX_LOCK_AGE_SECONDS:
                 lock_file.unlink(missing_ok=True)
                 continue
@@ -103,8 +93,14 @@ def _validate_lock_files(app_env_hash: str) -> None:
                 continue
 
             seen_uuids.add(uuid)
-        except OSError:  # pragma: no cover
-            pass
+
+
+def _validate_uuid(value: str) -> Optional[str]:
+    try:
+        uuid = UUID(value)
+        return str(uuid)
+    except ValueError:
+        return None
 
 
 def _try_acquire_lock(fd: int) -> bool:
@@ -125,5 +121,5 @@ def _try_acquire_lock(fd: int) -> bool:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
         return True
-    except (BlockingIOError, OSError):
+    except Exception:
         return False
