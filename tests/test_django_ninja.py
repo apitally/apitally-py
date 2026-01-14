@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Optional
 import pytest
 from pytest_mock import MockerFixture
 
+from .constants import CLIENT_ID, ENV
+
 
 if find_spec("ninja") is None:
     pytest.skip("django-ninja is not available", allow_module_level=True)
@@ -47,8 +49,8 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
             "django.middleware.common.CommonMiddleware",
         ],
         APITALLY_MIDDLEWARE={
-            "client_id": "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9",
-            "env": "dev",
+            "client_id": CLIENT_ID,
+            "env": ENV,
             "consumer_callback": "tests.test_django_ninja.identify_consumer",
             "enable_request_logging": True,
             "log_request_body": True,

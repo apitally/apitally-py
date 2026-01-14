@@ -9,6 +9,7 @@ from typing import Any, Optional, Type, TypeVar, cast
 from uuid import UUID, uuid4
 
 from apitally.client.consumers import ConsumerRegistry
+from apitally.client.instance import get_or_create_instance_uuid
 from apitally.client.logging import get_logger
 from apitally.client.request_logging import RequestLogger, RequestLoggingConfig
 from apitally.client.requests import RequestCounter
@@ -59,7 +60,7 @@ class ApitallyClientBase(ABC):
                 f"invalid env '{self.env}' (expecting string with 1-32 alphanumeric characters and hyphens only)"
             )
 
-        self.instance_uuid = str(uuid4())
+        self.instance_uuid, self._instance_lock_fd = get_or_create_instance_uuid(self.client_id, self.env)
         self.request_counter = RequestCounter()
         self.validation_error_counter = ValidationErrorCounter()
         self.server_error_counter = ServerErrorCounter()

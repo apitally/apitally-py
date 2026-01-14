@@ -7,6 +7,8 @@ from importlib.util import find_spec
 import pytest
 from pytest_mock import MockerFixture
 
+from .constants import CLIENT_ID, ENV
+
 
 if find_spec("drf_spectacular") is None:
     pytest.skip("drf-spectacular is not available", allow_module_level=True)
@@ -52,8 +54,8 @@ def setup(reset_modules, module_mocker: MockerFixture) -> None:
             "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
         },
         APITALLY_MIDDLEWARE={
-            "client_id": "76b5cb91-a0a4-4ea0-a894-57d2b9fcb2c9",
-            "env": "dev",
+            "client_id": CLIENT_ID,
+            "env": ENV,
         },
     )
     django.setup()
