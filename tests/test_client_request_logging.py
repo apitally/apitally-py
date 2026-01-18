@@ -290,3 +290,11 @@ def test_request_log_mask_body_fields(
     assert masked_request_body["array"][0]["id"] == 1
     assert masked_request_body["array"][1]["normal"] == "text"
     assert masked_response_body["status"] == "success"
+
+
+def test_request_log_trace_id(request_logger: RequestLogger, request_dict: RequestDict, response_dict: ResponseDict):
+    trace_id = 0x0123456789ABCDEF0123456789ABCDEF
+    request_logger.log_request(request_dict, response_dict, trace_id=trace_id)
+    items = get_logged_items(request_logger)
+    assert len(items) == 1
+    assert items[0]["trace_id"] == "0123456789abcdef0123456789abcdef"

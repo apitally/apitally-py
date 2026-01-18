@@ -279,6 +279,7 @@ class ApitallyMiddleware:
                 exception=getattr(request, "unhandled_exception", None),
                 logs=logs,
                 spans=spans,
+                trace_id=trace_id,
             )
 
         return response

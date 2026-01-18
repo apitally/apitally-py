@@ -254,6 +254,7 @@ class ApitallyMiddleware:
                     exception=exception,
                     logs=logs,
                     spans=spans,
+                    trace_id=trace_id,
                 )
 
         return response

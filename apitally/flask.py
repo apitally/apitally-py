@@ -212,6 +212,7 @@ class ApitallyMiddleware:
                     exception=g.unhandled_exception if "unhandled_exception" in g else None,
                     logs=logs,
                     spans=spans,
+                    trace_id=trace_id,
                 )
         return response
 

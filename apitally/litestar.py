@@ -279,6 +279,7 @@ class ApitallyPlugin(InitPluginProtocol):
                     exception=request.state["exception"] if "exception" in request.state else None,
                     logs=logs,
                     spans=spans,
+                    trace_id=trace_id,
                 )
 
         return middleware
