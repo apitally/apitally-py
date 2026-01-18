@@ -16,7 +16,7 @@ from werkzeug.test import Client
 
 from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
-from apitally.client.logging import LogHandler
+from apitally.client.logging import LogHandler, setup_log_capture
 from apitally.client.request_logging import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
@@ -95,7 +95,7 @@ class ApitallyMiddleware:
 
         if self.client.request_logger.config.capture_logs:
             self.log_handler = LogHandler(self.log_buffer_var)
-            logging.getLogger().addHandler(self.log_handler)
+            setup_log_capture(self.log_handler)
 
     def delayed_set_startup_data(self, app_version: Optional[str] = None, openapi_url: Optional[str] = None) -> None:
         # Short delay to allow app routes to be registered first

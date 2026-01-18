@@ -20,7 +20,7 @@ from django.views.generic.base import View
 
 from apitally.client.client_threading import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
-from apitally.client.logging import LogHandler, get_logger
+from apitally.client.logging import LogHandler, get_logger, setup_log_capture
 from apitally.client.request_logging import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
@@ -112,7 +112,7 @@ class ApitallyMiddleware:
 
         if self.client.request_logger.config.capture_logs:
             self.log_handler = LogHandler(self.log_buffer_var)
-            logging.getLogger().addHandler(self.log_handler)
+            setup_log_capture(self.log_handler)
 
     @classmethod
     def configure(

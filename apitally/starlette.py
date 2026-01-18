@@ -18,7 +18,7 @@ from starlette.types import ASGIApp, Lifespan, Message, Receive, Scope, Send
 
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
-from apitally.client.logging import LogHandler
+from apitally.client.logging import LogHandler, setup_log_capture
 from apitally.client.request_logging import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
@@ -102,7 +102,7 @@ class ApitallyMiddleware:
 
         if self.client.request_logger.config.capture_logs:
             self.log_handler = LogHandler(self.log_buffer_var)
-            logging.getLogger().addHandler(self.log_handler)
+            setup_log_capture(self.log_handler)
 
         _inject_lifespan_handlers(
             app,

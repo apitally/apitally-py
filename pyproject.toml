@@ -73,6 +73,7 @@ dev = [
 ]
 test = [
     "blacksheep[full]",
+    "loguru",
     "pytest~=8.4.0",
     "pytest-asyncio~=0.21.2",
     "pytest-cov~=7.0.0",
