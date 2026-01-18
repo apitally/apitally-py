@@ -213,6 +213,7 @@ async def test_middleware_tracing(app: Application, mocker: MockerFixture):
     span_names = {s["name"] for s in mock.call_args.kwargs["spans"]}
     assert any(name == "traces" for name in span_names)
     assert {"outer_span", "inner_span_1", "inner_span_2"} <= span_names
+    assert isinstance(mock.call_args.kwargs["trace_id"], int)
 
 
 def test_get_startup_data(app: Application, mocker: MockerFixture):
