@@ -63,6 +63,6 @@ def _try_setup_loguru_sink(handler: LogHandler) -> None:
             log_record.levelname = record["level"].name
             handler.emit(log_record)
 
-        logger.add(sink, format="{message}", filter=lambda r: r["name"] != "apitally")
-    except ImportError:
+        logger.add(sink)
+    except ImportError:  # pragma: no cover
         pass
