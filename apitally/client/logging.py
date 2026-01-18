@@ -1,8 +1,14 @@
+from __future__ import annotations
+
 import logging
 import os
 from contextvars import ContextVar
 from logging import LogRecord
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+
+if TYPE_CHECKING:
+    from loguru import Message as LoguruMessage
 
 
 debug = os.getenv("APITALLY_DEBUG", "false").lower() in {"true", "yes", "y", "1"}
@@ -31,3 +37,32 @@ class LogHandler(logging.Handler):
         buffer = self.log_buffer_var.get()
         if buffer is not None and len(buffer) < self.MAX_BUFFER_SIZE:
             buffer.append(record)
+
+
+def setup_log_capture(handler: LogHandler) -> None:
+    logging.getLogger().addHandler(handler)
+    _try_setup_loguru_sink(handler)
+
+
+def _try_setup_loguru_sink(handler: LogHandler) -> None:
+    try:
+        from loguru import logger
+
+        def sink(message: LoguruMessage) -> None:
+            record = message.record
+            log_record = LogRecord(
+                name=record["name"] or "",
+                level=record["level"].no,
+                pathname=record["file"].path,
+                lineno=record["line"],
+                msg=record["message"],
+                args=(),
+                exc_info=None,
+            )
+            log_record.created = record["time"].timestamp()
+            log_record.levelname = record["level"].name
+            handler.emit(log_record)
+
+        logger.add(sink, format="{message}", filter=lambda r: r["name"] != "apitally")
+    except ImportError:
+        pass
