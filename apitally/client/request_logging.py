@@ -149,6 +149,7 @@ class RequestLogItem(TypedDict):
     exception: NotRequired[ExceptionDict]
     logs: NotRequired[list[LogRecordDict]]
     spans: NotRequired[list[SpanDict]]
+    trace_id: NotRequired[str]
 
 
 class RequestLoggingKwargs(TypedDict, total=False):
@@ -257,6 +258,7 @@ class RequestLogger:
         exception: Optional[BaseException] = None,
         logs: Optional[list[LogRecord]] = None,
         spans: Optional[list[SpanDict]] = None,
+        trace_id: Optional[int] = None,
     ) -> None:
         if not self.enabled or self.suspend_until is not None:
             return
@@ -309,6 +311,8 @@ class RequestLogger:
 
         if spans is not None and len(spans) > 0:
             item["spans"] = spans
+        if trace_id is not None:
+            item["trace_id"] = format(trace_id, "032x")
 
         self.write_deque.append(item)
 
