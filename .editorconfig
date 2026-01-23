@@ -10,7 +10,11 @@ indent_style = space
 indent_size = 4
 max_line_length = 120
 
-[*.{yaml,json,toml}]
+[*.toml]
+indent_style = space
+indent_size = 4
+
+[*.{yaml,json}]
 indent_style = space
 indent_size = 2
 
