@@ -37,11 +37,11 @@ def test_log_capture(log_buffer: list[logging.LogRecord]) -> None:
 def test_log_capture_with_loguru(log_buffer: list[logging.LogRecord]) -> None:
     from loguru import logger
 
-    logger.info("Loguru message")
+    logger.info("Loguru message for {name}", name="test")
 
     assert len(log_buffer) == 1
     assert log_buffer[0].name == "tests.test_client_logging"
     assert log_buffer[0].levelno == logging.INFO
     assert log_buffer[0].levelname == "INFO"
-    assert log_buffer[0].getMessage() == "Loguru message"
+    assert log_buffer[0].getMessage() == "Loguru message for test"
     assert log_buffer[0].pathname == __file__
