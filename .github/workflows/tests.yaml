@@ -10,15 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check-pre-commit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-      - uses: pre-commit/action@v3.0.1
-
   test-coverage:
     runs-on: ubuntu-latest
     steps:

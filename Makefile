@@ -8,6 +8,7 @@ check:
 	uv run ruff check apitally tests
 	uv run ruff format --diff apitally tests
 	uv run mypy --install-types --non-interactive apitally tests
+	uv lock --locked
 
 test:
 	uv run pytest -v --tb=short
