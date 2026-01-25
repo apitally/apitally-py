@@ -64,7 +64,7 @@ Use `pip` to install and provide your framework of choice as an extra, for
 example:
 
 ```bash
-pip install apitally[fastapi]
+pip install "apitally[fastapi]"
 ```
 
 The available extras are: `fastapi`, `flask`, `django_rest_framework`,
