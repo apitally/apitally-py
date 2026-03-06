@@ -10,7 +10,13 @@
 <p align="center"><b>API monitoring & analytics made simple</b></p>
 <p align="center" style="color: #ccc;">Metrics, logs, traces, and alerts for your APIs — with just a few lines of code.</p>
 <br>
-<img alt="Apitally screenshots" src="https://assets.apitally.io/screenshots/overview.png">
+<p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://assets.apitally.io/screenshots/overview-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://assets.apitally.io/screenshots/overview-light.png">
+  <img alt="Apitally dashboard" src="https://assets.apitally.io/screenshots/overview-light.png">
+</picture>
+</p>
 <br>
 
 # Apitally SDK for Python
@@ -19,8 +25,8 @@
 [![Codecov](https://codecov.io/gh/apitally/apitally-py/graph/badge.svg?token=UNLYBY4Y3V)](https://codecov.io/gh/apitally/apitally-py)
 [![PyPI](https://img.shields.io/pypi/v/apitally?logo=pypi&logoColor=white&color=%23006dad)](https://pypi.org/project/apitally/)
 
-Apitally is a simple API monitoring and analytics tool that makes it easy to understand how your APIs are used
-and helps you troubleshoot API issues faster. Setup is easy and takes less than 5 minutes.
+Apitally is a simple API monitoring and analytics tool that makes it easy to understand API usage, monitor performance, and troubleshoot issues.
+Get started in minutes by just adding a few lines of code. No infrastructure changes required, no dashboards to build.
 
 Learn more about Apitally on our 🌎 [website](https://apitally.io) or check out
 the 📚 [documentation](https://docs.apitally.io).
