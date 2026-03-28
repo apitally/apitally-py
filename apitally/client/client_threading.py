@@ -67,7 +67,7 @@ class ApitallyClient(ApitallyClientBase):
         if self._thread is None or not self._thread.is_alive():
             self._thread = Thread(target=self._run_sync_loop, daemon=True)
             self._thread.start()
-            register_exit(self.stop_sync_loop)
+            register_exit(self.handle_shutdown)
 
     def _run_sync_loop(self) -> None:
         try:
@@ -98,12 +98,16 @@ class ApitallyClient(ApitallyClientBase):
                 time.sleep(1)
         finally:
             # Send any remaining data before exiting
-            with requests.Session() as session:
-                self.send_sync_data(session)
-                self.send_log_data(session)
+            if self.enabled:
+                with requests.Session() as session:
+                    self.send_sync_data(session)
+                    self.send_log_data(session)
 
     def stop_sync_loop(self) -> None:
         self._stop_sync_loop.set()
+
+    def handle_shutdown(self) -> None:
+        self.stop_sync_loop()
         if self._thread is not None:
             self._thread.join()
             self._thread = None

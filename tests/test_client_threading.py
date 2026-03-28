@@ -90,7 +90,7 @@ def test_sync_loop(client: ApitallyClient, mocker: MockerFixture):
 
     client.start_sync_loop()
     time.sleep(0.02)  # Ensure loop enters first iteration
-    client.stop_sync_loop()  # Should stop after first iteration
+    client.handle_shutdown()  # Should stop after first iteration
     assert client._thread is None
     assert send_sync_data_mock.call_count >= 1
 
