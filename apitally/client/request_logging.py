@@ -516,7 +516,7 @@ class RequestLogger:
                     "x-url-scheme",
                     "x-scheme",
                 )
-                and v.lower() == "https"
+                and "https" in v.lower()
             )
             or (k.lower() == "forwarded" and "proto=https" in v.lower())
             or (k.lower() in ("front-end-https", "x-forwarded-ssl") and v.lower() == "on")

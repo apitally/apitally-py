@@ -298,3 +298,9 @@ def test_request_log_trace_id(request_logger: RequestLogger, request_dict: Reque
     items = get_logged_items(request_logger)
     assert len(items) == 1
     assert items[0]["trace_id"] == "0123456789abcdef0123456789abcdef"
+
+
+def test_request_log_https_url(request_logger: RequestLogger, request_dict: RequestDict, response_dict: ResponseDict):
+    request_dict["headers"].append(("X-Forwarded-Proto", "https"))
+    request_logger.log_request(request_dict, response_dict)
+    assert request_logger.write_deque[-1]["request"]["url"].startswith("https://")
