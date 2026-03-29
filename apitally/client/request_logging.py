@@ -264,6 +264,9 @@ class RequestLogger:
             return
 
         parsed_url = urlparse(request["url"])
+        if parsed_url.scheme == "http" and self._is_https(request["headers"]):
+            request["url"] = urlunparse(parsed_url._replace(scheme="https"))
+
         user_agent = self._get_user_agent(request["headers"])
         if (
             self._should_exclude_path(request["path"] or parsed_url.path)
@@ -271,9 +274,6 @@ class RequestLogger:
             or self._should_exclude(request, response)
         ):
             return
-
-        if parsed_url.scheme == "http" and self._is_https(request["headers"]):
-            request["url"] = urlunparse(parsed_url._replace(scheme="https"))
 
         if not self.config.log_request_body or not self._has_supported_content_type(request["headers"]):
             request["body"] = None
