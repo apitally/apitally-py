@@ -264,6 +264,9 @@ class RequestLogger:
             return
 
         parsed_url = urlparse(request["url"])
+        if parsed_url.scheme == "http" and self._is_https(request["headers"]):
+            request["url"] = urlunparse(parsed_url._replace(scheme="https"))
+
         user_agent = self._get_user_agent(request["headers"])
         if (
             self._should_exclude_path(request["path"] or parsed_url.path)
@@ -500,6 +503,25 @@ class RequestLogger:
     @staticmethod
     def is_supported_content_type(content_type: Optional[str]) -> bool:
         return content_type is not None and any(content_type.lower().startswith(t) for t in ALLOWED_CONTENT_TYPES)
+
+    @staticmethod
+    def _is_https(headers: list[tuple[str, str]]) -> bool:
+        return any(
+            (
+                k.lower()
+                in (
+                    "x-forwarded-proto",
+                    "x-forwarded-protocol",
+                    "x-forwarded-scheme",
+                    "x-url-scheme",
+                    "x-scheme",
+                )
+                and "https" in v.lower()
+            )
+            or (k.lower() == "forwarded" and "proto=https" in v.lower())
+            or (k.lower() in ("front-end-https", "x-forwarded-ssl") and v.lower() == "on")
+            for k, v in headers
+        )
 
 
 def _check_writable_fs() -> bool:
