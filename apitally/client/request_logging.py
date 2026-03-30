@@ -509,16 +509,10 @@ class RequestLogger:
         return any(
             (
                 k.lower()
-                in (
-                    "x-forwarded-proto",
-                    "x-forwarded-protocol",
-                    "x-forwarded-scheme",
-                    "x-url-scheme",
-                    "x-scheme",
-                )
-                and "https" in v.lower()
+                in ("x-forwarded-proto", "x-forwarded-protocol", "x-forwarded-scheme", "x-url-scheme", "x-scheme")
+                and v.split(",")[0].strip().lower() == "https"
             )
-            or (k.lower() == "forwarded" and "proto=https" in v.lower())
+            or (k.lower() == "forwarded" and "proto=https" in v.split(",")[0].lower())
             or (k.lower() in ("front-end-https", "x-forwarded-ssl") and v.lower() == "on")
             for k, v in headers
         )
