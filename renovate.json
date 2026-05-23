@@ -1,5 +1,15 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["github>apitally/renovate-config"],
-  "ignoreDeps": ["pytest-asyncio"]
+  "ignoreDeps": ["pytest-asyncio"],
+  "packageRules": [
+    {
+      "matchPackageNames": ["pytest"],
+      "allowedVersions": "<9"
+    },
+    {
+      "matchPackageNames": ["pytest-httpx"],
+      "allowedVersions": "<0.36"
+    }
+  ]
 }
