@@ -1,6 +1,13 @@
 name: Tests
 on:
   push:
+    branches:
+      - main
+    paths-ignore:
+      - .gitignore
+      - LICENSE
+      - README.md
+  pull_request:
     paths-ignore:
       - .gitignore
       - LICENSE
