@@ -43,7 +43,11 @@ class ApitallyClient(ApitallyClientBase):
         self._sync_data_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
     def get_http_client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(base_url=self.hub_url, timeout=REQUEST_TIMEOUT, proxy=self.proxy)
+        if httpx.__version__ >= "0.26.0":
+            # `proxy` parameter was added in version 0.26.0
+            return httpx.AsyncClient(base_url=self.hub_url, timeout=REQUEST_TIMEOUT, proxy=self.proxy)
+        else:
+            return httpx.AsyncClient(base_url=self.hub_url, timeout=REQUEST_TIMEOUT, proxies=self.proxy)
 
     def start_sync_loop(self) -> None:
         if not self.enabled:

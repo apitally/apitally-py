@@ -49,7 +49,7 @@ jobs:
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         deps:
           - fastapi starlette
-          - fastapi==0.110.1 starlette
+          - fastapi==0.94.1 starlette
           - flask
           - flask==2.3.*
           - flask==2.0.3 Werkzeug==2.*
@@ -63,7 +63,7 @@ jobs:
           - django-ninja==1.4.5 django==5.*
           - django-ninja==1.0.0 django==4.*
           - litestar
-          - litestar==2.19.0
+          - litestar==2.4.0
           - blacksheep
           - blacksheep==2.1.0
         exclude:
@@ -80,7 +80,7 @@ jobs:
           - python: "3.13"
             deps: djangorestframework==3.10.* django==2.2.* uritemplate
           - python: "3.14"
-            deps: fastapi==0.110.1 starlette
+            deps: fastapi==0.94.1 starlette
           - python: "3.14"
             deps: flask==2.0.3 Werkzeug==2.*
           - python: "3.14"
@@ -90,7 +90,7 @@ jobs:
           - python: "3.14"
             deps: django-ninja==1.0.0 django==4.*
           - python: "3.14"
-            deps: litestar==2.19.0
+            deps: litestar==2.4.0
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Install uv
