@@ -38,7 +38,7 @@ dependencies = [
 dynamic = ["version"]
 
 [project.optional-dependencies]
-blacksheep = ["blacksheep>=2", "httpx>=0.22.0"]
+blacksheep = ["blacksheep>=2", "httpx>=0.26.0"]
 django_ninja = [
     "django>=2.2",
     "django-ninja>=1.0.0",
@@ -51,10 +51,10 @@ django_rest_framework = [
     "inflection>=0.5.1",                     # required for schema generation
     "requests>=2.26.0",
 ]
-fastapi = ["fastapi>=0.94.1", "starlette>=0.26.1,<2.0.0", "httpx>=0.22.0"]
+fastapi = ["fastapi>=0.110.1", "starlette>=0.37.2,<2.0.0", "httpx>=0.26.0"]
 flask = ["flask>=2.0.0", "requests>=2.26.0"]
-litestar = ["litestar>=2.4.0", "httpx>=0.22.0"]
-starlette = ["starlette>=0.26.1,<2.0.0", "httpx>=0.22.0"]
+litestar = ["litestar>=2.19.0", "httpx>=0.26.0"]
+starlette = ["starlette>=0.37.2,<2.0.0", "httpx>=0.26.0"]
 
 [project.urls]
 Homepage = "https://apitally.io"
@@ -70,10 +70,10 @@ dev = [
 test = [
     "blacksheep[full]",
     "loguru",
-    "pytest~=8.4.0",
+    "pytest~=9.0.0",
     "pytest-asyncio~=0.21.2",
     "pytest-cov~=7.1.0",
-    "pytest-httpx~=0.33.0",
+    "pytest-httpx~=0.36.0",
     "pytest-mock~=3.15.0",
     "requests-mock~=1.12.1",
 ]
