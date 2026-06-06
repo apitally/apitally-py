@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         deps:
           - fastapi starlette
           - fastapi==0.94.1 starlette
@@ -67,10 +67,6 @@ jobs:
           - blacksheep
           - blacksheep==2.1.0
         exclude:
-          - python: "3.9"
-            deps: django-ninja==1.4.5 django==5.*
-          - python: "3.9"
-            deps: django-ninja==1.5.1 django==6.*
           - python: "3.10"
             deps: django-ninja==1.5.1 django==6.*
           - python: "3.11"

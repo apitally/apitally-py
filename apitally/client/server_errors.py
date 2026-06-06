@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 import threading
 import traceback
 from collections import Counter
@@ -87,10 +86,7 @@ def get_truncated_exception_traceback(exception: BaseException) -> str:
     cutoff = MAX_EXCEPTION_TRACEBACK_LENGTH - len(prefix)
     lines = []
     length = 0
-    if sys.version_info >= (3, 10):
-        traceback_lines = traceback.format_exception(exception)
-    else:
-        traceback_lines = traceback.format_exception(type(exception), exception, exception.__traceback__)
+    traceback_lines = traceback.format_exception(exception)
     for line in traceback_lines[::-1]:
         if length + len(line) > cutoff:
             lines.append(prefix)
