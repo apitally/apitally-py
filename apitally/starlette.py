@@ -288,7 +288,7 @@ class ApitallyMiddleware:
             routes = request.app.routes
         for route in routes:
             if hasattr(route, "routes"):
-                path = self.get_route_path(request, routes=route.routes)
+                path = self.get_route_path(request, routes=route.routes)  # ty: ignore[invalid-argument-type]
                 if path is not None:
                     return path
             elif hasattr(route, "path"):
@@ -350,7 +350,7 @@ def _get_routes(app: Union[ASGIApp, Router]) -> list[BaseRoute]:
     if isinstance(app, Router):
         return app.routes
     elif hasattr(app, "app"):
-        return _get_routes(app.app)
+        return _get_routes(app.app)  # ty: ignore[invalid-argument-type]
     return []  # pragma: no cover
 
 

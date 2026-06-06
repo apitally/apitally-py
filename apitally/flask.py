@@ -223,14 +223,14 @@ class ApitallyMiddleware:
             g.unhandled_exception = e
             return original_handle_exception(e)
 
-        self.app.handle_exception = handle_exception  # type: ignore[method-assign]
+        self.app.handle_exception = handle_exception  # ty: ignore[invalid-assignment]
 
     def get_route_name_and_path(self, environ: WSGIEnvironment) -> tuple[Optional[str], Optional[str]]:
         url_adapter = self.app.url_map.bind_to_environ(environ)
         try:
             endpoint, _ = url_adapter.match()
             rule = self.app.url_map._rules_by_endpoint[endpoint][0]
-            name = self.app.view_functions[endpoint].__name__
+            name = self.app.view_functions[endpoint].__name__  # ty: ignore[unresolved-attribute]
             return name, rule.rule
         except (NotFound, KeyError):
             return None, None

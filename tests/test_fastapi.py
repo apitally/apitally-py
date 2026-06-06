@@ -10,7 +10,7 @@ from .constants import CLIENT_ID, ENV
 
 
 if find_spec("fastapi") is None:
-    pytest.skip("fastapi is not available", allow_module_level=True)
+    pytest.skip("fastapi is not available", allow_module_level=True)  # ty: ignore[too-many-positional-arguments]
 
 if TYPE_CHECKING:
     from fastapi import FastAPI

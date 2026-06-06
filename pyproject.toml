@@ -63,9 +63,9 @@ Repository = "https://github.com/apitally/apitally-py"
 
 [dependency-groups]
 dev = [
-    "mypy~=1.19.0",
     "pre-commit>=4.5.0",
     "ruff~=0.15.0",
+    "ty~=0.0.44",
 ]
 test = [
     "blacksheep[full]",
@@ -128,9 +128,8 @@ select = ["E", "F", "W", "I"]
 [tool.ruff.lint.isort]
 lines-after-imports = 2
 
-[tool.mypy]
-python_version = "3.14"
-check_untyped_defs = true
+[tool.ty.environment]
+python-version = "3.14"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

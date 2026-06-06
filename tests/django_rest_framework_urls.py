@@ -17,7 +17,7 @@ class FooView(APIView):
 
 class FooBarView(APIView):
     def get(self, request: Request, bar: int) -> Response:
-        request._request.apitally_consumer = "test"  # type: ignore[attr-defined]
+        request._request.apitally_consumer = "test"  # ty: ignore[unresolved-attribute]
         return Response({"foo": bar})
 
 

@@ -71,7 +71,7 @@ def use_apitally(
             setattr(request, "_route_pattern", match.pattern.decode())
         return match
 
-    app.router.get_match = _wrapped_router_get_match  # type: ignore[assignment,method-assign]
+    app.router.get_match = _wrapped_router_get_match  # ty: ignore[invalid-assignment]
 
     if kwargs and request_logging_config is None:
         request_logging_config = RequestLoggingConfig.from_kwargs(kwargs)
@@ -282,7 +282,7 @@ def _get_paths(app: Application) -> list[dict[str, str]]:
     methods = ("get", "put", "post", "delete", "patch")
     for path, path_item in openapi.get_paths(app).items():
         for method in methods:
-            operation: Operation = getattr(path_item, method, None)
+            operation: Optional[Operation] = getattr(path_item, method, None)
             if operation is not None:
                 item = {"method": method.upper(), "path": path}
                 if operation.summary:

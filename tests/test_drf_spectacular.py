@@ -11,7 +11,7 @@ from .constants import CLIENT_ID, ENV
 
 
 if find_spec("drf_spectacular") is None:
-    pytest.skip("drf-spectacular is not available", allow_module_level=True)
+    pytest.skip("drf-spectacular is not available", allow_module_level=True)  # ty: ignore[too-many-positional-arguments]
 
 
 @pytest.fixture(scope="module")

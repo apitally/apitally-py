@@ -329,8 +329,8 @@ class RequestLogger:
                 try:
                     item = self.write_deque.popleft()
                     item = self._apply_masking(item)
-                    item["request"] = _skip_empty_values(item["request"])  # type: ignore[typeddict-item]
-                    item["response"] = _skip_empty_values(item["response"])  # type: ignore[typeddict-item]
+                    item["request"] = _skip_empty_values(item["request"])  # ty: ignore[invalid-assignment]
+                    item["response"] = _skip_empty_values(item["response"])  # ty: ignore[invalid-assignment]
                     self.file.write_line(self.serialize(item))
                 except IndexError:
                     break
@@ -534,7 +534,7 @@ def _get_json_serializer() -> Callable[[Any], bytes]:
         raise TypeError  # pragma: no cover
 
     try:
-        import orjson  # type: ignore
+        import orjson  # ty: ignore[unresolved-import]
 
         def orjson_dumps(obj: Any) -> bytes:
             return orjson.dumps(obj, default=default)
@@ -551,7 +551,7 @@ def _get_json_serializer() -> Callable[[Any], bytes]:
 
 def _get_json_deserializer() -> Callable[[bytes], Any]:
     try:
-        import orjson  # type: ignore
+        import orjson  # ty: ignore[unresolved-import]
 
         return orjson.loads
     except ImportError:

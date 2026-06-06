@@ -9,7 +9,7 @@ from requests_mock import Mocker as RequestsMocker
 
 
 if find_spec("opentelemetry.instrumentation") is None:
-    pytest.skip("opentelemetry.instrumentation is not available", allow_module_level=True)
+    pytest.skip("opentelemetry.instrumentation is not available", allow_module_level=True)  # ty: ignore[too-many-positional-arguments]
 
 if TYPE_CHECKING:
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter

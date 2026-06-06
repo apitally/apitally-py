@@ -11,7 +11,7 @@ from .constants import CLIENT_ID, ENV
 
 
 if find_spec("litestar") is None:
-    pytest.skip("litestar is not available", allow_module_level=True)
+    pytest.skip("litestar is not available", allow_module_level=True)  # ty: ignore[too-many-positional-arguments]
 else:
     # Need to import Stream at package level to avoid NameError in Litestar
     from litestar.response import Stream
@@ -243,7 +243,7 @@ def test_middleware_tracing(client: TestClient, mocker: MockerFixture):
 
 def test_get_startup_data(app: Litestar, mocker: MockerFixture):
     mock = mocker.patch("apitally.client.client_asyncio.ApitallyClient.set_startup_data")
-    app.on_startup[0](app)  # type: ignore[call-arg]
+    app.on_startup[0](app)  # ty: ignore[too-many-positional-arguments]
     mock.assert_called_once()
     data = mock.call_args.args[0]
     assert len(data["openapi"]) > 0
