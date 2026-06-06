@@ -47,7 +47,7 @@ class ApitallyClient(ApitallyClientBase):
             # `proxy` parameter was added in version 0.26.0
             return httpx.AsyncClient(base_url=self.hub_url, timeout=REQUEST_TIMEOUT, proxy=self.proxy)
         else:
-            return httpx.AsyncClient(base_url=self.hub_url, timeout=REQUEST_TIMEOUT, proxies=self.proxy)  # type: ignore[call-arg]
+            return httpx.AsyncClient(base_url=self.hub_url, timeout=REQUEST_TIMEOUT, proxies=self.proxy)
 
     def start_sync_loop(self) -> None:
         if not self.enabled:
