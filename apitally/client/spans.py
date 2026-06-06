@@ -29,7 +29,7 @@ class SpanCollector(SpanProcessor):
     def _setup_tracer_provider(self) -> None:
         provider = trace_api.get_tracer_provider()
         if hasattr(provider, "add_span_processor") and callable(provider.add_span_processor):
-            provider.add_span_processor(self)
+            provider.add_span_processor(self)  # ty: ignore[call-top-callable]
         else:
             provider = TracerProvider()
             trace_api.set_tracer_provider(provider)

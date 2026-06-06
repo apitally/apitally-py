@@ -13,7 +13,7 @@ from .constants import CLIENT_ID, ENV
 
 
 if find_spec("starlette") is None:
-    pytest.skip("starlette is not available", allow_module_level=True)
+    pytest.skip("starlette is not available", allow_module_level=True)  # ty: ignore[too-many-positional-arguments]
 else:
     # Need to import BackgroundTasks at package level to avoid NameError in FastAPI
     from starlette.background import BackgroundTasks

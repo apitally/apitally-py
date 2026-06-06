@@ -12,7 +12,7 @@ from .constants import CLIENT_ID, ENV
 
 
 if find_spec("ninja") is None:
-    pytest.skip("django-ninja is not available", allow_module_level=True)
+    pytest.skip("django-ninja is not available", allow_module_level=True)  # ty: ignore[too-many-positional-arguments]
 
 if TYPE_CHECKING:
     from django.http import HttpRequest

@@ -31,7 +31,7 @@ def bar(request: HttpRequest, item: BarRequestBody) -> dict[str, str]:
 
 @api.put("/baz")
 def baz(request: HttpRequest) -> str:
-    request.apitally_consumer = "baz"  # type: ignore[attr-defined]
+    request.apitally_consumer = "baz"  # ty: ignore[unresolved-attribute]
     raise ValueError("baz")
 
 
@@ -52,5 +52,5 @@ def traces(request: HttpRequest) -> str:
 
 
 urlpatterns = [
-    path("api/", api.urls),  # type: ignore[arg-type]
+    path("api/", api.urls),
 ]

@@ -315,7 +315,7 @@ class ApitallyMiddleware:
 
     def get_consumer(self, request: HttpRequest) -> Optional[ApitallyConsumer]:
         if hasattr(request, "apitally_consumer") and request.apitally_consumer:
-            return ApitallyConsumer.from_string_or_object(request.apitally_consumer)
+            return ApitallyConsumer.from_string_or_object(request.apitally_consumer)  # ty: ignore[invalid-argument-type]
         if hasattr(request, "consumer_identifier") and request.consumer_identifier:
             # Keeping this for legacy support
             warn(
@@ -323,7 +323,7 @@ class ApitallyMiddleware:
                 "use `request.apitally_consumer` instead.",
                 DeprecationWarning,
             )
-            return ApitallyConsumer.from_string_or_object(request.consumer_identifier)
+            return ApitallyConsumer.from_string_or_object(request.consumer_identifier)  # ty: ignore[invalid-argument-type]
         if self.config is not None and self.config.consumer_callback is not None:
             consumer = self.config.consumer_callback(request)
             return ApitallyConsumer.from_string_or_object(consumer)
@@ -427,11 +427,11 @@ def _get_drf_schema(urlconfs: list[Optional[str]]) -> Optional[dict[str, Any]]:
             schema = generator.get_schema()
             if schema is not None and len(schema["paths"]) > 0:
                 schemas.append(schema)
-    return None if len(schemas) != 1 else schemas[0]  # type: ignore[return-value]
+    return None if len(schemas) != 1 else schemas[0]  # ty: ignore[invalid-return-type]
 
 
 def _get_drf_spectacular_schema(urlconfs: list[Optional[str]]) -> Optional[dict[str, Any]]:
-    from drf_spectacular.generators import SchemaGenerator  # type: ignore[import-not-found]
+    from drf_spectacular.generators import SchemaGenerator
 
     schemas = []
     for urlconf in urlconfs:

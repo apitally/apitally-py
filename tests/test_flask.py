@@ -11,7 +11,7 @@ from .constants import CLIENT_ID, ENV
 
 
 if find_spec("flask") is None:
-    pytest.skip("flask is not available", allow_module_level=True)
+    pytest.skip("flask is not available", allow_module_level=True)  # ty: ignore[too-many-positional-arguments]
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -30,7 +30,7 @@ def app(module_mocker: MockerFixture) -> Flask:
     module_mocker.patch("apitally.flask.ApitallyMiddleware.delayed_set_startup_data")
 
     app = Flask("test")
-    app.wsgi_app = ApitallyMiddleware(  # type: ignore[method-assign]
+    app.wsgi_app = ApitallyMiddleware(  # ty: ignore[invalid-assignment]
         app,
         client_id=CLIENT_ID,
         env=ENV,

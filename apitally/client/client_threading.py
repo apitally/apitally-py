@@ -41,9 +41,9 @@ try:
         ipython.events.register("post_execute", callback)
         return func
 
-    ipython = get_ipython()  # type: ignore
+    ipython = get_ipython()  # ty: ignore[unresolved-reference]
 except NameError:
-    from atexit import register as register_exit  # type: ignore[assignment]
+    from atexit import register as register_exit
 
 
 class ApitallyClient(ApitallyClientBase):

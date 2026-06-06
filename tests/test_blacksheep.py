@@ -11,7 +11,7 @@ from .constants import CLIENT_ID, ENV
 
 
 if find_spec("blacksheep") is None:
-    pytest.skip("blacksheep is not available", allow_module_level=True)
+    pytest.skip("blacksheep is not available", allow_module_level=True)  # ty: ignore[too-many-positional-arguments]
 else:
     # Need to import these at package level to avoid NameError in BlackSheep
     from blacksheep import Application, Request, Response

@@ -5,7 +5,7 @@ import pytest
 
 
 if find_spec("sentry_sdk") is None:
-    pytest.skip("sentry-sdk is not available", allow_module_level=True)
+    pytest.skip("sentry-sdk is not available", allow_module_level=True)  # ty: ignore[too-many-positional-arguments]
 
 
 def test_get_sentry_event_id_async():

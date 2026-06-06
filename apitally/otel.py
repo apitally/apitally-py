@@ -7,17 +7,17 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterator, ParamSpec,
 
 
 if TYPE_CHECKING:
-    from httpx import AsyncClient as HttpxAsyncClient  # type: ignore[import-not-found]
-    from httpx import Client as HttpxClient  # type: ignore[import-not-found]
-    from mysql.connector.abstracts import MySQLConnectionAbstract  # type: ignore[import-not-found]
-    from mysql.connector.pooling import PooledMySQLConnection  # type: ignore[import-not-found]
+    from httpx import AsyncClient as HttpxAsyncClient
+    from httpx import Client as HttpxClient
+    from mysql.connector.abstracts import MySQLConnectionAbstract  # ty: ignore[unresolved-import]
+    from mysql.connector.pooling import PooledMySQLConnection  # ty: ignore[unresolved-import]
     from opentelemetry.trace import Span
     from opentelemetry.util.types import Attributes as SpanAttributes
-    from psycopg import AsyncConnection as PsycopgAsyncConnection  # type: ignore[import-not-found]
-    from psycopg import Connection as PsycopgConnection  # type: ignore[import-not-found]
-    from psycopg2._psycopg import connection as Psycopg2Connection  # type: ignore[import-not-found]
-    from sqlalchemy import Engine as SQLAlchemyEngine  # type: ignore[import-not-found]
-    from sqlalchemy.ext.asyncio import AsyncEngine as SQLAlchemyAsyncEngine  # type: ignore[import-not-found]
+    from psycopg import AsyncConnection as PsycopgAsyncConnection  # ty: ignore[unresolved-import]
+    from psycopg import Connection as PsycopgConnection  # ty: ignore[unresolved-import]
+    from psycopg2._psycopg import connection as Psycopg2Connection
+    from sqlalchemy import Engine as SQLAlchemyEngine  # ty: ignore[unresolved-import]
+    from sqlalchemy.ext.asyncio import AsyncEngine as SQLAlchemyAsyncEngine  # ty: ignore[unresolved-import]
 
 
 P = ParamSpec("P")
@@ -39,11 +39,11 @@ def instrument(func: Callable[P, R]) -> Union[Callable[P, R], Callable[P, Awaita
         raise RuntimeError("`instrument()` requires the `opentelemetry-api` package")
 
     tracer = trace.get_tracer("apitally.otel")
-    span_name = func.__name__
+    span_name = func.__name__  # ty: ignore[unresolved-attribute]
     span_attributes: dict[str, str | int] = {
-        "code.file.path": func.__code__.co_filename,
-        "code.line.number": func.__code__.co_firstlineno,
-        "code.function.name": f"{func.__module__}.{func.__qualname__}",
+        "code.file.path": func.__code__.co_filename,  # ty: ignore[unresolved-attribute]
+        "code.line.number": func.__code__.co_firstlineno,  # ty: ignore[unresolved-attribute]
+        "code.function.name": f"{func.__module__}.{func.__qualname__}",  # ty: ignore[unresolved-attribute]
     }
 
     if iscoroutinefunction(func):
@@ -182,7 +182,7 @@ def instrument_sqlalchemy(
         raise RuntimeError("`instrument_sqlalchemy()` requires the `opentelemetry-instrumentation-sqlalchemy` package")
 
     with suppress(ImportError):
-        from sqlalchemy.ext.asyncio import AsyncEngine  # type: ignore[import-not-found]
+        from sqlalchemy.ext.asyncio import AsyncEngine  # ty: ignore[unresolved-import]
 
         if isinstance(engine, AsyncEngine):
             engine = engine.sync_engine

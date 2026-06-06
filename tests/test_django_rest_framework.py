@@ -12,7 +12,7 @@ from .constants import CLIENT_ID, ENV
 
 
 if find_spec("rest_framework") is None:
-    pytest.skip("django-rest-framework is not available", allow_module_level=True)
+    pytest.skip("django-rest-framework is not available", allow_module_level=True)  # ty: ignore[too-many-positional-arguments]
 
 if TYPE_CHECKING:
     from rest_framework.test import APIClient

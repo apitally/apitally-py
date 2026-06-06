@@ -122,7 +122,7 @@ class ApitallyPlugin(InitPluginProtocol):
 
     def middleware_factory(self, app: ASGIApp) -> ASGIApp:
         async def middleware(scope: Scope, receive: Receive, send: Send) -> None:
-            if not self.client.enabled or scope["type"] != ScopeType.HTTP or scope["method"] == "OPTIONS":
+            if not self.client.enabled or scope["type"] != ScopeType.HTTP or scope["method"] == "OPTIONS":  # ty: ignore[invalid-key]
                 await app(scope, receive, send)
                 return
 
@@ -286,7 +286,7 @@ class ApitallyPlugin(InitPluginProtocol):
 
     def get_route_name(self, request: Request) -> Optional[str]:
         try:
-            return request.route_handler.fn.__name__
+            return request.route_handler.fn.__name__  # ty: ignore[unresolved-attribute]
         except Exception:  # pragma: no cover
             return None
 
