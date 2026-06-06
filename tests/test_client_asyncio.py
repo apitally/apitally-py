@@ -8,7 +8,6 @@ import time
 from typing import TYPE_CHECKING
 
 import pytest
-import pytest_httpx
 from pytest_httpx import HTTPXMock
 from pytest_mock import MockerFixture
 
@@ -132,10 +131,7 @@ async def test_send_log_data(client: ApitallyClient, httpx_mock: HTTPXMock):
     assert json_data["request"]["path"] == "/test"
     assert json_data["response"]["status_code"] == 200
 
-    if pytest_httpx.__version__ < "0.31.0":
-        httpx_mock.reset(True)  # type: ignore[call-arg]
-    else:
-        httpx_mock.reset()
+    httpx_mock.reset()
 
     # Test 402 response with Retry-After header
     log_request(client)
