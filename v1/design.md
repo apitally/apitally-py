@@ -14,10 +14,23 @@ The headline goal: v1 is a clean break, OpenTelemetry-based, with one-line setup
 
 ## 2. Integration with existing OTel setups
 
-The SDK detects whether the user already has OpenTelemetry configured and behaves accordingly.
+The SDK detects whether the user already has OpenTelemetry configured and behaves accordingly. Only the `TracerProvider` participates in cooperative mode; the `MeterProvider` and `LoggerProvider` are always ours.
 
-- **No existing OTel**: install our own `TracerProvider`, `MeterProvider`, `LoggerProvider` with our exporters, processors, resource attributes.
-- **OTel already configured** (e.g., user has Datadog, Honeycomb, or their own collector): don't replace anything. Attach our OTLP `BatchSpanProcessor`, `MetricReader`, and `LogRecordProcessor` additively to the existing providers. The user's other backends keep receiving telemetry; Apitally also receives it.
+- **No existing OTel**: install our own `TracerProvider` with our OTLP `BatchSpanProcessor`, resource, and span limits.
+- **OTel TracerProvider already configured** (e.g., user has Datadog, Honeycomb, or their own collector): don't replace it. Attach our OTLP `BatchSpanProcessor` additively to the existing `TracerProvider`.
+- **MeterProvider and LoggerProvider**: always construct our own, regardless of what the user has.
+
+### Attribute length limit
+
+In own-it-all mode, construct the `TracerProvider` with `SpanLimits(max_attribute_length=65_536)`. The OTel default is unlimited, but if the user has set `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT` in their environment, that value applies unless we pass an explicit numeric override. 65 KiB comfortably fits a 50,000-byte body (per spec § 6.3).
+
+### Environment resolution and the `Apitally-Env` header
+
+The `Apitally-Env` header (spec § 4) MUST match `deployment.environment.name` on the Resource. Resolve once at `init_apitally(...)` and pass to our OTLP exporter's `headers={...}`.
+
+- **Own-it-all mode**: env = `env=` kwarg / `APITALLY_ENV` / `"prod"`. Set both `deployment.environment.name` on our Resource AND `Apitally-Env` on the exporter from this single value.
+- **Cooperative mode**: env = user's `deployment.environment.name` (from `user_provider.resource.attributes`) if present, else `env=` kwarg / `APITALLY_ENV` / `"prod"`. Use this value for `Apitally-Env` on our exporter. We do not modify the user's Resource.
+- **Conflict**: if cooperative-mode AND the user's Resource has `deployment.environment.name` AND the caller passed `env=` with a different value, log a warning and use the Resource value. Users who want a separate Apitally env must either change their OTel env or use own-it-all mode.
 
 ## 3. Span filtering — single mechanism
 
@@ -25,8 +38,9 @@ Apitally only ingests request-rooted traces. Non-request spans (background worke
 
 One mechanism handles this in both own-it-all and cooperative modes: a `SpanProcessor` wrapper around our OTLP exporter.
 
-- On `on_start`: read the parent span's keep-decision (from a small in-flight `span_id → bool` map). For root spans (no parent): `keep = (span.kind == SpanKind.SERVER)`. Children inherit the parent's decision.
-- On `on_end`: if `keep` is true, forward to the wrapped batch processor; otherwise drop. Remove the span_id from the in-flight map.
+- On `on_start`: read the parent's `span_id` from `span.parent` (a `SpanContext`), then look up its `(keep, server_span_id)` in the in-flight map. For root spans (`span.parent is None`): SERVER → `(True, own_span_id)`; otherwise `(False, None)`. Children inherit the parent's entry.
+- On `on_end`: if `keep` is true, forward to the wrapped batch processor; otherwise drop. Pop the span_id from the in-flight map.
+- The `server_span_id` carried in the entry exists so the `LogRecordProcessor` (§10) can stamp `apitally.request.server_span_id` on logs emitted inside arbitrarily nested children of the SERVER.
 - In cooperative mode, the user's other exporters still get all spans (background work included). Only our exporter filters.
 
 This is the only filtering mechanism. No global `ApitallyRootSampler`.
@@ -50,6 +64,8 @@ The stock instrumentor produces the SERVER span and sets standard HTTP attribute
 - Histogram recording at request end (the three exponential histograms from the spec)
 - Startup event (routes + OpenAPI) emission
 - Sentry event-id linkage (when Sentry is detected)
+
+Every ASGI integration is configured with `exclude_spans=["receive", "send"]` — FastAPI, Starlette, and the generic ASGI fallback for BlackSheep directly, and Litestar via its OTel plugin's `OpenTelemetryConfig`. By default they emit one INTERNAL span per ASGI `receive()` and `send()` call — pure noise per spec § 6.6.
 
 ## 5. Public API
 
@@ -173,10 +189,12 @@ Auto-install OTel's `LoggingHandler` on the root logger as part of `init_apitall
 
 - Level: `NOTSET` — capture everything that makes it through user-configured per-logger thresholds.
 - Opt out via `capture_logs=False` kwarg for users with strong opinions about their logging stack.
-- A ContextVar set by our middleware at request entry holds `(trace_id, server_span_id_hex)` for the active SERVER span.
-- Our `LogRecordProcessor` reads the ContextVar in `on_emit(...)` and writes `apitally.request.server_span_id` (+ ensures `trace_id`) onto the record.
-- A filter (same processor) drops any LogRecord lacking `apitally.request.server_span_id` UNLESS its instrumentation scope is `apitally` (preserves the startup event, which is emitted on the logs signal under scope `apitally` per spec § 9 with no request context).
-- Net effect: only request-scoped logs reach the OTLP export. No bandwidth wasted on background or library noise.
+- Stock `LoggingHandler` already stamps `trace_id` and `span_id` on every record from the active span at emit time.
+- We additionally need `apitally.request.server_span_id` on every request-scoped record — the cloud ingester reads it directly (spec § 9) to derive `request_uuid = hash(trace_id + server_span_id)` and join logs to requests. The handler's `span_id` is the immediate active span (often an INTERNAL child of SERVER) and cannot be used.
+- Mechanism: extend the in-flight map maintained by the `ApitallySpanProcessor` (see §3) from `span_id → keep_bool` to `span_id → (keep_bool, server_span_id)`. On `on_start`: SERVER root → `(True, own_span_id)`; other root → `(False, None)`; child → inherit parent's entry. On `on_end`: pop.
+- Our `LogRecordProcessor.on_emit(...)` reads `record.span_id`, looks it up in the same in-flight map, and writes `apitally.request.server_span_id = server_span_id.hex()` onto the record.
+- The same processor drops any record without an `apitally.request.server_span_id` resolution, UNLESS its instrumentation scope is `apitally` (preserves the startup event, which is emitted on the logs signal under scope `apitally` per spec § 9 with no request context).
+- Net effect: only request-scoped logs reach the OTLP export, and every one carries the correct SERVER span id regardless of how deeply nested the emitting span was. No ContextVar. No dependency on middleware ordering.
 
 ## 11. Dependencies
 
@@ -326,6 +344,5 @@ Idiomatic design wins where it must (decorators vs. annotations vs. interceptors
 
 Things worth resolving before or during implementation:
 
-- **Resource attribute merging in cooperative mode**. The spec requires `telemetry.distro.name = "apitally"`, `telemetry.distro.version`, `service.instance.id` on Resource. In cooperative mode the user already has a TracerProvider with their own Resource; we need to add our attrs to spans we export without mutating the user's Resource. Likely answer: a wrapper SpanProcessor that, before forwarding to our OTLP exporter, creates a span variant with our distro attrs merged in. ~20 lines.
 - **Testing strategy**. The current SDK has extensive per-framework integration tests (httpx + TestClient against real framework apps). v1 keeps this pattern but assertions are rewritten against OTel-side data (spans, metrics, logs) instead of legacy Hub payloads. Some tests can use OTel's `InMemorySpanExporter` etc. for fast assertions.
 - **Migration guide content**. A docs page that's a 1:1 lookup table from 0.x to v1 patterns. Out of scope for this design doc.

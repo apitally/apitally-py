@@ -31,24 +31,14 @@ On every export request, the SDK MUST send:
 |---|---|---|
 | `Apitally-Env` | `apitally-env` | The SDK's resolved environment, identical to `deployment.environment.name` (default `prod`). Drives real-time online status, stamped at receive time. |
 
-And SHOULD send:
-
-| HTTP header | gRPC metadata | Value |
-|---|---|---|
-| `Apitally-Message-Id` | `apitally-message-id` | A UUID (v4) generated per export payload. |
-
-The server derives the message id from `Apitally-Message-Id` when it is a valid UUID, falling back to a hash of the payload; duplicate exports with the same id are deduplicated downstream (NATS message dedup, ClickHouse insert dedup). Retries of a failed export MUST resend byte-identical payloads with the same message id.
-
 ## 5. Resource attributes
 
 | Attribute | Requirement | Notes |
 |---|---|---|
-| `service.name` | MUST | App/service name. |
 | `service.instance.id` | MUST | Unique per process instance, regenerated on restart (e.g. UUIDv4 at startup). Server falls back to `service.name` if absent, collapsing all instances into one. |
 | `deployment.environment.name` | SHOULD | Apitally environment. Server also accepts deprecated `deployment.environment`; defaults to `prod` when absent. Normalized by slugify, max 32 chars (`Production EU` → `production-eu`). MUST match the `Apitally-Env` header value. Environments are auto-created on first sight. |
-| `telemetry.distro.name` | MUST | `apitally-py` for Python SDK, `apitally-js` for JavaScript SDK, etc. |
-| `telemetry.distro.version` | MUST | SDK version |
-| `telemetry.sdk.*` | — | Set automatically by the OTel SDK. |
+| `telemetry.distro.name` | SHOULD | `apitally-py` for Python SDK, `apitally-js` for JavaScript SDK, etc. |
+| `telemetry.distro.version` | SHOULD | SDK version |
 
 Server-side instance identity is `uuid5(namespace, "{app_id}:{env}:{service.instance.id}")`; a restart is a new instance.
 
@@ -111,7 +101,7 @@ The SDK MUST NOT export framework-internal `* http send` / `* http receive` INTE
 
 ### 6.7 Redaction
 
-Redaction MUST run before any query-param, header, or body attribute (6.1, 6.3) is set. Patterns are matched case-insensitively against the parameter, header, or field name (substring, anywhere in the name); a matched value is replaced with `******`. User-supplied patterns are added to the defaults below, never replace them.
+Redaction MUST run before any query-param, header, or body attribute (6.1, 6.3) is set. Patterns are matched case-insensitively against the parameter, header, or field name (substring, anywhere in the name); a matched value is replaced with `[REDACTED]` (matches OTel's `http_capture_headers_server_request` convention). User-supplied patterns are added to the defaults below, never replace them.
 
 | Target | Default name patterns |
 |---|---|
@@ -235,7 +225,7 @@ Success is HTTP 200 / gRPC `OK` with an empty `Export*ServiceResponse` (no `part
 | Payload > 4 MiB | 413 (ingress) | `RESOURCE_EXHAUSTED` (gRPC default) | no |
 | Server overloaded / upstream down | 503 | `UNAVAILABLE` (+ `RetryInfo` 1 s on concurrency cap) | yes — native backoff |
 
-Rate limits: 1800/minute and 200/second per app per signal. The SDK MUST rely on the OTel exporter's native retry/backoff and MUST NOT implement custom retry; per section 4, retried payloads are byte-identical with a stable message id.
+Rate limits: 1800/minute and 200/second per app per signal. The SDK MUST rely on the OTel exporter's native retry/backoff and MUST NOT implement custom retry.
 
 ## 11. SDK API guidance (non-normative)
 
