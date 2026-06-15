@@ -1,0 +1,24 @@
+{
+  "languages": {
+    "Python": {
+      "language_servers": ["ty", "ruff"],
+      "format_on_save": "on",
+    },
+  },
+  "lsp": {
+    "ty": {
+      "binary": {
+        "path": ".venv/bin/ty",
+        "arguments": ["server"],
+      },
+    },
+  },
+  "file_scan_exclusions": [
+    ".git/",
+    "**/__pycache__",
+    "**/.DS_Store",
+    "**/.pytest_cache",
+    "**/.ruff_cache",
+    "**/.venv",
+  ],
+}
