@@ -143,14 +143,22 @@ Setup happens at app start; activation (network threads, heartbeat, startup even
 
 ### Activate phase
 
-- **Non-Django frameworks**: activate **eagerly** inside `init_apitally(app, ...)`. The user calling it with an `app` is itself proof we're in a server bootstrap. Exporters attached, heartbeat starts, startup event fires.
-- **Django**: activate on first `django.core.signals.request_started`. settings.py can't distinguish "about to serve HTTP" from "about to run `migrate`" or "Celery worker bootstrapping," so the signal is the only robust gate. New Relic uses the same pattern.
+- **Non-Django frameworks**: activate **eagerly** inside `init_apitally(app, ...)`. Calling it with an `app` is proof we're in a server bootstrap. Exporters attached, heartbeat starts, startup event fires.
+- **Django**: activate on first `django.core.signals.request_started`. settings.py can't distinguish "about to serve HTTP" from "about to run `migrate`" or "Celery worker bootstrapping," so the signal is the earliest safe gate. New Relic uses the same pattern.
 
-### Post-fork re-activation (all frameworks)
+Activation starts the exporter and heartbeat threads. Under `gunicorn --preload` (and uWSGI without `lazy-apps`) the non-Django eager path runs in the **master, before the fork**, so activation must be fork-safe (next section). The Django path activates from `request_started`, which only fires in a worker, so it is already post-fork.
 
-On every middleware request entry, check `os.getpid() != _activated_pid`. If different, the process forked since activation (gunicorn `--preload`, uWSGI without `lazy-apps`, etc.). Drop the stale exporter references, re-activate in the new PID. One PID compare per request hot path.
+### Fork safety
 
-This sidesteps every detection-edge-case at once: management commands, Celery workers, pytest, REPLs, autoreloader parents — none of them ever trigger `request_started` or our middleware, so they configure but never activate.
+Forking a multi-threaded process is deprecated from Python 3.12 on and risks deadlock: the child inherits any lock held by a thread that does not survive the fork. Activation runs threads, so they must not be left alive across a fork. We register `os.register_at_fork` handlers once, in the configure phase (registration itself is thread-free):
+
+- **before**: shut down the exporter and heartbeat (signal, then join) so the process is single-threaded at the instant of `fork()`. This removes both the deprecation warning and the inherited-lock deadlock.
+- **after, in child**: re-activate in the new PID. Mint a fresh `service.instance.id` (§5, regenerated per process instance) and restart the exporter and heartbeat. The child is the process that serves requests.
+- **after, in parent**: do nothing. The master never serves requests, so keeping a live exporter or heartbeat there would register a phantom always-online instance (spec §5, §7.3).
+
+A single-process deployment never forks: no handler fires and the startup threads keep running, which is correct by default.
+
+Non-serving contexts stay inert regardless: Django management commands, Celery workers, pytest, REPLs, and autoreloader parents either never fire `request_started` or are caught by test-environment detection, so they configure but never activate.
 
 ### Test-environment auto-detection
 
@@ -324,7 +332,7 @@ apitally/
     consumer.py                     # set_consumer + ContextVar
     redaction.py                    # default + user patterns, applied on body/headers/query
     config.py                       # kwarg/env-var loading, idempotency state
-    activation.py                   # configure/activate state machine, post-fork PID check
+    activation.py                   # configure/activate state machine, os.register_at_fork handlers
     sentry.py                       # auto-detect + event-id hook
 ```
 
