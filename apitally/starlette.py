@@ -11,14 +11,14 @@ from httpx import HTTPStatusError, Proxy
 from starlette.applications import Starlette
 from starlette.datastructures import Headers
 from starlette.requests import Request
-from starlette.routing import BaseRoute, Match, Router
+from starlette.routing import BaseRoute, Match, Route, Router
 from starlette.schemas import EndpointInfo, SchemaGenerator
 from starlette.testclient import TestClient
 from starlette.types import ASGIApp, Lifespan, Message, Receive, Scope, Send
 
 from apitally.client.client_asyncio import ApitallyClient
 from apitally.client.consumers import Consumer as ApitallyConsumer
-from apitally.client.logging import LogHandler, setup_log_capture
+from apitally.client.logging import LogHandler, get_logger, setup_log_capture
 from apitally.client.request_logging import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
@@ -36,6 +36,8 @@ except ImportError:
 
 
 __all__ = ["ApitallyMiddleware", "ApitallyConsumer", "RequestLoggingConfig", "set_consumer"]
+
+logger = get_logger(__name__)
 
 
 class ApitallyMiddleware:
@@ -285,6 +287,11 @@ class ApitallyMiddleware:
 
     def get_route_path(self, request: Request, routes: Optional[list[BaseRoute]] = None) -> Optional[str]:
         if routes is None:
+            # FastAPI 0.138+ stores the resolved route (with the full path) in the scope
+            route_context = request.scope.get("fastapi", {}).get("effective_route_context")
+            route_path = getattr(route_context, "path", None)
+            if route_path:
+                return request.scope.get("root_path", "") + route_path
             routes = request.app.routes
         for route in routes:
             if hasattr(route, "routes"):
@@ -323,8 +330,12 @@ def _get_startup_data(
     data: dict[str, Any] = {}
     if openapi_url and (openapi := _get_openapi(app, openapi_url)):
         data["openapi"] = openapi
-    if endpoints := _get_endpoint_info(app):
-        data["paths"] = [{"path": endpoint.path, "method": endpoint.http_method} for endpoint in endpoints]
+    try:
+        data["paths"] = [
+            {"path": endpoint.path, "method": endpoint.http_method} for endpoint in _get_endpoint_info(app)
+        ]
+    except Exception:  # pragma: no cover
+        logger.exception("Failed to get list of endpoints")
     data["versions"] = get_versions("fastapi", "starlette", app_version=app_version)
     data["client"] = "python:starlette"
     return data
@@ -347,11 +358,31 @@ def _get_endpoint_info(app: ASGIApp) -> list[EndpointInfo]:
 
 
 def _get_routes(app: Union[ASGIApp, Router]) -> list[BaseRoute]:
-    if isinstance(app, Router):
-        return app.routes
-    elif hasattr(app, "app"):
-        return _get_routes(app.app)  # ty: ignore[invalid-argument-type]
-    return []  # pragma: no cover
+    if not isinstance(app, Router):
+        if hasattr(app, "app"):
+            return _get_routes(app.app)  # ty: ignore[invalid-argument-type]
+        return []  # pragma: no cover
+    routes = []
+    for route in app.routes:
+        # FastAPI 0.138+ no longer flattens included routers into `app.routes`, and Starlette's
+        # SchemaGenerator doesn't understand them, so expand them into their underlying routes
+        effective_route_contexts = getattr(route, "effective_route_contexts", None)
+        if not callable(effective_route_contexts):
+            routes.append(route)
+            continue
+        for context in effective_route_contexts():
+            if context.starlette_route is not None:
+                routes.append(context.starlette_route)
+            elif context.path and context.endpoint is not None:
+                routes.append(
+                    Route(
+                        context.path,
+                        endpoint=context.endpoint,
+                        methods=list(context.methods or []),
+                        include_in_schema=context.include_in_schema,
+                    )
+                )
+    return routes
 
 
 def _inject_lifespan_handlers(
