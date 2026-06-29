@@ -122,7 +122,7 @@ class ApitallyPlugin(InitPluginProtocol):
 
     def middleware_factory(self, app: ASGIApp) -> ASGIApp:
         async def middleware(scope: Scope, receive: Receive, send: Send) -> None:
-            if not self.client.enabled or scope["type"] != ScopeType.HTTP or scope["method"] == "OPTIONS":  # ty: ignore[invalid-key]
+            if not self.client.enabled or scope["type"] != ScopeType.HTTP or scope["method"] == "OPTIONS":
                 await app(scope, receive, send)
                 return
 
