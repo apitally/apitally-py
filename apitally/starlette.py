@@ -220,9 +220,10 @@ class ApitallyMiddleware:
             consumer_identifier = consumer.identifier if consumer else None
             self.client.consumer_registry.add_or_update_consumer(consumer)
 
+            if response_status == 0 and exception is not None:
+                response_status = 500
+
             if path is not None:
-                if response_status == 0 and exception is not None:
-                    response_status = 500
                 self.client.request_counter.add_request(
                     consumer=consumer_identifier,
                     method=request.method,
