@@ -182,6 +182,14 @@ Capture mechanics (per spec section 6.3), in pipeline order — both capture dec
 - Then: parse JSON if applicable → redact → re-serialize → set `apitally.request.body` / `apitally.response.body` on the active SERVER span (§5 ContextVar). Pattern redaction applies to whatever the mask callback returned.
 - Default redaction patterns per spec § 6.7. User-supplied patterns add to defaults, never replace.
 
+### Header capture
+
+`http.request.header.<name>` / `http.response.header.<name>` (spec § 6.1) are set by the transport middleware on the SERVER span (§5 ContextVar), at the write sites already established for body and size: ASGI — request headers from the scope at request entry, response headers from the `http.response.start` message in the send wrapper; Flask — both at the wrapped `start_response` (request headers from the closure-captured environ, response headers wire-final); Django — in the Django glue. When the per-direction toggle is on (legacy option names, off by default per this section), all headers are captured and § 6.7 redaction runs before each attribute is set — shared `redaction.py`, same pattern table as query params and body fields — matching 0.x capture-all-then-redact semantics: a redacted header keeps its name, its value becomes `[REDACTED]`. Redact-before-set matters beyond spec compliance: in cooperative mode the attributes land on the user's span, so an unredacted write would leak raw values to the user's other exporters.
+
+Attribute keys use the stable-semconv normalization — lowercase header name, dashes preserved (`http.request.header.content-type`) — and values are list-valued per the semconv; repeated ASGI headers become multiple list elements, WSGI's environ collapses repeats into one comma-joined element. OTel Python contrib still emits the pre-stabilization underscore form (`content_type`) — the semconv opt-in machinery never covered header keys — so the server folds `_` to `-` when parsing the suffix (upstream spec task).
+
+Users can independently enable the instrumentors' own capture (`OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_*`), which puts header attributes on exported spans governed only by the user's sanitize list. The § 6.7 guarantee is closed at the last SDK-owned point: the `ApitallySpanProcessor`'s `on_end` rewrite (below) also applies the header patterns to any `http.request.header.*` / `http.response.header.*` attributes on the forwarded copy, in either normalization. For headers our transport set, this pass is a no-op — they were redacted before set.
+
 ### Body size attributes
 
 `http.request.body.size` and `http.response.body.size` (spec § 6.1) are set by the transport middleware on the SERVER span (§5 ContextVar), independent of the capture toggles — no stock instrumentor sets them as span attributes in any semconv mode (the ASGI instrumentor records sizes only as metrics on a meter §2 withholds; WSGI/Django have no size handling at all). Values keep 0.x semantics:
@@ -192,11 +200,11 @@ Capture mechanics (per spec section 6.3), in pipeline order — both capture dec
 
 The same values feed the two spec § 7.1 size histograms, so request logs and metrics agree by construction; an unknown size skips both the attribute and the histogram observation (spec § 7.1's "when the size is known"; § 6.1's "regardless of body capture" is being softened upstream to "when the size is determinable").
 
-### Query param redaction: span processor
+### Query param and header redaction: span processor
 
 The stock instrumentors set `url.query` (legacy: `http.target`, `http.url`) from the raw query string. OTel's built-in redaction doesn't cover this: `redact_url` applies only to legacy `http.url` and only to four exact param names (`AWSAccessKeyId`, `Signature`, `sig`, `X-Goog-Signature`) — it never touches `url.query` and doesn't satisfy the spec § 6.7 patterns. The SDK owns query redaction, and the owner is the `ApitallySpanProcessor` (§3), not the transport middleware or per-instrumentor hooks.
 
-Mechanics: in `on_end`, before forwarding a kept span to the wrapped batch processor, apply the spec § 6.7 query patterns (defaults + user-supplied, matched against param names) to `url.query`, `http.target`, and `http.url`, and forward a rewritten copy of the `ReadableSpan`. Span attributes are frozen once the span ends, so the copy is the mechanism — the original span is never mutated, and in cooperative mode the user's other exporters see the unmodified span, consistent with §3. Redacting in `on_start` is not viable: the ASGI middleware re-applies its raw attribute dict to the span right after span start, which would clobber the rewrite.
+Mechanics: in `on_end`, before forwarding a kept span to the wrapped batch processor, apply the spec § 6.7 query patterns (defaults + user-supplied, matched against param names) to `url.query`, `http.target`, and `http.url`, apply the § 6.7 header patterns to any `http.request.header.*` / `http.response.header.*` attributes (either key normalization — see "Header capture"), and forward a rewritten copy of the `ReadableSpan`. Span attributes are frozen once the span ends, so the copy is the mechanism — the original span is never mutated, and in cooperative mode the user's other exporters see the unmodified span, consistent with §3. Redacting in `on_start` is not viable: the ASGI middleware re-applies its raw attribute dict to the span right after span start, which would clobber the rewrite.
 
 ## 7. Activation model
 
