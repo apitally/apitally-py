@@ -226,7 +226,7 @@ Setup happens at app start; activation (network threads, heartbeat, startup even
 
 Nothing activates at import time — `init_apitally(...)` only configures. Activation is gated on evidence the process is actually serving:
 
-- **ASGI frameworks**: activate when the shim observes the app's `lifespan.startup.complete` message on its send path OR on the first request, whichever comes first. Triggering on startup *completion* — not on receipt of `lifespan.startup` — means the app's startup handlers run first, so OTel setup inside a lifespan context manager (FastAPI's documented init pattern) is honored by §2's mode detection; the server doesn't serve until the message is sent, so activation still precedes all requests. A failed startup sends `startup.failed` instead — no activation, first-request trigger catches it if the server serves anyway. ASGI servers run the lifespan protocol at boot, so a normally-deployed app activates at server start — startup event and heartbeat fire before any traffic. With lifespan disabled, the first request triggers instead. Imports trigger neither.
+- **ASGI frameworks**: activate when the shim observes the app's `lifespan.startup.complete` message on its send path OR on the first request, whichever comes first. Triggering on startup *completion* — not on receipt of `lifespan.startup` — means the app's startup handlers run first, so OTel setup inside a lifespan context manager (FastAPI's documented init pattern) is honored by §2's mode detection; the server doesn't serve until the message is sent, so activation still precedes all requests. A failed startup sends `startup.failed` instead — no activation, first-request trigger catches it if the server serves anyway. ASGI servers run the lifespan protocol at boot, so a normally-deployed app activates at server start — startup event and heartbeat fire before any traffic. Running with lifespan disabled is not a supported mode; the shim's first-request trigger still catches it best-effort on shim-wrapped frameworks, while Litestar — which has no pre-span seam for a first-request trigger — activates solely via an `on_startup` hook registered by the plugin (litestar.md). Imports trigger neither.
 - **WSGI frameworks (Flask)**: no lifespan exists — activate on the first request through our outermost activation shim (below).
 - **Django**: activate on first `django.core.signals.request_started`. settings.py can't distinguish "about to serve HTTP" from "about to run `migrate`" or "Celery worker bootstrapping," so the signal is the earliest safe gate. New Relic uses the same pattern.
 
@@ -413,7 +413,7 @@ Auto-detect. On `init_apitally(...)`, check whether the Sentry SDK is available.
 
 No opt-in flag. The user installed `sentry-sdk` — that's their consent.
 
-The `apitally[sentry]` extra exists as an install convenience (`sentry-sdk>=2.2.0`) but isn't required for auto-detection to work.
+There is no published `sentry` extra — a Sentry user already has `sentry-sdk` installed, so an install convenience would serve nobody; the dev-side dependency group covers testing (as in 0.x).
 
 ## 16. File structure (rough)
 

@@ -38,6 +38,10 @@ Litestar applies the stock OTel middleware specially: `_create_asgi_handler` fet
 - **Installs ours otherwise** by appending a stock `OpenTelemetryPlugin(our_config)` to `app_config.plugins` (via reassignment): the registry picks it up and applies it at app level, and the hoist workaround stands down because a plugin is present. Installing via the middleware list instead would ride the hoist path — labeled a workaround in Litestar's own source — whose last-one-wins pop silently discards one config when a legacy raw middleware coexists.
 - **Appends the transport middleware** to `app_config.middleware` in both cases (route level = inside the SERVER span).
 
+## Activation trigger
+
+`ApitallyPlugin.on_app_init` appends the activation trigger to `app_config.on_startup`; the hook runs during lifespan startup, before the server serves — the design.md §7 lifespan trigger's equivalent. There is no shim and no first-request fallback: the handler chain is frozen at the end of `Litestar.__init__` and the transport middleware runs inside the SERVER span, so no pre-span first-request seam exists. Lifespan-disabled deployments are unsupported SDK-wide (design.md §7).
+
 ## Plugin must be passed at `Litestar()` construction
 
 `Litestar.plugins` is built from a frozenset at construction time; there is no public late-registration API, and the ASGI handler chain (where the OTel middleware gets baked in) is frozen at the end of `Litestar.__init__` as well. There is no `init_apitally(app: Litestar, ...)`.
