@@ -20,15 +20,15 @@ from django.utils.functional import Promise
 from django.views.generic.base import View
 from opentelemetry.instrumentation.django import DjangoInstrumentor
 
-from apitally.shared import activation, metrics, startup
-from apitally.shared.config import ApitallyConfig, get_config
+from apitally.shared import activation, config, metrics, startup
+from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import get_consumer_identifier, reset_consumer_identifier
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import get_server_span
 from apitally.shared.wsgi import (
-    BODY_MASKED,
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
+    CaptureMixin,
     is_allowed_content_type,
     parse_content_length,
 )
@@ -53,28 +53,47 @@ _include_django_views = False
 
 def init_apitally(
     *,
+    write_token: str | None = None,
+    env: str | None = None,
     app_version: str | None = None,
     urlconf: str | list[str | None] | None = None,
     include_django_views: bool = False,
-    **kwargs: Any,
+    disabled: bool | None = None,
+    capture_logs: bool | None = None,
+    exclude_on_request: Callable[[ReadableSpan], bool] | None = None,
+    exclude_on_response: Callable[[ReadableSpan], bool] | None = None,
+    mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
+    mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
+    log_request_headers: bool | None = None,
+    log_request_body: bool | None = None,
+    log_response_headers: bool | None = None,
+    log_response_body: bool | None = None,
+    mask_query_params: list[str] | None = None,
+    mask_headers: list[str] | None = None,
+    mask_body_fields: list[str] | None = None,
+    exclude_paths: list[str] | None = None,
 ) -> None:
     """Set up Apitally for Django; call at the end of settings.py, after MIDDLEWARE is defined."""
     global _urlconfs, _include_django_views
-    caller_globals = sys._getframe(1).f_globals
-    if isinstance(caller_globals.get("MIDDLEWARE"), tuple):
-        # A list is required so the middleware insertions below mutate the settings module in place
-        caller_globals["MIDDLEWARE"] = list(caller_globals["MIDDLEWARE"])
-    activation.configure(**kwargs)
-    _urlconfs = [urlconf] if urlconf is None or isinstance(urlconf, str) else urlconf
-    _include_django_views = include_django_views
-    instrumentor = DjangoInstrumentor()
-    if not instrumentor.is_instrumented_by_opentelemetry:
-        instrumentor.instrument()
-    _insert_middleware(caller_globals)
-    request_started.connect(_handle_request_started, weak=False, dispatch_uid="apitally")
-    startup.set_app_info(
-        framework="django", paths=_get_paths, versions=_get_versions(app_version), openapi=_get_openapi
-    )
+    try:
+        config_kwargs = config.explicit_kwargs(locals())
+        caller_globals = sys._getframe(1).f_globals
+        if isinstance(caller_globals.get("MIDDLEWARE"), tuple):
+            # A list is required so the middleware insertions below mutate the settings module in place
+            caller_globals["MIDDLEWARE"] = list(caller_globals["MIDDLEWARE"])
+        activation.configure(**config_kwargs)
+        _urlconfs = [urlconf] if urlconf is None or isinstance(urlconf, str) else urlconf
+        _include_django_views = include_django_views
+        instrumentor = DjangoInstrumentor()
+        if not instrumentor.is_instrumented_by_opentelemetry:
+            instrumentor.instrument()
+        _insert_middleware(caller_globals)
+        request_started.connect(_handle_request_started, weak=False, dispatch_uid="apitally")
+        startup.set_app_info(
+            framework="django", paths=_get_paths, versions=_get_versions(app_version), openapi=_get_openapi
+        )
+    except Exception:
+        logger.exception("Apitally setup for Django failed")
 
 
 def _insert_middleware(caller_globals: dict[str, Any]) -> None:
@@ -97,7 +116,7 @@ def _handle_request_started(sender: Any, **kwargs: Any) -> None:
         activation.activate()
 
 
-class ApitallyDjangoMiddleware:
+class ApitallyDjangoMiddleware(CaptureMixin):
     """Transport glue running inside the OTel Django middleware, while the SERVER span records."""
 
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
@@ -198,53 +217,11 @@ class ApitallyDjangoMiddleware:
             return _transform_path(match.route)
         return None
 
-    def set_body_attribute(
-        self,
-        span: Span,
-        key: str,
-        body: bytes | str,
-        mask_callback: Callable[[ReadableSpan, bytes], bytes | None] | None,
-        callback_name: str,
-    ) -> None:
-        if isinstance(body, str):
-            span.set_attribute(key, body)
-            return
-        if mask_callback is not None:
-            try:
-                masked = mask_callback(span, body)
-            except Exception:
-                logger.warning(
-                    "Apitally %s callback raised an exception, body replaced with %s",
-                    callback_name,
-                    BODY_MASKED,
-                    exc_info=True,
-                )
-                masked = None
-            if masked is None:
-                span.set_attribute(key, BODY_MASKED)
-                return
-            if len(masked) > MAX_BODY_SIZE:
-                span.set_attribute(key, BODY_TOO_LARGE)
-                return
-            body = masked
-        try:
-            value = json.dumps(self.redaction.redact_body(json.loads(body)))
-        except Exception:
-            value = body.decode("utf-8", errors="replace")
-        span.set_attribute(key, value)
-
     def set_header_attributes(self, span: Span, prefix: str, headers: Iterable[tuple[str, str]]) -> None:
         for name, value in headers:
             name = name.lower()
             values = [REDACTED] if self.redaction.should_redact_header(name) else [value]
             span.set_attribute(prefix + name, values)
-
-    def refresh_config(self) -> ApitallyConfig:
-        config = get_config() or ApitallyConfig()
-        if config is not self.config:
-            self.config = config
-            self.redaction = Redaction(config.mask_query_params, config.mask_headers, config.mask_body_fields)
-        return config
 
 
 def _transform_path(path: str) -> str:

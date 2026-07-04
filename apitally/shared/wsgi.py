@@ -35,7 +35,56 @@ ALLOWED_CONTENT_TYPES = (
 )
 
 
-class WsgiTransportMiddleware:
+class CaptureMixin:
+    """Config refresh and redaction-aware body attribute writing shared by the transport middlewares."""
+
+    config: ApitallyConfig | None
+    redaction: Redaction
+
+    def refresh_config(self) -> ApitallyConfig:
+        config = get_config() or ApitallyConfig()
+        if config is not self.config:
+            self.config = config
+            self.redaction = Redaction(config.mask_query_params, config.mask_headers, config.mask_body_fields)
+        return config
+
+    def set_body_attribute(
+        self,
+        span: Span,
+        key: str,
+        body: bytes | str,
+        mask_callback: Callable[[ReadableSpan, bytes], bytes | None] | None,
+        callback_name: str,
+    ) -> None:
+        if isinstance(body, str):
+            span.set_attribute(key, body)
+            return
+        if mask_callback is not None:
+            try:
+                masked = mask_callback(span, body)
+            except Exception:
+                logger.warning(
+                    "Apitally %s callback raised an exception, body replaced with %s",
+                    callback_name,
+                    BODY_MASKED,
+                    exc_info=True,
+                )
+                masked = None
+            if masked is None:
+                span.set_attribute(key, BODY_MASKED)
+                return
+            if len(masked) > MAX_BODY_SIZE:
+                span.set_attribute(key, BODY_TOO_LARGE)
+                return
+            body = masked
+        try:
+            value = json.dumps(self.redaction.redact_body(json.loads(body)), separators=(",", ":"))
+        except Exception:
+            value = body.decode("utf-8", errors="replace")
+        span.set_attribute(key, value)
+
+
+class WsgiTransportMiddleware(CaptureMixin):
     """Transport-level capture middleware; must run inside the instrumentor's middleware (design.md section 6)."""
 
     def __init__(
@@ -152,53 +201,11 @@ class WsgiTransportMiddleware:
         except Exception:
             logger.exception("Error in Apitally WSGI middleware")
 
-    def set_body_attribute(
-        self,
-        span: Span,
-        key: str,
-        body: bytes | str,
-        mask_callback: Callable[[ReadableSpan, bytes], bytes | None] | None,
-        callback_name: str,
-    ) -> None:
-        if isinstance(body, str):
-            span.set_attribute(key, body)
-            return
-        if mask_callback is not None:
-            try:
-                masked = mask_callback(span, body)
-            except Exception:
-                logger.warning(
-                    "Apitally %s callback raised an exception, body replaced with %s",
-                    callback_name,
-                    BODY_MASKED,
-                    exc_info=True,
-                )
-                masked = None
-            if masked is None:
-                span.set_attribute(key, BODY_MASKED)
-                return
-            if len(masked) > MAX_BODY_SIZE:
-                span.set_attribute(key, BODY_TOO_LARGE)
-                return
-            body = masked
-        try:
-            value = json.dumps(self.redaction.redact_body(json.loads(body)))
-        except Exception:
-            value = body.decode("utf-8", errors="replace")
-        span.set_attribute(key, value)
-
     def set_header_attributes(self, span: Span, prefix: str, headers: dict[str, list[str]]) -> None:
         for name, values in headers.items():
             if self.redaction.should_redact_header(name):
                 values = [REDACTED]
             span.set_attribute(prefix + name, values)
-
-    def refresh_config(self) -> ApitallyConfig:
-        config = get_config() or ApitallyConfig()
-        if config is not self.config:
-            self.config = config
-            self.redaction = Redaction(config.mask_query_params, config.mask_headers, config.mask_body_fields)
-        return config
 
 
 class ResponseWrapper:

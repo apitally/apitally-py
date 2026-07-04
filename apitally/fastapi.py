@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-from apitally.shared import activation, startup
+from apitally.shared import activation, config, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
 
 
@@ -27,18 +27,18 @@ def init_apitally(
     *,
     write_token: str | None = None,
     env: str | None = None,
-    disabled: bool | None = None,
     app_version: str | None = None,
     openapi_url: str | None = "/openapi.json",
-    capture_logs: bool = True,
+    disabled: bool | None = None,
+    capture_logs: bool | None = None,
     exclude_on_request: Callable[[ReadableSpan], bool] | None = None,
     exclude_on_response: Callable[[ReadableSpan], bool] | None = None,
     mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
     mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
-    log_request_headers: bool = False,
-    log_request_body: bool = False,
-    log_response_headers: bool = False,
-    log_response_body: bool = False,
+    log_request_headers: bool | None = None,
+    log_request_body: bool | None = None,
+    log_response_headers: bool | None = None,
+    log_response_body: bool | None = None,
     mask_query_params: list[str] | None = None,
     mask_headers: list[str] | None = None,
     mask_body_fields: list[str] | None = None,
@@ -46,29 +46,7 @@ def init_apitally(
 ) -> None:
     """Set up Apitally for a FastAPI application. Errors never propagate (design.md section 9)."""
     try:
-        config_kwargs: dict[str, Any] = {
-            "capture_logs": capture_logs,
-            "exclude_on_request": exclude_on_request,
-            "exclude_on_response": exclude_on_response,
-            "mask_request_body": mask_request_body,
-            "mask_response_body": mask_response_body,
-            "log_request_headers": log_request_headers,
-            "log_request_body": log_request_body,
-            "log_response_headers": log_response_headers,
-            "log_response_body": log_response_body,
-            "mask_query_params": mask_query_params or [],
-            "mask_headers": mask_headers or [],
-            "mask_body_fields": mask_body_fields or [],
-            "exclude_paths": exclude_paths or [],
-        }
-        # Omitted so the APITALLY_* env var fallbacks in config.resolve_config stay in effect
-        if write_token is not None:
-            config_kwargs["write_token"] = write_token
-        if env is not None:
-            config_kwargs["env"] = env
-        if disabled is not None:
-            config_kwargs["disabled"] = disabled
-        activation.configure(**config_kwargs)
+        activation.configure(**config.explicit_kwargs(locals()))
         _instrument_app(app)
         startup.set_app_info(
             framework="fastapi",
@@ -149,5 +127,5 @@ def _get_versions(app_version: str | None) -> dict[str, str]:
         except PackageNotFoundError:
             pass
     if app_version:
-        versions["app"] = str(app_version)
+        versions["app"] = app_version
     return versions
