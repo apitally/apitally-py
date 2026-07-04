@@ -9,26 +9,14 @@ from typing import Any
 from opentelemetry.sdk.trace import Span
 
 from apitally.shared import metrics
-from apitally.shared.config import ApitallyConfig, get_config
+from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import get_consumer_identifier, reset_consumer_identifier
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import get_server_span
+from apitally.shared.wsgi import ALLOWED_CONTENT_TYPES, BODY_MASKED, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
 
 
 logger = logging.getLogger(__name__)
-
-MAX_BODY_SIZE = 50_000
-BODY_TOO_LARGE = "<body too large>"
-BODY_MASKED = "<masked>"
-ALLOWED_CONTENT_TYPES = (
-    "application/json",
-    "application/problem+json",
-    "application/vnd.api+json",
-    "application/ld+json",
-    "application/x-ndjson",
-    "text/markdown",
-    "text/plain",
-)
 
 Scope = dict[str, Any]
 Message = dict[str, Any]
@@ -38,7 +26,7 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 MaskCallback = Callable[[Any, bytes], "bytes | None"]
 
 
-class ApitallyASGIMiddleware:
+class ApitallyASGIMiddleware(CaptureMixin):
     """Transport middleware running inside the instrumentor's SERVER span (design.md section 6)."""
 
     def __init__(self, app: ASGIApp, resolve_route: Callable[[Scope], str | None] | None = None) -> None:
@@ -227,13 +215,6 @@ class ApitallyASGIMiddleware:
             if self.redaction.should_redact_header(name):
                 values = [REDACTED]
             span.set_attribute(prefix + name, values)
-
-    def refresh_config(self) -> ApitallyConfig:
-        config = get_config() or ApitallyConfig()
-        if config is not self.config:
-            self.config = config
-            self.redaction = Redaction(config.mask_query_params, config.mask_headers, config.mask_body_fields)
-        return config
 
 
 def resolve_route_from_scope(scope: Scope) -> str | None:

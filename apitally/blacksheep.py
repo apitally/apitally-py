@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from importlib.metadata import version
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from blacksheep import Application
 from blacksheep.messages import Request
@@ -10,9 +11,13 @@ from blacksheep.server.openapi.v3 import Info, OpenAPIHandler, Operation
 from blacksheep.server.routing import RouteMatch
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 
-from apitally.shared import activation, startup
+from apitally.shared import activation, config, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.span_processor import get_server_span
+
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace import ReadableSpan
 
 
 __all__ = ["init_apitally"]
@@ -20,7 +25,27 @@ __all__ = ["init_apitally"]
 logger = logging.getLogger(__name__)
 
 
-def init_apitally(app: Application | OpenTelemetryMiddleware, app_version: str | None = None, **kwargs: Any) -> None:
+def init_apitally(
+    app: Application | OpenTelemetryMiddleware,
+    *,
+    write_token: str | None = None,
+    env: str | None = None,
+    app_version: str | None = None,
+    disabled: bool | None = None,
+    capture_logs: bool | None = None,
+    exclude_on_request: Callable[[ReadableSpan], bool] | None = None,
+    exclude_on_response: Callable[[ReadableSpan], bool] | None = None,
+    mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
+    mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
+    log_request_headers: bool | None = None,
+    log_request_body: bool | None = None,
+    log_response_headers: bool | None = None,
+    log_response_body: bool | None = None,
+    mask_query_params: list[str] | None = None,
+    mask_headers: list[str] | None = None,
+    mask_body_fields: list[str] | None = None,
+    exclude_paths: list[str] | None = None,
+) -> None:
     """
     Set up Apitally for a BlackSheep application.
 
@@ -29,7 +54,7 @@ def init_apitally(app: Application | OpenTelemetryMiddleware, app_version: str |
     - Reference: https://docs.apitally.io/reference/python
     """
     try:
-        activation.configure(**kwargs)
+        activation.configure(**config.explicit_kwargs(locals()))
         instrumented_by_user = isinstance(app, OpenTelemetryMiddleware)
         if instrumented_by_user:
             # The user wrapped the app in their own generic ASGI instrumentor; reuse their

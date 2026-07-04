@@ -8,10 +8,8 @@ from typing import TYPE_CHECKING
 from flask import Flask, Response
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
-from apitally.shared import activation
-from apitally.shared.activation import WSGIActivationShim
+from apitally.shared import activation, config, startup
 from apitally.shared.span_processor import get_server_span
-from apitally.shared.startup import set_app_info
 from apitally.shared.wsgi import BODY_TOO_LARGE, MAX_BODY_SIZE, WsgiTransportMiddleware, is_allowed_content_type
 
 
@@ -47,11 +45,9 @@ def init_apitally(
     exclude_paths: list[str] | None = None,
 ) -> None:
     """Set up Apitally for a Flask app; activation happens on the first request."""
-    # Must be the first statement so locals() holds exactly the config kwargs
-    config_kwargs = {k: v for k, v in locals().items() if k not in ("app", "app_version") and v is not None}
     try:
-        activation.configure(**config_kwargs)
-        if isinstance(app.wsgi_app, WSGIActivationShim):
+        activation.configure(**config.explicit_kwargs(locals()))
+        if isinstance(app.wsgi_app, activation.WSGIActivationShim):
             return
         transport = WsgiTransportMiddleware(app.wsgi_app, get_route=_create_route_resolver(app))
         app.wsgi_app = transport  # ty: ignore[invalid-assignment]
@@ -60,8 +56,8 @@ def init_apitally(
         else:
             FlaskInstrumentor().instrument_app(app)
         app.after_request(_create_response_body_hook(transport))
-        app.wsgi_app = WSGIActivationShim(app.wsgi_app)  # ty: ignore[invalid-assignment]
-        set_app_info(framework="flask", paths=lambda: _get_paths(app), versions=_get_versions(app_version))
+        app.wsgi_app = activation.WSGIActivationShim(app.wsgi_app)  # ty: ignore[invalid-assignment]
+        startup.set_app_info(framework="flask", paths=lambda: _get_paths(app), versions=_get_versions(app_version))
     except Exception:
         logger.exception("Error initializing Apitally for Flask")
 
