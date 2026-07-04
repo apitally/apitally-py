@@ -24,9 +24,19 @@ OpenTelemetryConfig(
 
 Note `http.route` gets the bare template (semconv); the method prefix belongs only in the span name.
 
-Because the mechanism is hook-free, it works identically when the user already registered Litestar's stock `OpenTelemetryPlugin` (design.md §4's detection list covers this case — our config is skipped, `before_send` still installs): the ContextVar-resolved write *repairs* the stock extractor's raw-path value on those spans. Lifespan sends never reach `before_send` (Litestar routes lifespan before the hook wrapping applies). For excluded requests the §3 map drops the span at end; the route write is local-only and harmless.
+Because the mechanism is hook-free, it works identically when the user brought their own OTel setup (design.md §4's detection covers both patterns — our config is skipped, `before_send` still installs): the ContextVar-resolved write *repairs* the stock extractor's raw-path value on those spans. Lifespan sends never reach `before_send` (Litestar routes lifespan before the hook wrapping applies). For excluded requests the §3 map drops the span at end; the route write is local-only and harmless.
 
 `exclude_spans=["receive", "send"]` suppresses per-message INTERNAL spans (spec §6.6 forbids exporting them).
+
+## OTel config install and detection (Litestar 2.24 mechanics)
+
+Litestar applies the stock OTel middleware specially: `_create_asgi_handler` fetches the plugin from the registry by class name (`plugins.get("OpenTelemetryPlugin")`) and wraps its middleware around the whole app — exception handler → CORS → OTel, outermost. Regular `middleware`-list entries run at route level, structurally inside it. So exactly one plugin's middleware is ever applied at app level, and our transport middleware (a regular middleware entry) always runs inside the SERVER span with no ordering work — nested SERVER spans are structurally impossible.
+
+`ApitallyPlugin.on_app_init` therefore:
+
+- **Detects user instrumentation** as either a stock `OpenTelemetryPlugin` instance in `app_config.plugins` or an OTel `DefineMiddleware` in `app_config.middleware` (the documented pre-2.22 pattern; Litestar's `_patch_opentelemetry_middleware` hoists it into a synthetic plugin after all plugin inits — last one wins if multiple). Either found → skip installing our config; the user's middleware carries the SERVER span, `before_send` repairs `http.route`, and the §3 backstop drops their unexcluded receive/send spans.
+- **Installs ours otherwise** by appending a stock `OpenTelemetryPlugin(our_config)` to `app_config.plugins` (via reassignment): the registry picks it up and applies it at app level, and the hoist workaround stands down because a plugin is present. Installing via the middleware list instead would ride the hoist path — labeled a workaround in Litestar's own source — whose last-one-wins pop silently discards one config when a legacy raw middleware coexists.
+- **Appends the transport middleware** to `app_config.middleware` in both cases (route level = inside the SERVER span).
 
 ## Plugin must be passed at `Litestar()` construction
 

@@ -182,7 +182,7 @@ The one "forced change" appears based on stale data: `opentelemetry-instrumentat
 ## Deferred questions
 
 - **Q1:** When gunicorn --preload fires the startup event in the master pre-fork, do workers re-emit it post-fork, and does server-side dedup tolerate the master's distinct `service.instance.id`? (adversarial) → Dissolved by the serving-gated activate phase: the master never activates, so the startup event only ever fires in workers.
-- **Q2:** Will server-side validation/server-error derivation ship before or shortly after v1 GA, or should migration messaging plan for a longer-lived feature gap? (product-lens)
+- **Q2:** Will server-side validation/server-error derivation ship before or shortly after v1 GA, or should migration messaging plan for a longer-lived feature gap? (product-lens) → DROPPED (2026-07-04): cloud-roadmap question, owned outside these docs; no SDK design change hinges on it.
 - **Q3:** Which opentelemetry-python-contrib version floor will v1 pin? Several verified behaviors (exclude_spans support, hook invocation) are version-dependent; findings 3, 17, and 19 were verified against 0.64b0. (feasibility) → Answered: api/sdk >= 1.43.0, contrib >= 0.64b0 (§11).
 - **Q4:** Under gunicorn --preload with Django, do the `request_started` activation path and the §7 fork handlers interact, or are they mutually exclusive by construction? (feasibility) → Mutually exclusive by construction under the revised §7: the master never activates (no threads at fork), and `request_started` activates each worker post-fork; the fork handlers only concern processes that fork after activating.
 
