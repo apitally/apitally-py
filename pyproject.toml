@@ -10,6 +10,8 @@ classifiers = [
     "Framework :: Django",
     "Framework :: FastAPI",
     "Framework :: Flask",
+    "Framework :: OpenTelemetry",
+    "Framework :: OpenTelemetry :: Distros",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     "License :: OSI Approved :: MIT License",
@@ -30,31 +32,41 @@ classifiers = [
 ]
 requires-python = ">=3.10,<4.0"
 dependencies = [
-    "backoff>=2.0.0",
-    "opentelemetry-sdk>=1.39.1,<2.0.0",
-    "psutil>=5.9.6",
-    "typing-extensions>=4.0.0; python_version<'3.11'",
+    "opentelemetry-api>=1.43.0,<2.0.0",
+    "opentelemetry-sdk>=1.43.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.43.0,<2.0.0",
+    "opentelemetry-instrumentation>=0.64b0",
+    "opentelemetry-instrumentation-logging>=0.64b0",
+    "opentelemetry-instrumentation-system-metrics>=0.64b0",
 ]
 dynamic = ["version"]
 
 [project.optional-dependencies]
-blacksheep = ["blacksheep>=2", "httpx>=0.22.0"]
+blacksheep = ["blacksheep>=2", "opentelemetry-instrumentation-asgi>=0.64b0"]
+django = ["django>=2.2", "opentelemetry-instrumentation-django>=0.64b0"]
 django_ninja = [
     "django>=2.2",
     "django-ninja>=1.0.0",
-    "requests>=2.26.0",
+    "opentelemetry-instrumentation-django>=0.64b0",
 ]
 django_rest_framework = [
     "django>=2.2",
     "djangorestframework>=3.10.0",
+    "opentelemetry-instrumentation-django>=0.64b0",
     "uritemplate>=3.0.0",                    # required for schema generation
     "inflection>=0.5.1",                     # required for schema generation
-    "requests>=2.26.0",
 ]
-fastapi = ["fastapi>=0.94.1", "starlette>=0.26.1,<2.0.0", "httpx>=0.22.0"]
-flask = ["flask>=2.0.0", "requests>=2.26.0"]
-litestar = ["litestar>=2.4.0", "httpx>=0.22.0"]
-starlette = ["starlette>=0.26.1,<2.0.0", "httpx>=0.22.0"]
+fastapi = [
+    "fastapi>=0.94.1",
+    "starlette>=0.26.1,<2.0.0",
+    "opentelemetry-instrumentation-fastapi>=0.64b0",
+]
+flask = ["flask>=2.0.0", "opentelemetry-instrumentation-flask>=0.64b0"]
+litestar = ["litestar>=2.24.0", "opentelemetry-instrumentation-asgi>=0.64b0"]
+starlette = [
+    "starlette>=0.26.1,<2.0.0",
+    "opentelemetry-instrumentation-starlette>=0.64b0",
+]
 
 [project.urls]
 Homepage = "https://apitally.io"
@@ -68,33 +80,33 @@ dev = [
     "ty~=0.0.44",
 ]
 test = [
-    "blacksheep[full]",
-    "loguru",
+    "blacksheep>=2",
+    "django",
+    "django-ninja",
+    "djangorestframework",
+    "fastapi",
+    "flask",
+    "httpx",
+    "inflection",
+    "litestar",
+    "opentelemetry-instrumentation-asgi>=0.64b0",
+    "opentelemetry-instrumentation-django>=0.64b0",
+    "opentelemetry-instrumentation-fastapi>=0.64b0",
+    "opentelemetry-instrumentation-flask>=0.64b0",
+    "opentelemetry-instrumentation-starlette>=0.64b0",
+    "opentelemetry-test-utils>=0.64b0",
     "pytest~=8.4.0",
     "pytest-asyncio~=0.21.2",
     "pytest-cov~=7.1.0",
-    "pytest-httpx~=0.33.0",
     "pytest-mock~=3.15.0",
-    "requests-mock~=1.12.1",
+    "starlette",
+    "uritemplate",
 ]
 types = [
     "django-types",
     "djangorestframework-types",
-    "types-colorama",
-    "types-docutils",
-    "types-gevent",
-    "types-pexpect",
-    "types-psutil",
-    "types-pygments",
-    "types-pysocks",
-    "types-pyyaml",
-    "types-requests",
-    "types-setuptools",
-    "types-six",
-    "types-ujson",
 ]
 otel = [
-    "opentelemetry-api",
     "opentelemetry-instrumentation-asyncpg",
     "opentelemetry-instrumentation-botocore",
     "opentelemetry-instrumentation-httpx",
