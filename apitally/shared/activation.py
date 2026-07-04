@@ -13,7 +13,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from apitally.shared import config, metrics, providers
+from apitally.shared import config, metrics, providers, sentry
 from apitally.shared.config import TRUE_VALUES, ApitallyConfig
 from apitally.shared.log_processor import ApitallyLogRecordProcessor, install_root_handler, uninstall_root_handler
 from apitally.shared.span_processor import ApitallySpanProcessor
@@ -46,6 +46,7 @@ def configure(**kwargs: Any) -> ApitallyConfig:
     global fork_handlers_registered
     cfg = config.configure(**kwargs)
     config.ensure_semconv_opt_in()
+    sentry.install()
     if not fork_handlers_registered and hasattr(os, "register_at_fork"):
         fork_handlers_registered = True
         os.register_at_fork(
