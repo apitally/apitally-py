@@ -7,7 +7,7 @@ from opentelemetry.sdk.metrics.export import MetricExporter, MetricExportResult,
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.test.globals_test import reset_trace_globals
 
-from apitally.shared import activation, config, metrics, providers
+from apitally.shared import activation, config, metrics, providers, startup
 
 
 @pytest.fixture(autouse=True)
@@ -27,6 +27,7 @@ def reset_otel_trace_globals():
 def reset_apitally_activation():
     yield
     activation.reset()
+    startup.reset()
 
 
 class InMemoryMetricExporter(MetricExporter):
