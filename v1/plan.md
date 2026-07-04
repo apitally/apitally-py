@@ -96,6 +96,15 @@ Design decisions live in the design docs and are cited per unit rather than dupl
 - KTD5. **Docs are in scope.** README rewrite and the migration guide are the final unit — required before the first alpha invites outside users.
 - KTD6. **Port from 0.x, don't reinvent.** Where a v1 behavior matches 0.x in shape — the WSGI Content-Length capture gate, masking/redaction mechanics, route and OpenAPI introspection for every framework, consumer semantics, the per-framework test apps — the 0.x implementation (git history after U1) is the starting point, adapted to the OTel pipeline. Deviating from a working 0.x approach is allowed only as a conscious choice recorded in the unit; this is the regression guard for mechanics that already worked.
 
+### Code Style — binding for every unit
+
+- Write modern, well-structured, maintainable Python with good naming, following current best practices — within the supported range of Python 3.10–3.14. Use the modern syntax 3.10 allows (`X | Y` unions, `match`, parenthesized context managers); nothing that requires 3.11+ at runtime.
+- Imports go at the top of the module. A function-body import needs a good reason (circular-import break, optional dependency, deferred heavy import) — and even then, imports are grouped at the top of the function body, never in the middle of other code.
+- Underscore prefixes only where genuinely required to separate public from private API (user-facing modules). Internal modules do not prefix every variable and function.
+- Function order within a module is deliberate, not accidental: public entry points first, helpers after, ordered so the module reads top-down.
+- No single-use helper functions unless extraction meaningfully improves readability at the call site.
+- Comments sparingly and concise (one or two lines). They explain the WHY, never narrate the WHAT — a comment that restates the code below it does not get written.
+
 ### High-Level Technical Design
 
 Runtime signal flow — the components each unit builds and how requests turn into exported telemetry:
