@@ -1,0 +1,146 @@
+from __future__ import annotations
+
+import json
+from collections.abc import Callable
+from importlib import metadata
+from typing import TYPE_CHECKING, Any
+
+from litestar.middleware.base import DefineMiddleware
+from litestar.plugins import InitPluginProtocol
+from litestar.plugins.opentelemetry import (
+    OpenTelemetryConfig,
+    OpenTelemetryInstrumentationMiddleware,
+    OpenTelemetryPlugin,
+)
+from litestar.routes import HTTPRoute
+
+from apitally.shared import activation, startup
+from apitally.shared.asgi import ApitallyASGIMiddleware
+from apitally.shared.span_processor import get_server_span
+
+
+if TYPE_CHECKING:
+    from litestar.app import Litestar
+    from litestar.config.app import AppConfig
+    from litestar.types import Message, Scope
+    from opentelemetry.sdk.trace import ReadableSpan
+
+
+__all__ = ["ApitallyPlugin"]
+
+
+class ApitallyPlugin(InitPluginProtocol):
+    """Apitally setup for Litestar; pass at construction: Litestar(plugins=[ApitallyPlugin(...)])."""
+
+    def __init__(
+        self,
+        *,
+        write_token: str | None = None,
+        env: str | None = None,
+        app_version: str | None = None,
+        disabled: bool | None = None,
+        capture_logs: bool | None = None,
+        exclude_on_request: Callable[[ReadableSpan], bool] | None = None,
+        exclude_on_response: Callable[[ReadableSpan], bool] | None = None,
+        mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
+        mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
+        log_request_headers: bool | None = None,
+        log_request_body: bool | None = None,
+        log_response_headers: bool | None = None,
+        log_response_body: bool | None = None,
+        mask_query_params: list[str] | None = None,
+        mask_headers: list[str] | None = None,
+        mask_body_fields: list[str] | None = None,
+        exclude_paths: list[str] | None = None,
+    ) -> None:
+        params = locals()
+        self.app_version = app_version
+        self.configure_kwargs = {
+            name: value for name, value in params.items() if name not in ("self", "app_version") and value is not None
+        }
+
+    def on_app_init(self, app_config: AppConfig) -> AppConfig:
+        activation.configure(**self.configure_kwargs)
+        if not has_otel_instrumentation(app_config):
+            # Install via the plugin registry, never the middleware list: the hoist path
+            # is last-one-wins and silently discards a coexisting config (litestar.md)
+            otel_plugin = OpenTelemetryPlugin(OpenTelemetryConfig(exclude_spans=["receive", "send"]))
+            app_config.plugins = [*app_config.plugins, otel_plugin]
+        app_config.middleware.append(
+            DefineMiddleware(ApitallyASGIMiddleware, resolve_route=resolve_route)  # ty: ignore[invalid-argument-type]
+        )
+        app_config.before_send.append(before_send)
+        app_config.on_startup.append(self.on_startup)
+        return app_config
+
+    def on_startup(self, app: Litestar) -> None:
+        versions = {"litestar": metadata.version("litestar")}
+        if self.app_version:
+            versions["app"] = self.app_version
+        startup.set_app_info(
+            framework="litestar",
+            paths=lambda: get_paths(app),
+            versions=versions,
+            openapi=lambda: get_openapi(app),
+        )
+        activation.activate()
+
+
+def has_otel_instrumentation(app_config: AppConfig) -> bool:
+    # Either a stock plugin or the legacy raw-middleware pattern (design.md section 4)
+    return any(isinstance(plugin, OpenTelemetryPlugin) for plugin in app_config.plugins) or any(
+        isinstance(middleware, DefineMiddleware)
+        and isinstance(middleware.middleware, type)
+        and issubclass(middleware.middleware, OpenTelemetryInstrumentationMiddleware)
+        for middleware in app_config.middleware
+    )
+
+
+async def before_send(message: Message, scope: Scope) -> None:
+    """Repair http.route and the span name from the routed template (litestar.md)."""
+    if message.get("type") != "http.response.start":
+        return
+    path_template = scope.get("path_template")
+    span = get_server_span()
+    if path_template and span is not None and span.is_recording():
+        # The bare template per semconv; the method prefix belongs only in the span name
+        span.set_attribute("http.route", str(path_template))
+        span.update_name(f"{scope.get('method', '')} {path_template}".strip())
+
+
+def resolve_route(scope: dict[str, Any]) -> str | None:
+    path_template = scope.get("path_template")
+    return str(path_template) if path_template else None
+
+
+def get_paths(app: Litestar) -> list[dict[str, str]]:
+    openapi_path = get_openapi_path(app)
+    return [
+        {"method": method, "path": route.path_format}
+        for route in app.routes
+        if isinstance(route, HTTPRoute) and not is_openapi_path(route.path_format, openapi_path)
+        for method in sorted(route.methods)
+        if method not in ("OPTIONS", "HEAD")
+    ]
+
+
+def get_openapi_path(app: Litestar) -> str | None:
+    config = app.openapi_config
+    if config is None:
+        return None
+    if config.openapi_controller is not None:
+        return config.openapi_controller.path
+    router = getattr(config, "openapi_router", None)
+    if router is not None:
+        return router.path
+    return config.path or "/schema"
+
+
+def is_openapi_path(path: str, openapi_path: str | None) -> bool:
+    return openapi_path is not None and (path == openapi_path or path.startswith(openapi_path + "/"))
+
+
+def get_openapi(app: Litestar) -> str | None:
+    if app.openapi_config is None:
+        return None
+    return json.dumps(app.openapi_schema.to_schema())
