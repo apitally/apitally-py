@@ -3,7 +3,9 @@ from __future__ import annotations
 import functools
 from contextlib import contextmanager, suppress
 from inspect import iscoroutinefunction
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterator, ParamSpec, TypeVar, Union, overload
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterator, ParamSpec, TypeVar, overload
+
+from opentelemetry import trace
 
 
 if TYPE_CHECKING:
@@ -32,12 +34,7 @@ def instrument(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]: ..
 def instrument(func: Callable[P, R]) -> Callable[P, R]: ...
 
 
-def instrument(func: Callable[P, R]) -> Union[Callable[P, R], Callable[P, Awaitable[R]]]:
-    try:
-        from opentelemetry import trace
-    except ImportError:  # pragma: no cover
-        raise RuntimeError("`instrument()` requires the `opentelemetry-api` package")
-
+def instrument(func: Callable[P, R]) -> Callable[P, R] | Callable[P, Awaitable[R]]:
     tracer = trace.get_tracer("apitally.otel")
     span_name = func.__name__  # ty: ignore[unresolved-attribute]
     span_attributes: dict[str, str | int] = {
@@ -66,11 +63,6 @@ def instrument(func: Callable[P, R]) -> Union[Callable[P, R], Callable[P, Awaita
 
 @contextmanager
 def span(name: str, attributes: SpanAttributes = None) -> Iterator[Span]:
-    try:
-        from opentelemetry import trace
-    except ImportError:  # pragma: no cover
-        raise RuntimeError("`span()` requires the `opentelemetry-api` package")
-
     tracer = trace.get_tracer("apitally.otel")
     with tracer.start_as_current_span(name, attributes=attributes) as span:
         yield span
@@ -94,7 +86,7 @@ def instrument_botocore(**kwargs: Any) -> None:  # pragma: no cover
     BotocoreInstrumentor().instrument(**kwargs)
 
 
-def instrument_httpx(client: Union[HttpxClient, HttpxAsyncClient, None] = None, **kwargs: Any) -> None:
+def instrument_httpx(client: HttpxClient | HttpxAsyncClient | None = None, **kwargs: Any) -> None:
     try:
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
     except ImportError:  # pragma: no cover
@@ -107,7 +99,7 @@ def instrument_httpx(client: Union[HttpxClient, HttpxAsyncClient, None] = None, 
 
 
 def instrument_mysql(
-    conn: Union[MySQLConnectionAbstract, PooledMySQLConnection, None] = None, **kwargs: Any
+    conn: MySQLConnectionAbstract | PooledMySQLConnection | None = None, **kwargs: Any
 ) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.mysql import MySQLInstrumentor
@@ -121,7 +113,7 @@ def instrument_mysql(
 
 
 def instrument_psycopg(
-    conn: Union[PsycopgConnection, PsycopgAsyncConnection, None] = None, **kwargs: Any
+    conn: PsycopgConnection | PsycopgAsyncConnection | None = None, **kwargs: Any
 ) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.psycopg import PsycopgInstrumentor
@@ -134,7 +126,7 @@ def instrument_psycopg(
         PsycopgInstrumentor().instrument(**kwargs)
 
 
-def instrument_psycopg2(conn: Union[Psycopg2Connection, None] = None, **kwargs: Any) -> None:  # pragma: no cover
+def instrument_psycopg2(conn: Psycopg2Connection | None = None, **kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
     except ImportError:
@@ -174,7 +166,7 @@ def instrument_requests(**kwargs: Any) -> None:
 
 
 def instrument_sqlalchemy(
-    engine: Union[SQLAlchemyEngine, SQLAlchemyAsyncEngine, None], **kwargs: Any
+    engine: SQLAlchemyEngine | SQLAlchemyAsyncEngine | None, **kwargs: Any
 ) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
