@@ -361,8 +361,10 @@ Five phases in strict order; units within a phase are parallelizable where their
 | Unit + integration tests | `make test` | Every unit from U2 |
 | Coverage | `make test-coverage` | Coverage job, U19 |
 | Full version matrix | CI `test-matrix` job | U19 onward |
-| Live export smoke, first pipeline | FastAPI example app with `APITALLY_OTLP_ENDPOINT` pointed at the dev cloud or a local OTLP collector: spans, metrics on the 60 s heartbeat, request logs, and the startup event all accepted | Once, after U13 — before starting U14–U17 |
+| Live export smoke, first pipeline | FastAPI example app with `APITALLY_OTLP_ENDPOINT` pointed at the locally running cloud (setup below): spans, metrics on the 60 s heartbeat, request logs, and the startup event all accepted by real Apitally ingestion | Once, after U13 — before starting U14–U17 |
 | Live export smoke, full | Same check across the framework examples | Final readiness check once all units are landed (the alpha release itself is user-owned and manual) |
+
+Local cloud setup for the smoke gates: run the cloud stack from the sibling repo with `make run` in `../cloud/`, then mint what the check needs in the local database — ideally a fresh team and app created for this purpose — and use that app's write token with `APITALLY_OTLP_ENDPOINT` pointed at the local ingestion endpoint. This exercises real Apitally ingestion (auth, `Apitally-Env`, startup-event acceptance), not just well-formed OTLP.
 
 Test posture: assertions run against OTel-side data — in-memory exporters for shared modules, framework test clients driving real request flows for integrations. No mocking of Apitally internals; mock only at process boundaries (network, fork where impractical).
 

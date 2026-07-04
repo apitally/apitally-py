@@ -204,9 +204,9 @@ The [REVISIT] items (3, 4, 6, 9) plus everything the fix-verification round surf
 - **G12 (from finding 2):** Naming: §5/§16 now say `ApitallyPlugin`; litestar.md's example uses a lowercase factory `apitally_litestar_plugin(...)` — align litestar.md to the winner. Also worth a sentence: what §8 idempotency means for a second `ApitallyPlugin` construction. → DECIDED (grilling): `ApitallyPlugin` wins; litestar.md aligned, and its `on_app_init` goes through the §8 config singleton so idempotency matches the other frameworks.
 - **G13 (from finding 14):** Decide whether SDK-internal (`apitally.*`) loggers are excluded from the OTLP log export entirely — closes the self-noise and credential re-export vector for in-request SDK errors. → DECIDED (grilling): `apitally.*` and `opentelemetry.*` logger records are never bridged (§10); they remain in the user's own sinks.
 
-## Upstream spec tasks (cloud repo — spec.md copy here stays untouched)
+## Upstream spec tasks (cloud repo)
 
-Collected from the grilling session, 2026-07-02:
+Collected from the grilling session, 2026-07-02. All folded into spec.md (both copies) on 2026-07-04; the related cloud-side code changes are tracked in the cloud repo:
 
 1. **§6.7 query-param redaction wording:** change "before any query-param ... attribute is set" to "before the attribute is exported" for query params — the SDK redacts `url.query` at export via a rewritten span copy because the stock instrumentor sets the attribute.
 2. **§6.6 per-message spans:** generalize from the two http span names to "per-message INTERNAL spans" so the `* websocket send/receive` variants are covered.

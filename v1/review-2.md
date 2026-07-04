@@ -151,6 +151,8 @@ Every 0.x integration defaults `env="dev"`, while v1 defaults to `"prod"` per sp
 
 ## Upstream spec tasks (cloud repo — continues the round-1 list in review-1.md)
 
+Folded into spec.md (both copies) on 2026-07-04, together with tasks 1–4; the related cloud-side code changes are tracked in the cloud repo.
+
 5. **§6.1 body-size wording:** soften "Full body size in bytes, set regardless of body capture" to "independent of body capture, when the size is determinable" — a chunked WSGI request body's size is unknowable without reading it (which the SDK correctly refuses to do), and this aligns §6.1 with §7.1's existing "when the size is known" so request-log and metric sizes derive from the same value. (From finding 5, grilling 3.)
 
 6. **§6.1 header attribute key normalization:** pin the `<name>` suffix to the stable-semconv form — lowercase header name with dashes preserved, e.g. `http.request.header.content-type` — and have the server fold underscore-form keys (`_` → `-`) into the same header when parsing. OTel Python contrib still emits the pre-stabilization underscore normalization (`content_type`; the semconv opt-in machinery never covered header keys), so user-enabled instrumentor capture arrives in that form in cooperative mode. (From the header-capture residual, grilling 4.)

@@ -56,9 +56,9 @@ The SDK MUST emit stable HTTP semconv. The server also reads old-convention fall
 | `http.route` | MUST be the parameterized route template, e.g. `/users/{user_id}`, never the raw path; max 2048. Unmatched requests (e.g. 404s) have no route: leave it unset. The SERVER span is still emitted and recorded as a request log with an empty route. |
 | `http.response.status_code` (`http.status_code`) | Valid range 100–599, else stored as 0. |
 | `url.scheme`, `server.address`, `url.path`, `url.query` (`http.scheme`, `http.host`, `http.target`) | Concatenated into the display URL: `{scheme}://{host}{path}?{query}`. |
-| `http.request.body.size`, `http.response.body.size` | Full body size in bytes, set regardless of body capture. |
+| `http.request.body.size`, `http.response.body.size` | Full body size in bytes, set independently of body capture, when the size is determinable (e.g. a chunked request body without `Content-Length` has no determinable size without reading it). Aligns with the "when the size is known" condition on the section 7.1 size histograms, so request-log and metric sizes derive from the same value. |
 | `client.address` (`net.peer.ip`) | Client IP; max 46 chars. Non-IP or private values are discarded; used for GeoIP. |
-| `http.request.header.<name>`, `http.response.header.<name>` | Captured headers, semconv list-valued convention; the server stores one name/value pair per array element. Stored on the request log, stripped from span attributes. |
+| `http.request.header.<name>`, `http.response.header.<name>` | Captured headers, semconv list-valued convention; the server stores one name/value pair per array element. `<name>` is the stable-semconv form: lowercase header name with dashes preserved, e.g. `http.request.header.content-type`. The server folds underscore-form keys (`content_type`, as still emitted by pre-stabilization OTel instrumentors) into the same header when parsing. Stored on the request log, stripped from span attributes. |
 
 Request timing comes from span `start_time_unix_nano` / `end_time_unix_nano`.
 
@@ -94,14 +94,15 @@ Unhandled exceptions MUST be recorded as the standard OTel `exception` span even
 - The SERVER span (the request boundary, section 6) and its descendants MUST be exported, except for `OPTIONS` requests (CORS preflight) and excluded requests (section 6.8), which MUST NOT be exported.
 - A root span of any other kind (background jobs, queue consumers, schedulers) and its descendants MUST NOT be exported.
 - A request MUST be exported even when its upstream parent was not sampled; upstream sampling MUST NOT suppress local requests.
+- Descendant spans and request-scoped logs whose SERVER span never arrives are never surfaced: all request data derives from the SERVER span, so telemetry without one is unreachable by construction and ages out with normal retention. An SDK dropping a SERVER span at response time (e.g. a response-based exclusion callback) MAY rely on this to abandon telemetry the request already emitted.
 
 ### 6.6 Span noise
 
-The SDK MUST NOT export framework-internal `* http send` / `* http receive` INTERNAL spans. The server drops them anyway as a safety net.
+The SDK MUST NOT export framework-internal per-message INTERNAL spans — `* http send` / `* http receive` and their websocket variants `* websocket send` / `* websocket receive`. The server drops them anyway as a safety net.
 
 ### 6.7 Redaction
 
-Redaction MUST run before any query-param, header, or body attribute (6.1, 6.3) is set. Patterns are matched case-insensitively against the parameter, header, or field name (substring, anywhere in the name); a matched value is replaced with `[REDACTED]` (matches OTel's `http_capture_headers_server_request` convention). User-supplied patterns are added to the defaults below, never replace them.
+Redaction MUST run before any header or body attribute (6.1, 6.3) is set, and before any query-param attribute is exported — stock instrumentors set `url.query` raw, so the SDK may redact it at export (e.g. via a rewritten span copy) instead of at set time. Patterns are matched case-insensitively against the parameter, header, or field name (substring, anywhere in the name); a matched value is replaced with `[REDACTED]` (matches OTel's `http_capture_headers_server_request` convention). User-supplied patterns are added to the defaults below, never replace them.
 
 | Target | Default name patterns |
 |---|---|
@@ -234,7 +235,7 @@ Per-language idioms win; this aligns naming and setup UX across SDKs.
 - Setup mirrors the legacy SDK: one entry point per framework, e.g. `use_apitally(app, write_token=..., env=...)` — the distro wires exporters, sampler, processors, and instrumentation internally; no OTel knowledge required from the user.
 - Config: `write_token` (snake/camel/Pascal per language), also readable from an `APITALLY_WRITE_TOKEN` env var; `env` defaulting to `prod`.
 - Consumer API keeps its name: `set_consumer(identifier, name=None, group=None)` / `setConsumer(...)`, writing the section 6.2 attributes.
-- Request logging config (body/header capture toggles, masking) keeps existing legacy SDK option names.
+- Request logging config (body/header capture toggles, masking) stays close to the legacy SDK option names; renames for cross-option consistency are fine (e.g. Python drops the `_callback` suffix: `mask_request_body_callback` → `mask_request_body`, `exclude_callback` → `exclude_on_request` / `exclude_on_response`).
 - Build on the official OTel SDK and contrib instrumentations of each language; do not reimplement OTLP export.
 
 ## 12. Legacy → OTel mapping
