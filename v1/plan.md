@@ -75,7 +75,6 @@ Verification and release collateral
 
 **Deferred to Follow-Up Work**
 
-- The six upstream spec tasks recorded in `v1/review-1.md` and `v1/review-2.md` — they live in the cloud repo.
 - Other-language SDKs (design.md §17 posture only).
 - GA release mechanics beyond alpha readiness; publishing itself stays a user action via git tags (existing `publish.yaml`).
 
@@ -98,12 +97,25 @@ Design decisions live in the design docs and are cited per unit rather than dupl
 
 ### Code Style — binding for every unit
 
+- Write the least amount of code that gets the job done.
 - Write modern, well-structured, maintainable Python with good naming, following current best practices — within the supported range of Python 3.10–3.14. Use the modern syntax 3.10 allows (`X | Y` unions, `match`, parenthesized context managers); nothing that requires 3.11+ at runtime.
 - Imports go at the top of the module. A function-body import needs a good reason (circular-import break, optional dependency, deferred heavy import) — and even then, imports are grouped at the top of the function body, never in the middle of other code.
 - Underscore prefixes only where genuinely required to separate public from private API (user-facing modules). Internal modules do not prefix every variable and function.
 - Function order within a module is deliberate, not accidental: public entry points first, helpers after, ordered so the module reads top-down.
 - No single-use helper functions unless extraction meaningfully improves readability at the call site.
 - Comments sparingly and concise (one or two lines). They explain the WHY, never narrate the WHAT — a comment that restates the code below it does not get written.
+
+### Test posture
+
+Assertions run against OTel-side data — in-memory exporters for shared modules, framework test clients driving real request flows for integrations. No mocking of Apitally internals; mock only at process boundaries (network, fork where impractical).
+
+Test philosophy — binding for every unit:
+
+- Mirror the 0.x suite's structure and level: one focused test module per shared module, one integration module per framework driving a small real app, shared fixtures in `tests/conftest.py`. The 0.x suite (~25 focused files) is the calibration point for size and style; port its test apps and fixtures where they fit (KTD6).
+- Every test needs an important reason to exist: it pins a spec MUST, a design.md decision, or a behavior a plausible change would silently break. Tests that restate the implementation, or assert theoretical edge cases no real deployment hits, do not get written.
+- The per-unit test scenarios in this plan are the intended set, not a floor — do not multiply them into variants.
+- Prefer one integration test proving a flow end-to-end over several micro-tests asserting its intermediate steps.
+- A shared autouse fixture in `tests/conftest.py` isolates process-global OTel state between tests: the config singleton, the tracer-provider global and its set-once flag (via `opentelemetry-test-utils` reset helpers, added to the test group in U1), the root-logger handler, singleton instrumentor state, and the semconv env var. Fork-handler registration is guarded by a module flag so repeated configure calls in one process register once.
 
 ### High-Level Technical Design
 
@@ -365,16 +377,6 @@ Five phases in strict order; units within a phase are parallelizable where their
 | Live export smoke, full | Same check across the framework examples | Final readiness check once all units are landed (the alpha release itself is user-owned and manual) |
 
 Local cloud setup for the smoke gates: run the cloud stack from the sibling repo with `make run` in `../cloud/`, then mint what the check needs in the local database — ideally a fresh team and app created for this purpose — and use that app's write token with `APITALLY_OTLP_ENDPOINT` pointed at the local ingestion endpoint. This exercises real Apitally ingestion (auth, `Apitally-Env`, startup-event acceptance), not just well-formed OTLP.
-
-Test posture: assertions run against OTel-side data — in-memory exporters for shared modules, framework test clients driving real request flows for integrations. No mocking of Apitally internals; mock only at process boundaries (network, fork where impractical).
-
-Test philosophy — binding for every unit:
-
-- Mirror the 0.x suite's structure and level: one focused test module per shared module, one integration module per framework driving a small real app, shared fixtures in `tests/conftest.py`. The 0.x suite (~25 focused files) is the calibration point for size and style; port its test apps and fixtures where they fit (KTD6).
-- Every test needs an important reason to exist: it pins a spec MUST, a design.md decision, or a behavior a plausible change would silently break. Tests that restate the implementation, or assert theoretical edge cases no real deployment hits, do not get written.
-- The per-unit test scenarios in this plan are the intended set, not a floor — do not multiply them into variants.
-- Prefer one integration test proving a flow end-to-end over several micro-tests asserting its intermediate steps.
-- A shared autouse fixture in `tests/conftest.py` isolates process-global OTel state between tests: the config singleton, the tracer-provider global and its set-once flag (via `opentelemetry-test-utils` reset helpers, added to the test group in U1), the root-logger handler, singleton instrumentor state, and the semconv env var. Fork-handler registration is guarded by a module flag so repeated configure calls in one process register once.
 
 ---
 
