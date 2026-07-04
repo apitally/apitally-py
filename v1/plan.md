@@ -16,7 +16,7 @@ execution: code
 - **Authority hierarchy**: `v1/spec.md` (normative wire contract, read-only) > `v1/design.md` + `v1/litestar.md` + `v1/wsgi.md` (settled design decisions) > this plan (sequencing, unit boundaries, test scenarios). The design docs went through two review rounds and five grilling sessions; they are input, not up for re-litigation during implementation.
 - **Reuse posture**: Where v1 needs functionality 0.x provided in similar shape, port the proven 0.x implementation (available in git history after U1) and adapt it to the OTel pipeline. Improving on a 0.x approach is a conscious, recorded choice, never an accidental rewrite — no regressions on mechanics that already worked (KTD6).
 - **Stop conditions**: Surface to the user instead of deciding alone when (a) implementation contradicts a design.md decision, (b) a wire-format question is not answered by spec.md, (c) a new always-installed dependency beyond design.md §11 seems needed, or (d) a verified library behavior (Litestar 2.24 internals, contrib 0.64b0 behavior) turns out different at implementation time.
-- **Execution profile**: Work directly on the `v1` branch. Each unit lands as an atomic commit with its tests; `make check` and `make test` pass at every unit boundary from U2 onward.
+- **Execution profile**: Work directly on the `v1` branch. Before starting U1, fetch and bring `v1` up to date with `origin/main` (merge). Each unit lands as an atomic commit with its tests; `make check` and `make test` pass at every unit boundary from U2 onward.
 
 ---
 
