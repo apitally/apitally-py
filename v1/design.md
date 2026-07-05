@@ -160,7 +160,7 @@ Two documented caveats: in cooperative mode a user sampler that drops the reques
 
 ### Default: OFF
 
-Body capture and header capture are **disabled by default**. For bodies and headers the privacy posture matches the legacy SDK — users explicitly opt in to capture payload content. Defaults give a strong product without payload data: traces, metrics, logs, exceptions, consumer attribution. Log capture defaults deliberately differ from 0.x — see §10.
+Body capture and header capture are **disabled by default**, with one exception: response headers are captured by default (matching 0.x, where `log_response_headers` also defaulted to on). For bodies and request headers the privacy posture matches the legacy SDK — users explicitly opt in to capture payload content. Defaults give a strong product without payload data: traces, metrics, logs, exceptions, consumer attribution, response headers. Log capture defaults deliberately differ from 0.x — see §10.
 
 ### Implementation: transport-level
 
@@ -370,7 +370,7 @@ The OTel community library tracks semantic-convention evolution for us; we benef
 | Request body content | ✗ — opt-in |
 | Response body content | ✗ — opt-in |
 | Request headers | ✗ — opt-in |
-| Response headers | ✗ — opt-in |
+| Response headers | ✓ — opt-out |
 
 Default-on logs are a deliberate change from 0.x, where log capture was double opt-in. Rationale and redaction posture in §10.
 
