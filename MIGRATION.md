@@ -1,0 +1,123 @@
+# Migrating from 0.x to 1.x
+
+Version 1.0 of the Apitally SDK for Python is a rewrite. It is now an [OpenTelemetry](https://opentelemetry.io) distribution: the SDK builds on the community OTel instrumentations for each framework and sends data to Apitally via OTLP. Setup is a single line, the credential has changed, and several 0.x options were renamed or removed. This guide maps every 0.x pattern to its 1.x equivalent.
+
+> [!WARNING]
+> **Application logs are now captured and sent to Apitally by default**, and log message content is *not* redacted. In 0.x, log capture was opt-in and required request logging to be enabled. If your application logs sensitive data, sanitize it at the logging source before upgrading, or opt out with `capture_logs=False`.
+
+## New credential: write token
+
+The `client_id` is gone. 1.x authenticates with a *write token* (format `apt_...`), which you can find in the Apitally dashboard. Pass it as the `write_token` argument or set the `APITALLY_WRITE_TOKEN` environment variable.
+
+## Setup
+
+The `ApitallyMiddleware` class is gone. Setup is now a call to `init_apitally(...)`, except for Litestar, which keeps its plugin (Litestar plugins must be passed at construction, so a plugin remains the right shape there).
+
+| Framework | 0.x | 1.x |
+| --- | --- | --- |
+| FastAPI | `app.add_middleware(ApitallyMiddleware, client_id="...")` | `init_apitally(app, write_token="...")` |
+| Starlette | `app.add_middleware(ApitallyMiddleware, client_id="...")` | `init_apitally(app, write_token="...")` |
+| Flask | `app.wsgi_app = ApitallyMiddleware(app, client_id="...")` | `init_apitally(app, write_token="...")` |
+| Django | `"apitally.django.ApitallyMiddleware"` in `MIDDLEWARE` + `APITALLY_MIDDLEWARE` setting | `init_apitally(write_token="...")` at the *end* of `settings.py` |
+| Litestar | `Litestar(plugins=[ApitallyPlugin(client_id="...")])` | `Litestar(plugins=[ApitallyPlugin(write_token="...")])` |
+| BlackSheep | `use_apitally(app, client_id="...")` | `init_apitally(app, write_token="...")` |
+
+Import `init_apitally` from the framework-specific module, e.g. `from apitally.fastapi import init_apitally`.
+
+**Django users**: remove the `"apitally.django.ApitallyMiddleware"` entry from `MIDDLEWARE` and the `APITALLY_MIDDLEWARE` settings dict. 1.x inserts its own middleware automatically when you call `init_apitally(...)`. The old class no longer exists, so a stale `MIDDLEWARE` entry makes Django fail at startup. Call `init_apitally(...)` at the very end of `settings.py`, after `MIDDLEWARE` is defined.
+
+## Option lookup
+
+All options move to keyword arguments of `init_apitally(...)` (or `ApitallyPlugin(...)` for Litestar). The `RequestLoggingConfig` class and the `request_logging_config` argument are gone; its fields are now flat keyword arguments.
+
+| 0.x | 1.x |
+| --- | --- |
+| `client_id` | `write_token` (new credential, from the Apitally dashboard, or `APITALLY_WRITE_TOKEN`) |
+| `env` (default `"dev"`) | `env` (default changed to `"prod"`, or `APITALLY_ENV`) |
+| `app_version` | `app_version` (unchanged) |
+| `openapi_url` (FastAPI) | `openapi_url` (unchanged) |
+| `openapi_url` (Starlette) | Removed. Plain Starlette apps report route templates only. |
+| `consumer_callback` | Removed. Call `set_consumer(...)` from your auth middleware or dependencies (see below). |
+| `identify_consumer_callback` | Removed. Same replacement: `set_consumer(...)`. |
+| `set_consumer(request, ...)` / `request.state.apitally_consumer` / `request.apitally_consumer` | `from apitally import set_consumer; set_consumer(identifier, name=..., group=...)`. No request object needed. |
+| `ApitallyConsumer(identifier, name=..., group=...)` | Removed. Pass the values directly to `set_consumer(...)`. |
+| `proxy` | Removed. The exporter honors the standard `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` environment variables. |
+| `capture_client_disconnects` | Removed, no replacement. |
+| `filter_openapi_paths` (Litestar) | Removed. OpenAPI schema routes are always filtered from the reported endpoint list. |
+| `urlconf` (Django) | `urlconf` (unchanged) |
+| `include_django_views` (Django) | Kept, but now only affects the reported endpoint list. |
+| `request_logging_config=RequestLoggingConfig(...)` | Removed. Use the flat keyword arguments below. |
+| `enable_request_logging` | Removed. Request logs are always captured. |
+| `log_query_params` | Removed. Query params are always captured, with masking applied. |
+| `log_request_headers` | `log_request_headers` (unchanged, default `False`) |
+| `log_request_body` | `log_request_body` (unchanged, default `False`) |
+| `log_response_headers` | `log_response_headers` (unchanged, default `True`) |
+| `log_response_body` | `log_response_body` (unchanged, default `False`) |
+| `log_exception` | Removed. Exceptions are always captured as OpenTelemetry exception events. |
+| `capture_logs` | `capture_logs`, now a top-level argument and **default `True`** (see the warning at the top). |
+| `capture_traces` | Removed. Traces are a core signal in 1.x and always captured. |
+| `mask_query_params` | `mask_query_params` (unchanged) |
+| `mask_headers` | `mask_headers` (unchanged) |
+| `mask_body_fields` | `mask_body_fields` (unchanged) |
+| `mask_request_body_callback` | `mask_request_body`, new signature (see below) |
+| `mask_response_body_callback` | `mask_response_body`, new signature (see below) |
+| `exclude_paths` | `exclude_paths` (unchanged) |
+| `exclude_callback` | Removed. Replaced by `exclude_on_request` / `exclude_on_response` (see below). |
+| `apitally.client.*` imports | Removed. The Hub transport is replaced by OTLP export; there is no public API under `apitally.client`. |
+| Validation and server error capture | No SDK-side API anymore. Apitally derives these server-side from standard OpenTelemetry exception events on traces. |
+
+## Consumers
+
+Instead of returning a consumer from a callback, call `set_consumer(...)` from wherever you authenticate the request, for example an auth middleware or a FastAPI dependency:
+
+```python
+from apitally import set_consumer
+
+def get_current_user(...):
+    user = ...
+    set_consumer(user.identifier, name=user.name, group=user.group)
+    return user
+```
+
+## Excluding requests
+
+The `exclude_callback(request, response)` callback is replaced by two callbacks that operate on the OpenTelemetry attributes of the request's SERVER span. `exclude_on_request` is evaluated at span start (nothing about an excluded request is ever transmitted), `exclude_on_response` at span end (so it can see the response status and any attributes you set via `set_request_attribute(...)`).
+
+```python
+def exclude_on_request(span):
+    return str(span.attributes.get("url.path", "")).startswith("/internal/")
+
+def exclude_on_response(span):
+    return span.attributes.get("http.response.status_code") == 404
+
+init_apitally(
+    app,
+    write_token="your-write-token",
+    exclude_on_request=exclude_on_request,
+    exclude_on_response=exclude_on_response,
+)
+```
+
+## Masking request and response bodies
+
+`mask_request_body_callback` and `mask_response_body_callback` are renamed to `mask_request_body` and `mask_response_body`. They no longer receive request/response dicts; the new signature is `(span, body: bytes) -> bytes | None`, where `span` is the request's SERVER span. Returning `None` replaces the captured body with `<masked>`.
+
+```python
+def mask_request_body(span, body):
+    if span.attributes.get("url.path") == "/users":
+        return None  # body is replaced with <masked>
+    return body
+```
+
+## Using Apitally alongside an existing OpenTelemetry setup
+
+If your application already has an OpenTelemetry `TracerProvider` configured (e.g. for Datadog, Honeycomb, or your own collector), Apitally attaches to it instead of replacing it. Your existing pipeline is unaffected. A few things to be aware of in this mode:
+
+- Call `init_apitally(...)` before your other OpenTelemetry setup when possible.
+- Your sampler applies. If it drops requests (e.g. `TraceIdRatioBased`), request logs in Apitally follow your sampling rate. Metrics are recorded independently of sampling and stay complete.
+- Your span attribute limits apply. A limit below 65,536 (e.g. via `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT`) can truncate captured request/response bodies. The SDK logs a warning when it detects this.
+
+## Version floors
+
+- The minimum supported Litestar version is now 2.24 (was 2.4).
+- All other framework version floors are unchanged, and Python 3.10+ is still required.
