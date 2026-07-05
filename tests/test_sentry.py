@@ -1,7 +1,7 @@
 import sys
 
 import pytest
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import Span, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind
@@ -91,10 +91,12 @@ def test_configure_without_sentry_sdk_installs_nothing(monkeypatch):
 def test_raising_hook_is_swallowed(sentry_initialized, tracer, exporter, monkeypatch):
     activation.configure(write_token=TOKEN)
 
-    def raise_hook_error():
-        raise RuntimeError("hook error")
+    # Break the span at the OTel boundary so the event processor fails without patching
+    # any Apitally internals
+    def raise_on_set_attribute(self, key, value):
+        raise RuntimeError("broken span")
 
-    monkeypatch.setattr(sentry, "get_server_span", raise_hook_error)
+    monkeypatch.setattr(Span, "set_attribute", raise_on_set_attribute)
 
     event_id = capture_exception_in_server_span(tracer)
 

@@ -14,12 +14,12 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler, TraceIdRatioBas
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import config, metrics
-from apitally.shared.asgi import BODY_TOO_LARGE, ApitallyASGIMiddleware
+from apitally.shared.asgi import ApitallyASGIMiddleware
+from apitally.shared.capture import BODY_MASKED, BODY_TOO_LARGE
 from apitally.shared.config import configure
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor
-from apitally.shared.wsgi import BODY_MASKED
 
 
 TOKEN = "apt_" + "a" * 24

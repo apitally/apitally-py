@@ -7,7 +7,6 @@ import sys
 import time
 from collections.abc import Callable, Iterable
 from contextlib import suppress
-from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any
 
 import django
@@ -21,17 +20,12 @@ from django.views.generic.base import View
 from opentelemetry.instrumentation.django import DjangoInstrumentor
 
 from apitally.shared import activation, config, metrics, startup
+from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
 from apitally.shared.config import ApitallyConfig
-from apitally.shared.consumer import get_consumer_identifier, reset_consumer_identifier
+from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import get_server_span
-from apitally.shared.wsgi import (
-    BODY_TOO_LARGE,
-    MAX_BODY_SIZE,
-    CaptureMixin,
-    is_allowed_content_type,
-    parse_content_length,
-)
+from apitally.shared.wsgi import parse_content_length
 
 
 if TYPE_CHECKING:
@@ -89,9 +83,13 @@ def init_apitally(
             instrumentor.instrument()
         _insert_middleware(caller_globals)
         request_started.connect(_handle_request_started, weak=False, dispatch_uid="apitally")
-        startup.set_app_info(
-            framework="django", paths=_get_paths, versions=_get_versions(app_version), openapi=_get_openapi
-        )
+        versions = {
+            "django": django.get_version(),
+            **startup.resolve_versions(
+                app_version, djangorestframework="djangorestframework", **{"django-ninja": "django-ninja"}
+            ),
+        }
+        startup.set_app_info(framework="django", paths=_get_paths, versions=versions, openapi=_get_openapi)
     except Exception:
         logger.exception("Apitally setup for Django failed")
 
@@ -204,7 +202,7 @@ class ApitallyDjangoMiddleware(CaptureMixin):
             method=request.method or "",
             route=route or "",
             status_code=response.status_code,
-            consumer=get_consumer_identifier(),
+            consumer=resolve_consumer_identifier(span),
             duration=duration,
             request_size=request_size,
             response_size=response_size,
@@ -226,16 +224,6 @@ class ApitallyDjangoMiddleware(CaptureMixin):
 
 def _transform_path(path: str) -> str:
     return PATH_PARAMETER_RE.sub(r"{\g<parameter>}", simplify_regex(path))
-
-
-def _get_versions(app_version: str | None) -> dict[str, str]:
-    versions = {"django": django.get_version()}
-    for package in ("djangorestframework", "django-ninja"):
-        with suppress(PackageNotFoundError):
-            versions[package] = version(package)
-    if app_version:
-        versions["app"] = app_version
-    return versions
 
 
 def _get_paths() -> list[dict[str, str]]:

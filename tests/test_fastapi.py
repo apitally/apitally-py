@@ -8,6 +8,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.trace import SpanKind
 
+from apitally import set_consumer
 from apitally.fastapi import init_apitally
 from apitally.shared import activation, metrics, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
@@ -35,6 +36,11 @@ def create_app() -> FastAPI:
     @app.get("/error")
     def error():
         raise ValueError("boom")
+
+    @app.get("/consumer")
+    def consumer():
+        set_consumer("tester")
+        return {"ok": True}
 
     router = APIRouter()
 
@@ -203,6 +209,29 @@ def test_startup_event_paths_match_routes_and_openapi_parses(app, memory_exporte
     openapi = json.loads(payload["openapi"])
     assert openapi["openapi"].startswith("3.")
     assert "/items/{item_id}" in openapi["paths"]
+
+
+def test_consumer_set_in_sync_endpoint_reaches_metrics(app, memory_exporters, monkeypatch):
+    # def endpoints run in a copied context (threadpool), so the ContextVar write is lost
+    # and the span attribute fallback must carry the consumer into the histogram
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    init_apitally(app, write_token=TOKEN)
+    with TestClient(app) as client:
+        reader = attach_metric_reader()
+        client.get("/consumer")
+    (point,) = duration_points(reader)
+    assert point.attributes["apitally.consumer.identifier"] == "tester"
+
+
+def test_init_apitally_swallows_instrumentation_errors(app, monkeypatch):
+    def raise_error(*args, **kwargs):
+        raise RuntimeError("instrumentation failed")
+
+    monkeypatch.setattr(FastAPIInstrumentor, "instrument_app", raise_error)
+    init_apitally(app, write_token=TOKEN)
+    with TestClient(app) as client:
+        response = client.get("/items/1")
+    assert response.status_code == 200
 
 
 def test_init_twice_does_not_stack_middleware(app, memory_exporters, monkeypatch):

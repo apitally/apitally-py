@@ -98,6 +98,17 @@ def test_request_flow_span_histogram_and_startup_event(app, memory_exporters, mo
     assert record.attributes["apitally.request.server_span_id"] == format(span.context.span_id, "016x")
 
 
+def test_init_apitally_swallows_instrumentation_errors(app, monkeypatch):
+    def raise_error(*args, **kwargs):
+        raise RuntimeError("instrumentation failed")
+
+    monkeypatch.setattr(StarletteInstrumentor, "instrument_app", raise_error)
+    init_apitally(app, write_token=TOKEN)
+    with TestClient(app) as client:
+        response = client.get("/items/1")
+    assert response.status_code == 200
+
+
 def test_pre_instrumented_app_inserts_transport_inside_otel_middleware(app, memory_exporters, monkeypatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     StarletteInstrumentor.instrument_app(app)

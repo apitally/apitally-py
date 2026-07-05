@@ -5,6 +5,8 @@ import logging
 import platform
 import time
 from collections.abc import Callable
+from contextlib import suppress
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from opentelemetry.trace import INVALID_SPAN, set_span_in_context
@@ -30,6 +32,17 @@ def set_app_info(
     app_info.update(framework=framework, paths=paths, versions=versions, openapi=openapi)
     if emit_startup_event not in activation.on_activate_hooks:
         activation.register_on_activate_hook(emit_startup_event)
+
+
+def resolve_versions(app_version: str | None, **packages: str) -> dict[str, str]:
+    """Resolve installed versions for the startup event; keys are payload names, values distribution names."""
+    versions = {}
+    for name, package in packages.items():
+        with suppress(PackageNotFoundError):
+            versions[name] = version(package)
+    if app_version:
+        versions["app"] = app_version
+    return versions
 
 
 def emit_startup_event() -> None:

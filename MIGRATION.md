@@ -113,7 +113,7 @@ def mask_request_body(span, body):
 
 If your application already has an OpenTelemetry `TracerProvider` configured (e.g. for Datadog, Honeycomb, or your own collector), Apitally attaches to it instead of replacing it. Your existing pipeline is unaffected. A few things to be aware of in this mode:
 
-- Call `init_apitally(...)` before your other OpenTelemetry setup when possible.
+- The order of `init_apitally(...)` and your other OpenTelemetry setup does not matter, as long as your `TracerProvider` is registered before the application starts serving requests. A provider registered after startup is not picked up.
 - Your sampler applies. If it drops requests (e.g. `TraceIdRatioBased`), request logs in Apitally follow your sampling rate. Metrics are recorded independently of sampling and stay complete.
 - Your span attribute limits apply. A limit below 65,536 (e.g. via `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT`) can truncate captured request/response bodies. The SDK logs a warning when it detects this.
 

@@ -44,6 +44,15 @@ def test_set_consumer_targets_server_span_from_child_span(tracer, exporter):
     assert get_consumer_identifier() == "acme-corp"
 
 
+def test_set_consumer_truncates_identifier_name_and_group(tracer, exporter):
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        set_consumer("i" * 200, name="n" * 100, group="g" * 100)
+    (server,) = exporter.get_finished_spans()
+    assert server.attributes["apitally.consumer.identifier"] == "i" * 128
+    assert server.attributes["apitally.consumer.name"] == "n" * 64
+    assert server.attributes["apitally.consumer.group"] == "g" * 64
+
+
 def test_set_request_attribute_outside_request_is_silent_noop():
     assert get_server_span() is None
     set_request_attribute("tenant", "acme")

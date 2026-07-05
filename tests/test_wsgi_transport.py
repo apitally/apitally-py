@@ -9,10 +9,11 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind
 
+from apitally.shared.capture import BODY_MASKED, BODY_TOO_LARGE
 from apitally.shared.config import configure
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor, server_span_var
-from apitally.shared.wsgi import BODY_MASKED, BODY_TOO_LARGE, WsgiTransportMiddleware
+from apitally.shared.wsgi import ApitallyWSGIMiddleware
 
 
 TOKEN = "apt_" + "a" * 24
@@ -82,7 +83,7 @@ def make_environ(
 
 
 def run_request(
-    middleware: WsgiTransportMiddleware,
+    middleware: ApitallyWSGIMiddleware,
     environ: dict[str, Any],
     tracer,
     exporter: InMemorySpanExporter,
@@ -116,7 +117,7 @@ def test_over_cap_body_sentinel_without_reading(tracer, exporter):
 
     environ = make_environ(method="POST", content_type="application/json", content_length="70000")
     spy = environ["wsgi.input"]
-    attributes = run_request(WsgiTransportMiddleware(app), environ, tracer, exporter)
+    attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, exporter)
 
     assert attributes["apitally.request.body"] == BODY_TOO_LARGE
     assert attributes["http.request.body.size"] == 70000
@@ -136,7 +137,7 @@ def test_absent_or_unparseable_content_length_means_no_capture(tracer, exporter,
         method="POST", body=b'{"a": 1}', content_type="application/json", content_length=content_length
     )
     spy = environ["wsgi.input"]
-    attributes = run_request(WsgiTransportMiddleware(app), environ, tracer, exporter)
+    attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, exporter)
 
     assert "apitally.request.body" not in attributes
     assert spy.read_count == 0
@@ -154,7 +155,7 @@ def test_captured_body_reemitted_and_redacted(tracer, exporter):
         return [b"ok"]
 
     environ = make_environ(method="POST", body=body, content_type="application/json", content_length=str(len(body)))
-    attributes = run_request(WsgiTransportMiddleware(app), environ, tracer, exporter)
+    attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, exporter)
 
     assert received["body"] == body
     assert json.loads(str(attributes["apitally.request.body"])) == {"password": REDACTED, "item": "x"}
@@ -173,7 +174,7 @@ def test_redaction_failure_after_parse_fails_closed(tracer, exporter, monkeypatc
 
     monkeypatch.setattr("apitally.shared.redaction.Redaction.redact_body", boom)
     environ = make_environ(method="POST", body=body, content_type="application/json", content_length=str(len(body)))
-    attributes = run_request(WsgiTransportMiddleware(app), environ, tracer, exporter)
+    attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, exporter)
 
     assert attributes["apitally.request.body"] == BODY_MASKED
 
@@ -187,7 +188,7 @@ def test_non_allowlisted_mime_never_touches_input(tracer, exporter):
 
     environ = make_environ(method="POST", body=b"0123456789", content_type="image/png", content_length="10")
     spy = environ["wsgi.input"]
-    attributes = run_request(WsgiTransportMiddleware(app), environ, tracer, exporter)
+    attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, exporter)
 
     assert "apitally.request.body" not in attributes
     assert spy.read_count == 0
@@ -202,7 +203,7 @@ def test_response_body_accumulated_redacted_and_close_propagated(tracer, exporte
         start_response("200 OK", [("Content-Type", "application/json")])
         return iterable
 
-    attributes = run_request(WsgiTransportMiddleware(app), make_environ(), tracer, exporter)
+    attributes = run_request(ApitallyWSGIMiddleware(app), make_environ(), tracer, exporter)
 
     assert json.loads(str(attributes["apitally.response.body"])) == {"token": REDACTED, "id": 1}
     assert attributes["http.response.body.size"] == sum(len(c) for c in iterable.chunks)
@@ -217,7 +218,7 @@ def test_request_headers_redacted(tracer, exporter):
         return [b"ok"]
 
     environ = make_environ(HTTP_AUTHORIZATION="Bearer secret123", HTTP_ACCEPT="application/json")
-    attributes = run_request(WsgiTransportMiddleware(app), environ, tracer, exporter)
+    attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, exporter)
 
     assert attributes["http.request.header.authorization"] == [REDACTED]
     assert attributes["http.request.header.accept"] == ("application/json",)
@@ -230,6 +231,6 @@ def test_abandoned_streaming_response_leaves_size_unset(tracer, exporter):
         start_response("200 OK", [("Content-Type", "text/plain")])
         return iter([b"one", b"two", b"three"])
 
-    attributes = run_request(WsgiTransportMiddleware(app), make_environ(), tracer, exporter, consume_chunks=1)
+    attributes = run_request(ApitallyWSGIMiddleware(app), make_environ(), tracer, exporter, consume_chunks=1)
 
     assert "http.response.body.size" not in attributes

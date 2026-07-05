@@ -1,103 +1,28 @@
 from __future__ import annotations
 
 import io
-import json
 import logging
 import time
 from collections.abc import Callable, Iterable, Iterator
 from typing import TYPE_CHECKING, Any
 
 from apitally.shared import metrics
-from apitally.shared.config import ApitallyConfig, get_config
-from apitally.shared.consumer import get_consumer_identifier, reset_consumer_identifier
+from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
+from apitally.shared.config import ApitallyConfig
+from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import get_server_span
 
 
 if TYPE_CHECKING:
     from _typeshed.wsgi import StartResponse, WSGIApplication, WSGIEnvironment
-    from opentelemetry.sdk.trace import ReadableSpan, Span
+    from opentelemetry.sdk.trace import Span
 
 
 logger = logging.getLogger(__name__)
 
-MAX_BODY_SIZE = 50_000
-BODY_TOO_LARGE = "<body too large>"
-BODY_MASKED = "<masked>"
-ALLOWED_CONTENT_TYPES = (
-    "application/json",
-    "application/problem+json",
-    "application/vnd.api+json",
-    "application/ld+json",
-    "application/x-ndjson",
-    "text/markdown",
-    "text/plain",
-)
 
-
-class CaptureMixin:
-    """Config refresh and redaction-aware body attribute writing shared by the transport middlewares."""
-
-    config: ApitallyConfig | None
-    redaction: Redaction
-
-    def refresh_config(self) -> ApitallyConfig:
-        # Must never raise: it runs at request entry, outside the per-request try/except
-        try:
-            config = get_config() or ApitallyConfig()
-            if config is not self.config:
-                self.config = config
-                self.redaction = Redaction(config.mask_query_params, config.mask_headers, config.mask_body_fields)
-            return config
-        except Exception:
-            logger.exception("Error refreshing Apitally config")
-            return self.config or ApitallyConfig()
-
-    def set_body_attribute(
-        self,
-        span: Span,
-        key: str,
-        body: bytes | str,
-        mask_callback: Callable[[ReadableSpan, bytes], bytes | None] | None,
-        callback_name: str,
-    ) -> None:
-        if isinstance(body, str):
-            span.set_attribute(key, body)
-            return
-        if mask_callback is not None:
-            try:
-                masked = mask_callback(span, body)
-            except Exception:
-                logger.warning(
-                    "Apitally %s callback raised an exception, body replaced with %s",
-                    callback_name,
-                    BODY_MASKED,
-                    exc_info=True,
-                )
-                masked = None
-            if masked is None:
-                span.set_attribute(key, BODY_MASKED)
-                return
-            if len(masked) > MAX_BODY_SIZE:
-                span.set_attribute(key, BODY_TOO_LARGE)
-                return
-            body = masked
-        try:
-            data = json.loads(body)
-        except Exception:
-            # Non-JSON but allowlisted (e.g. text/plain): stored as-is (design.md section 6)
-            span.set_attribute(key, body.decode("utf-8", errors="replace"))
-            return
-        try:
-            value = json.dumps(self.redaction.redact_body(data), separators=(",", ":"), ensure_ascii=False)
-        except Exception:
-            # Fail closed: privacy over fidelity when redaction breaks on parsed JSON
-            logger.warning("Error redacting body, replaced with %s", BODY_MASKED, exc_info=True)
-            value = BODY_MASKED
-        span.set_attribute(key, value)
-
-
-class WsgiTransportMiddleware(CaptureMixin):
+class ApitallyWSGIMiddleware(CaptureMixin):
     """Transport-level capture middleware; must run inside the instrumentor's middleware (design.md section 6)."""
 
     def __init__(
@@ -211,7 +136,7 @@ class WsgiTransportMiddleware(CaptureMixin):
                 method=environ.get("REQUEST_METHOD", ""),
                 route=route or "",
                 status_code=state.status_code,
-                consumer=get_consumer_identifier(),
+                consumer=resolve_consumer_identifier(span),
                 duration=duration,
                 request_size=state.request_size,
                 response_size=state.response_size,
@@ -231,7 +156,7 @@ class ResponseWrapper:
     def __init__(
         self,
         response: Iterable[bytes],
-        middleware: WsgiTransportMiddleware,
+        middleware: ApitallyWSGIMiddleware,
         environ: WSGIEnvironment,
         config: ApitallyConfig,
         state: RequestState,
@@ -282,10 +207,6 @@ class RequestState:
         self.bytes_sent = 0
         self.completed = False
         self.finalized = False
-
-
-def is_allowed_content_type(content_type: str | None) -> bool:
-    return content_type is not None and content_type.lower().startswith(ALLOWED_CONTENT_TYPES)
 
 
 def parse_content_length(value: str | None) -> int | None:

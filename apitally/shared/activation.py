@@ -40,6 +40,10 @@ logger_provider: LoggerProvider | None = None
 # instances alive so a later fork never calls a dead reference (design.md section 7)
 retired_processors: list[SpanProcessor | LogRecordProcessor] = []
 
+# The forked child inherits the tracer provider with this processor already attached;
+# re-activation reuses it instead of attaching a second one (design.md section 7)
+inherited_span_processor: ApitallySpanProcessor | None = None
+
 
 def configure(**kwargs: Any) -> ApitallyConfig:
     """Configure phase: record config only, no threads, no network (design.md section 7)."""
@@ -137,18 +141,24 @@ def skip_activation() -> bool:
 
 
 def start_pipelines() -> None:
-    global env, resource, span_processor, log_processor, logger_provider
+    global env, resource, span_processor, log_processor, logger_provider, inherited_span_processor
     user_provider = providers.get_user_tracer_provider()
     env = providers.resolve_env(user_provider)
     # The resource is created here, not at configure, so every activating process mints
     # its own service.instance.id and carries the activation-resolved env (spec section 5)
     resource = providers.create_resource(env)
     metrics.setup(resource)
-    span_processor = ApitallySpanProcessor(BatchSpanProcessor(providers.create_span_exporter(env)))
-    if user_provider is not None:
-        providers.attach_to_tracer_provider(user_provider, span_processor)
+    if inherited_span_processor is not None:
+        # Forked child re-activation: swap in a fresh downstream, like after_fork_in_parent
+        span_processor = inherited_span_processor
+        inherited_span_processor = None
+        span_processor.downstream = BatchSpanProcessor(providers.create_span_exporter(env))
     else:
-        providers.setup_tracer_provider(resource, span_processor)
+        span_processor = ApitallySpanProcessor(BatchSpanProcessor(providers.create_span_exporter(env)))
+        if user_provider is not None:
+            providers.attach_to_tracer_provider(user_provider, span_processor)
+        else:
+            providers.setup_tracer_provider(resource, span_processor)
     log_processor = ApitallyLogRecordProcessor(
         BatchLogRecordProcessor(providers.create_log_exporter(env)), span_processor
     )
@@ -160,6 +170,9 @@ def start_pipelines() -> None:
 
 def before_fork() -> None:
     """Quiesce so the process owns no threads at the instant of fork (design.md section 7)."""
+    # Held across the fork so an in-flight activate completes first; released in both after
+    # handlers (the child gets a fresh lock, since an inherited locked mutex would deadlock)
+    activation_lock.acquire()
     if not activated:
         return
     try:
@@ -179,9 +192,9 @@ def before_fork() -> None:
 
 def after_fork_in_parent() -> None:
     """Re-activate by swapping fresh batch processors into the registered wrappers (design.md section 7)."""
-    if not activated or env is None:
-        return
     try:
+        if not activated or env is None:
+            return
         if span_processor is not None:
             span_processor.downstream = BatchSpanProcessor(providers.create_span_exporter(env))
         if log_processor is not None:
@@ -189,11 +202,15 @@ def after_fork_in_parent() -> None:
         metrics.attach_reader(env)
     except Exception:
         logger.exception("Error re-activating Apitally after fork")
+    finally:
+        activation_lock.release()
 
 
 def after_fork_in_child() -> None:
     """Reset to configured state; the child activates itself if it ever serves (design.md section 7)."""
-    global activation_attempted, activated, env, resource, span_processor, log_processor, logger_provider
+    global activation_lock, activation_attempted, activated, env, resource
+    global span_processor, log_processor, logger_provider, inherited_span_processor
+    activation_lock = threading.Lock()
     if not activated:
         return
     try:
@@ -205,6 +222,7 @@ def after_fork_in_child() -> None:
     activated = False
     env = None
     resource = None
+    inherited_span_processor = span_processor
     span_processor = None
     log_processor = None
     logger_provider = None
@@ -212,7 +230,9 @@ def after_fork_in_child() -> None:
 
 def reset() -> None:
     """Full teardown for tests; retired processors stay referenced (design.md section 7)."""
-    global activation_attempted, activated, env, resource, span_processor, log_processor, logger_provider
+    global activation_lock, activation_attempted, activated, env, resource
+    global span_processor, log_processor, logger_provider, inherited_span_processor
+    activation_lock = threading.Lock()
     uninstall_root_handler()
     reader = metrics.reader
     metrics.reset()
@@ -229,4 +249,5 @@ def reset() -> None:
     span_processor = None
     log_processor = None
     logger_provider = None
+    inherited_span_processor = None
     on_activate_hooks.clear()

@@ -8,7 +8,7 @@
   </a>
 </p>
 <p align="center"><b>API monitoring & analytics made simple</b></p>
-<p align="center" style="color: #ccc;">Metrics, logs, traces, and alerts for your APIs — with just one line of code.</p>
+<p align="center" style="color: #ccc;">Metrics, logs, traces, and alerts for your APIs, with just one line of code.</p>
 <br>
 <p>
 <picture>

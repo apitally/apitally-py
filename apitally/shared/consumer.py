@@ -2,16 +2,21 @@ from __future__ import annotations
 
 import logging
 from contextvars import ContextVar
+from typing import TYPE_CHECKING
 
 from opentelemetry.util.types import AttributeValue
 
 from apitally.shared.span_processor import get_server_span
 
 
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace import ReadableSpan
+
+
 logger = logging.getLogger(__name__)
 
 # Request-scoped consumer holder: the transport middleware (asgi.py/wsgi.py) calls
-# reset_consumer_identifier() at request entry and get_consumer_identifier() at request
+# reset_consumer_identifier() at request entry and resolve_consumer_identifier() at request
 # completion, so consumer-dimension metrics stay complete even when a cooperative
 # sampler drops the SERVER span (design.md section 5)
 consumer_identifier_var: ContextVar[str | None] = ContextVar("apitally_consumer_identifier", default=None)
@@ -55,6 +60,16 @@ def capture_exception(exc: BaseException) -> None:
 
 def get_consumer_identifier() -> str | None:
     return consumer_identifier_var.get()
+
+
+def resolve_consumer_identifier(span: ReadableSpan | None) -> str | None:
+    # Sync endpoints run in a copied context (anyio), where set_consumer's ContextVar write is
+    # lost; the span object is shared across threads, so its attribute is the fallback
+    identifier = consumer_identifier_var.get()
+    if identifier is None and span is not None:
+        value = (span.attributes or {}).get("apitally.consumer.identifier")
+        identifier = value if isinstance(value, str) else None
+    return identifier
 
 
 def reset_consumer_identifier() -> None:

@@ -44,6 +44,15 @@ def test_recall_semantics():
     assert config.get_config() is recalled
 
 
+def test_fixed_fields_keep_value_on_reconfigure():
+    other_token = "apt_" + "b" * 24
+    config.configure(write_token=VALID_TOKEN, env="staging")
+    config.mark_fixed("write_token")
+    cfg = config.configure(write_token=other_token, env="dev")
+    assert cfg.write_token == VALID_TOKEN
+    assert cfg.env == "dev"
+
+
 def test_semconv_helper(monkeypatch):
     monkeypatch.delenv("OTEL_SEMCONV_STABILITY_OPT_IN", raising=False)
     config.ensure_semconv_opt_in()

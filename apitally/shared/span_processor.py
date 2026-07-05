@@ -136,6 +136,10 @@ class ApitallySpanProcessor(SpanProcessor):
 
     def redact_span(self, span: ReadableSpan) -> ReadableSpan:
         """Return a copy with query params and headers redacted; the original span is never mutated."""
+        if not any(
+            key in QUERY_ATTRIBUTES or key.startswith(HEADER_ATTRIBUTE_PREFIXES) for key in span.attributes or {}
+        ):
+            return span
         attributes = dict(span.attributes or {})
         changed = False
         for key, value in attributes.items():
