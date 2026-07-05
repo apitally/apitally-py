@@ -49,6 +49,34 @@ def test_recall_semantics(caplog: pytest.LogCaptureFixture):
     assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
 
 
+def test_sample_rate_resolution():
+    cfg = config.configure(write_token=VALID_TOKEN, sample_rate=0.3)
+    assert cfg.sample_rate == 0.3
+    config.reset()
+    cfg = config.configure(write_token=VALID_TOKEN)
+    assert cfg.sample_rate == 1.0
+    config.reset()
+    cfg = config.configure(write_token=VALID_TOKEN, sample_rate=0.0)
+    assert cfg.sample_rate == 0.0
+
+
+@pytest.mark.parametrize("invalid_rate", [1.5, -0.1, "0.5"])
+def test_invalid_sample_rate_warns_once_and_captures_everything(invalid_rate: object, caplog: pytest.LogCaptureFixture):
+    with caplog.at_level(logging.WARNING, logger="apitally"):
+        cfg = config.configure(write_token=VALID_TOKEN, sample_rate=invalid_rate)
+        config.configure(write_token=VALID_TOKEN, sample_rate=invalid_rate)
+    assert cfg.sample_rate == 1.0
+    warnings = [r for r in caplog.records if "sample_rate" in r.getMessage()]
+    assert len(warnings) == 1
+
+
+def test_sample_rate_adjustable_after_configure():
+    cfg = config.configure(write_token=VALID_TOKEN, sample_rate=0.5)
+    cfg.sample_rate = 0.2
+    assert config.get_config() is cfg
+    assert cfg.sample_rate == 0.2
+
+
 def test_semconv_helper(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("OTEL_SEMCONV_STABILITY_OPT_IN", raising=False)
     config.ensure_semconv_opt_in()

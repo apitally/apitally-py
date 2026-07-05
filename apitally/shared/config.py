@@ -35,8 +35,9 @@ class ApitallyConfig:
     mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None
     mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None
     exclude_paths: list[str] = field(default_factory=list)
-    exclude_on_request: Callable[[ReadableSpan], bool] | None = None
-    exclude_on_response: Callable[[ReadableSpan], bool] | None = None
+    sample_rate: float = 1.0
+    sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None
+    sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None
     otlp_endpoint: str = DEFAULT_OTLP_ENDPOINT
 
 
@@ -45,6 +46,7 @@ PATTERN_FIELDS = ("mask_query_params", "mask_headers", "mask_body_fields", "excl
 
 current_config: ApitallyConfig | None = None
 recall_warned = False
+sample_rate_warned = False
 
 
 def explicit_kwargs(params: dict[str, Any]) -> dict[str, Any]:
@@ -74,9 +76,10 @@ def get_config() -> ApitallyConfig | None:
 
 
 def reset() -> None:
-    global current_config, recall_warned
+    global current_config, recall_warned, sample_rate_warned
     current_config = None
     recall_warned = False
+    sample_rate_warned = False
 
 
 def ensure_semconv_opt_in() -> None:
@@ -103,8 +106,15 @@ def drop_invalid_patterns(config: ApitallyConfig) -> None:
 
 
 def resolve_config(kwargs: dict[str, Any]) -> tuple[ApitallyConfig, str | None]:
+    global sample_rate_warned
     config = ApitallyConfig(**{k: v for k, v in kwargs.items() if k in CONFIG_FIELDS})
     drop_invalid_patterns(config)
+    # Type check before range check: comparing a non-numeric sample_rate would raise (design.md section 9)
+    if not isinstance(config.sample_rate, (int, float)) or not 0 <= config.sample_rate <= 1:
+        if not sample_rate_warned:
+            sample_rate_warned = True
+            logger.warning("Invalid sample_rate ignored, expected a number between 0 and 1: %r", config.sample_rate)
+        config.sample_rate = 1.0
     if "write_token" not in kwargs and (token := os.environ.get("APITALLY_WRITE_TOKEN")):
         config.write_token = token
     if "env" not in kwargs and (env := os.environ.get("APITALLY_ENV")):

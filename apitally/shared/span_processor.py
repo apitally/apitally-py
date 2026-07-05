@@ -6,6 +6,7 @@ from contextvars import ContextVar
 
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
+from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 from opentelemetry.trace import SpanKind
 
 from apitally.shared.config import ApitallyConfig, get_config
@@ -44,12 +45,24 @@ QUERY_ATTRIBUTES = ("url.query", "http.target", "http.url", "url.full")
 HEADER_ATTRIBUTE_PREFIXES = ("http.request.header.", "http.response.header.")
 NOISE_NAME_SUFFIXES = (" http send", " http receive", " websocket send", " websocket receive")
 NOISE_SCOPE_PREFIX = "opentelemetry.instrumentation."
+TRACE_ID_MASK = (1 << 64) - 1
 
 server_span_var: ContextVar[Span | None] = ContextVar("apitally_server_span", default=None)
+server_span_kept_var: ContextVar[bool] = ContextVar("apitally_server_span_kept", default=False)
 
 
 def get_server_span() -> Span | None:
     return server_span_var.get()
+
+
+def is_server_span_kept() -> bool:
+    return server_span_kept_var.get()
+
+
+def sampled_in(trace_id: int, rate: float) -> bool:
+    # TraceIdRatioBased convention: the low 64 bits of the trace ID tested against round(rate * 2**64),
+    # deterministic per trace so services sampling at the same rate capture the same traces
+    return trace_id & TRACE_ID_MASK < TraceIdRatioBased.get_bound_for_rate(rate)
 
 
 class ApitallySpanProcessor(SpanProcessor):
@@ -74,7 +87,8 @@ class ApitallySpanProcessor(SpanProcessor):
             elif span.parent is None or span.parent.is_remote:
                 if span.kind == SpanKind.SERVER:
                     server_span_var.set(span)
-                    keep = not self.exclude_request(span)
+                    keep = not self.exclude_request(span) and self.sample_request(span, span.context.trace_id)
+                    server_span_kept_var.set(keep)
                     self.spans[span.context.span_id] = (keep, span.context.span_id if keep else None)
                 else:
                     self.spans[span.context.span_id] = (False, None)
@@ -91,9 +105,7 @@ class ApitallySpanProcessor(SpanProcessor):
             keep, _ = self.spans.pop(context.span_id, (False, None))
             if not keep:
                 return
-            if span.kind == SpanKind.SERVER and self.callback_excludes(
-                self.config.exclude_on_response, span, "exclude_on_response"
-            ):
+            if span.kind == SpanKind.SERVER and not self.sample_response(span, context.trace_id):
                 return
             self.downstream.on_end(self.redact_span(span))
         except Exception:
@@ -121,16 +133,36 @@ class ApitallySpanProcessor(SpanProcessor):
         user_agent = attributes.get("user_agent.original") or attributes.get("http.user_agent")
         if user_agent and matches_any(EXCLUDE_USER_AGENT_PATTERNS, str(user_agent)):
             return True
-        return self.callback_excludes(self.config.exclude_on_request, span, "exclude_on_request")
+        return False
 
-    def callback_excludes(self, callback: Callable[[ReadableSpan], bool] | None, span: ReadableSpan, name: str) -> bool:
+    def sample_request(self, span: Span, trace_id: int) -> bool:
+        rate = self.resolve_sample_rate(self.config.sample_on_request, span, "sample_on_request")
+        return sampled_in(trace_id, self.config.sample_rate if rate is None else rate)
+
+    def sample_response(self, span: ReadableSpan, trace_id: int) -> bool:
+        # An unconfigured callback or an abstaining None leaves the request-stage decision standing
+        rate = self.resolve_sample_rate(self.config.sample_on_response, span, "sample_on_response")
+        return rate is None or sampled_in(trace_id, rate)
+
+    def resolve_sample_rate(
+        self, callback: Callable[[ReadableSpan], float | bool | None] | None, span: ReadableSpan, name: str
+    ) -> float | None:
+        """Map a sampling callback result to an effective rate; None means no callback or it abstained."""
         if callback is None:
-            return False
+            return None
         try:
-            return bool(callback(span))
+            result = callback(span)
         except Exception:
-            logger.warning("Apitally %s callback raised an exception, request not excluded", name, exc_info=True)
-            return False
+            logger.warning("Apitally %s callback raised an exception, request captured", name, exc_info=True)
+            return 1.0
+        if result is None:
+            return None
+        if isinstance(result, bool):
+            return 1.0 if result else 0.0
+        if isinstance(result, (int, float)) and 0 <= result <= 1:
+            return float(result)
+        logger.warning("Apitally %s callback returned an invalid value, request captured: %r", name, result)
+        return 1.0
 
     def redact_span(self, span: ReadableSpan) -> ReadableSpan:
         """Return a copy with query params and headers redacted; the original span is never mutated."""
