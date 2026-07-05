@@ -12,7 +12,7 @@ from blacksheep.server.routing import Router
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader
 from opentelemetry.sdk.trace import ReadableSpan
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanKind, StatusCode
 
 from apitally.blacksheep import init_apitally
 from apitally.shared import activation, metrics, startup
@@ -176,6 +176,29 @@ async def test_preinstrumented_app_adapted_without_duplicate_server_spans(memory
     assert server_span.attributes["http.route"] == "/items/{id}"
     # The user's instrumentor emits receive/send INTERNAL spans; the span processor drops them
     assert [s for s in spans if s.kind == SpanKind.INTERNAL] == []
+
+
+async def test_unhandled_exception_recorded_on_server_span(memory_exporters, monkeypatch):
+    allow_activation(monkeypatch)
+    app = create_app()
+
+    @app.router.get("/error")
+    def error_route() -> Response:
+        raise ValueError("boom")
+
+    await app.start()
+
+    async with create_client(app) as client:
+        response = await client.get("/error")
+    assert response.status_code == 500
+
+    (span,) = [s for s in exported_spans(memory_exporters) if s.kind == SpanKind.SERVER]
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.attributes is not None
+    assert span.attributes["http.response.status_code"] == 500
+    (event,) = [event for event in span.events if event.name == "exception"]
+    assert (event.attributes or {})["exception.type"] == "ValueError"
+    assert (event.attributes or {})["exception.message"] == "boom"
 
 
 async def test_request_body_captured_and_redacted(memory_exporters, monkeypatch):

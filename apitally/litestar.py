@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
-from importlib import metadata
 from typing import TYPE_CHECKING, Any
 
+from litestar.exceptions import HTTPException
 from litestar.middleware.base import DefineMiddleware
 from litestar.plugins import InitPluginProtocol
 from litestar.plugins.opentelemetry import (
@@ -71,6 +71,7 @@ class ApitallyPlugin(InitPluginProtocol):
                 DefineMiddleware(ApitallyASGIMiddleware, resolve_route=_resolve_route)  # ty: ignore[invalid-argument-type]
             )
             app_config.before_send.append(_before_send)
+            app_config.after_exception.append(_after_exception)
             app_config.on_startup.append(self.on_startup)
         except Exception:
             logger.exception("Error initializing Apitally for Litestar")
@@ -78,13 +79,10 @@ class ApitallyPlugin(InitPluginProtocol):
 
     def on_startup(self, app: Litestar) -> None:
         try:
-            versions = {"litestar": metadata.version("litestar")}
-            if self.app_version:
-                versions["app"] = self.app_version
             startup.set_app_info(
                 framework="litestar",
                 paths=lambda: _get_paths(app),
-                versions=versions,
+                versions=startup.resolve_versions(self.app_version, litestar="litestar"),
                 openapi=lambda: _get_openapi(app),
             )
             activation.activate()
@@ -115,6 +113,18 @@ async def _before_send(message: Message, scope: Scope) -> None:
             span.update_name(f"{scope.get('method', '')} {path_template}".strip())
     except Exception:
         logger.exception("Error in Apitally before_send hook")
+
+
+def _after_exception(exception: Exception, scope: Scope) -> None:
+    """Litestar turns handler exceptions into responses before the OTel middleware sees anything raised (spec 6.4)."""
+    try:
+        if isinstance(exception, HTTPException) and exception.status_code < 500:
+            return
+        span = get_server_span()
+        if span is not None and span.is_recording():
+            span.record_exception(exception)
+    except Exception:
+        logger.exception("Error in Apitally after_exception hook")
 
 
 def _resolve_route(scope: dict[str, Any]) -> str | None:

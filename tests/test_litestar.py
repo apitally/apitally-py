@@ -15,7 +15,7 @@ from litestar.plugins.opentelemetry import (
 from litestar.testing import TestClient
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import ReadableSpan
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanKind, StatusCode
 
 from apitally.litestar import ApitallyPlugin
 from apitally.shared import activation, config, metrics, startup
@@ -38,6 +38,11 @@ async def create_user(data: dict[str, Any]) -> dict[str, Any]:
 @get("/healthz")
 async def healthz() -> str:
     return "ok"
+
+
+@get("/error")
+async def error_route() -> None:
+    raise ValueError("boom")
 
 
 ROUTE_HANDLERS = [get_user, create_user, healthz]
@@ -129,6 +134,21 @@ def test_body_capture_on_server_span(memory_exporters, monkeypatch):
     attributes = span.attributes or {}
     assert json.loads(str(attributes["apitally.request.body"])) == {"user": "u", "password": REDACTED}
     assert json.loads(str(attributes["apitally.response.body"])) == {"user": "u", "password": REDACTED}
+
+
+def test_unhandled_exception_recorded_on_server_span(memory_exporters, monkeypatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    app = Litestar(route_handlers=[error_route], plugins=[ApitallyPlugin(write_token=TOKEN)])
+    with TestClient(app=app) as client:
+        assert client.get("/error").status_code == 500
+
+    (span,) = flush_spans(memory_exporters)
+    assert span.kind == SpanKind.SERVER
+    assert span.status.status_code == StatusCode.ERROR
+    assert (span.attributes or {})["http.response.status_code"] == 500
+    (event,) = [event for event in span.events if event.name == "exception"]
+    assert (event.attributes or {})["exception.type"] == "ValueError"
+    assert (event.attributes or {})["exception.message"] == "boom"
 
 
 def test_on_startup_activates_and_emits_startup_event(memory_exporters, monkeypatch):

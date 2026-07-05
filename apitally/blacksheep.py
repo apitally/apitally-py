@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from importlib.metadata import version
 from typing import TYPE_CHECKING, Any
 
 from blacksheep import Application
-from blacksheep.messages import Request
+from blacksheep.messages import Request, Response
 from blacksheep.server.openapi.v3 import Info, OpenAPIHandler, Operation
 from blacksheep.server.routing import RouteMatch
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
@@ -66,6 +65,7 @@ def init_apitally(
             return
 
         _wrap_router(app)
+        _wrap_error_handler(app)
 
         # Per-instance __call__ assignment is ignored by Python's type-based dunder lookup,
         # so _handle_http is the interposition point (design.md section 4)
@@ -80,10 +80,11 @@ def init_apitally(
 
         app.on_start += activate_on_start
 
-        versions = {"blacksheep": version("blacksheep")}
-        if app_version:
-            versions["app"] = app_version
-        startup.set_app_info(framework="blacksheep", paths=lambda: _get_paths(app), versions=versions)
+        startup.set_app_info(
+            framework="blacksheep",
+            paths=lambda: _get_paths(app),
+            versions=startup.resolve_versions(app_version, blacksheep="blacksheep"),
+        )
     except Exception:
         logger.exception("Error setting up Apitally for BlackSheep")
 
@@ -107,6 +108,25 @@ def _wrap_router(app: Application) -> None:
         return match
 
     app.router.get_match = get_match  # ty: ignore[invalid-assignment]
+
+
+def _wrap_error_handler(app: Application) -> None:
+    # BlackSheep converts unhandled handler exceptions into 500 responses before the
+    # instrumentor sees anything raised; handle_internal_server_error is reached exactly
+    # for those (HTTPExceptions and user-handled exceptions route elsewhere), so record
+    # the exception on the SERVER span there (spec 6.4)
+    original = app.handle_internal_server_error
+
+    async def handle_internal_server_error(request: Request, exc: Exception) -> Response:
+        try:
+            span = get_server_span()
+            if span is not None and span.is_recording():
+                span.record_exception(exc)
+        except Exception:
+            logger.exception("Error recording exception in Apitally BlackSheep integration")
+        return await original(request, exc)
+
+    app.handle_internal_server_error = handle_internal_server_error  # ty: ignore[invalid-assignment]
 
 
 def _get_paths(app: Application) -> list[dict[str, str]]:
