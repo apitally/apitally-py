@@ -9,7 +9,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind
 
-from apitally.shared.capture import BODY_MASKED, BODY_TOO_LARGE
+from apitally.shared.capture import BODY_TOO_LARGE
 from apitally.shared.config import configure
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor, server_span_var
@@ -176,7 +176,7 @@ def test_redaction_failure_after_parse_fails_closed(tracer, exporter, monkeypatc
     environ = make_environ(method="POST", body=body, content_type="application/json", content_length=str(len(body)))
     attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, exporter)
 
-    assert attributes["apitally.request.body"] == BODY_MASKED
+    assert attributes["apitally.request.body"] == REDACTED
 
 
 def test_non_allowlisted_mime_never_touches_input(tracer, exporter):

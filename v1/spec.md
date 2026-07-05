@@ -82,8 +82,8 @@ Example: `apitally.consumer.identifier="acme-corp"`, `apitally.consumer.name="Ac
 | `apitally.response.body` | Response body as string; absent when not captured |
 
 - Captured only when request/response body logging is enabled and the `Content-Type` matches the allow-list (case-insensitive prefix match, ignoring any `; charset=...`): `application/json`, `application/problem+json`, `application/vnd.api+json`, `application/ld+json`, `application/x-ndjson`, `text/markdown`, `text/plain`. Otherwise the attribute is absent.
-- Bodies up to 50 KB (50,000 bytes) MUST be exported intact, never truncated. Larger bodies are not captured; the attribute is set to `<body too large>`.
-- Redaction (section 6.7) MUST run before the attribute is set. When a body mask callback drops the body, the attribute is set to `<masked>`.
+- Bodies up to 50 KB (50,000 bytes) MUST be exported intact, never truncated. Larger bodies are not captured; the attribute is set to `[BODY_TOO_LARGE]`.
+- Redaction (section 6.7) MUST run before the attribute is set. When a body mask callback drops the body, the attribute is set to `[REDACTED]`.
 
 ### 6.4 Exceptions
 

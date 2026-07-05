@@ -15,7 +15,7 @@ from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import config, metrics
 from apitally.shared.asgi import ApitallyASGIMiddleware
-from apitally.shared.capture import BODY_MASKED, BODY_TOO_LARGE
+from apitally.shared.capture import BODY_TOO_LARGE
 from apitally.shared.config import configure
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
@@ -224,7 +224,7 @@ async def test_mask_callback_none_or_raise_yields_masked(caplog):
     assert len(spans) == 2
     for span in spans:
         assert span.attributes is not None
-        assert span.attributes["apitally.request.body"] == BODY_MASKED
+        assert span.attributes["apitally.request.body"] == REDACTED
     assert any("mask_request_body" in record.getMessage() for record in caplog.records)
 
 
