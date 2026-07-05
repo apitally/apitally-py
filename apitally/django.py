@@ -64,8 +64,9 @@ def init_apitally(
     mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
     mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
     exclude_paths: list[str] | None = None,
-    exclude_on_request: Callable[[ReadableSpan], bool] | None = None,
-    exclude_on_response: Callable[[ReadableSpan], bool] | None = None,
+    sample_rate: float | None = None,
+    sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
+    sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
 ) -> None:
     """Set up Apitally for Django; call at the end of settings.py, after MIDDLEWARE is defined."""
     global _urlconfs, _include_django_views

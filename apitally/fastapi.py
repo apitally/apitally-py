@@ -40,8 +40,9 @@ def init_apitally(
     mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
     mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
     exclude_paths: list[str] | None = None,
-    exclude_on_request: Callable[[ReadableSpan], bool] | None = None,
-    exclude_on_response: Callable[[ReadableSpan], bool] | None = None,
+    sample_rate: float | None = None,
+    sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
+    sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
 ) -> None:
     """Set up Apitally for a FastAPI application. Errors never propagate (design.md section 9)."""
     try:
