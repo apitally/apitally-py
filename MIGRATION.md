@@ -120,4 +120,6 @@ If your application already has an OpenTelemetry `TracerProvider` configured (e.
 ## Version floors
 
 - The minimum supported Litestar version is now 2.24 (was 2.4).
+- The minimum supported Django version is now 3.2 (was 2.2), and Django REST Framework follows at 3.12 (was 3.10).
+- The minimum supported BlackSheep version is now 2.6.1 (was 2.0).
 - All other framework version floors are unchanged, and Python 3.10+ is still required.
