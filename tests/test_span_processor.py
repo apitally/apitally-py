@@ -14,6 +14,7 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON, TraceIdRatioBased
 from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, TraceFlags, Tracer
 
 from apitally.shared.config import configure
+from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier, set_consumer
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import (
     ApitallySpanProcessor,
@@ -275,16 +276,19 @@ def test_kept_flag_and_span_resolution(exporter: InMemorySpanExporter):
     ) as kept_span:
         assert is_server_span_kept()
         assert get_server_span() is kept_span
+        set_consumer("tenant-1")
         span_id = kept_span.get_span_context().span_id
         assert processor.resolve_server_span_id(span_id) == span_id
 
+    reset_consumer_identifier()  # the transport middleware does this at request entry
     with tracer.start_as_current_span(
         "GET /items", kind=SpanKind.SERVER, context=remote_parent_context(BOUND_HALF)
     ) as dropped_span:
-        # The dropped request reads its own flag and span, not stale state from the kept request before it
+        # The dropped request reads its own flag, span, and consumer, not stale state from the kept request
         assert not is_server_span_kept()
         assert get_server_span() is dropped_span
         assert processor.resolve_server_span_id(dropped_span.get_span_context().span_id) is None
+        assert resolve_consumer_identifier(get_server_span()) is None
 
 
 def test_contrib_send_receive_spans_dropped_user_spans_kept(

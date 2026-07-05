@@ -85,7 +85,7 @@ The `exclude_callback(request, response)` callback is replaced by request sampli
 
 - `sample_rate` sets the static fraction of requests captured as traces with their logs (default `1.0`).
 - `sample_on_request` refines it per request at span start. Nothing about a sampled-out request is ever transmitted, making this (and `sample_rate`) the lever for volume and quota. Returning `None` falls back to `sample_rate`.
-- `sample_on_response` decides at span end, so it can see the response status and any attributes you set via `set_request_attribute(...)`. It cannot retroactively unsend telemetry the request already emitted — child spans and logs of a request dropped here still count toward your quota — so use it to keep the interesting requests, not to control volume. Returning `None` leaves the request-stage decision standing.
+- `sample_on_response` decides at span end, so it can see the response status and any attributes you set via `set_request_attribute(...)`. It cannot retroactively unsend telemetry the request already emitted — child spans and logs of a request dropped here still count toward your quota — so use it to keep the interesting requests, not to control volume. Returning `None` leaves the request-stage decision standing. It also cannot rescue a request already dropped at the request stage: the overall capture probability is the minimum of the two stages, so a response-stage boost like the example below only applies to requests that survived `sample_rate` / `sample_on_request`.
 
 Both callbacks operate on the OpenTelemetry attributes of the request's SERVER span:
 
@@ -96,14 +96,13 @@ def sample_on_request(span):
     return None  # follow sample_rate
 
 def sample_on_response(span):
-    if span.attributes.get("http.response.status_code") >= 500:
+    if (span.attributes.get("http.response.status_code") or 0) >= 500:
         return True  # always capture server errors
-    return None
+    return 0.05  # capture 5% of healthy responses
 
 init_apitally(
     app,
     write_token="your-write-token",
-    sample_rate=0.2,
     sample_on_request=sample_on_request,
     sample_on_response=sample_on_response,
 )
