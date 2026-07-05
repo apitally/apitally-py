@@ -45,7 +45,6 @@ QUERY_ATTRIBUTES = ("url.query", "http.target", "http.url", "url.full")
 HEADER_ATTRIBUTE_PREFIXES = ("http.request.header.", "http.response.header.")
 NOISE_NAME_SUFFIXES = (" http send", " http receive", " websocket send", " websocket receive")
 NOISE_SCOPE_PREFIX = "opentelemetry.instrumentation."
-TRACE_ID_MASK = (1 << 64) - 1
 
 server_span_var: ContextVar[Span | None] = ContextVar("apitally_server_span", default=None)
 server_span_kept_var: ContextVar[bool] = ContextVar("apitally_server_span_kept", default=False)
@@ -62,7 +61,7 @@ def is_server_span_kept() -> bool:
 def sampled_in(trace_id: int, rate: float) -> bool:
     # TraceIdRatioBased convention: the low 64 bits of the trace ID tested against round(rate * 2**64),
     # deterministic per trace so services sampling at the same rate capture the same traces
-    return trace_id & TRACE_ID_MASK < TraceIdRatioBased.get_bound_for_rate(rate)
+    return trace_id & TraceIdRatioBased.TRACE_ID_LIMIT < TraceIdRatioBased.get_bound_for_rate(rate)
 
 
 class ApitallySpanProcessor(SpanProcessor):
