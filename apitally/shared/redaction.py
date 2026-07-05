@@ -44,16 +44,17 @@ class Redaction:
         self.header_patterns = compile_patterns(DEFAULT_HEADER_PATTERNS + (headers or []))
         self.body_field_patterns = compile_patterns(DEFAULT_BODY_FIELD_PATTERNS + (body_fields or []))
 
-    def redact_query_params(self, value: str) -> str:
-        """Redact matching param names in a bare query string, a path?query target, or a full URL."""
+    def redact_query_params(self, value: str, assume_query: bool = True) -> str:
+        """Redact matching param names in a path?query target, a full URL, or (with assume_query)
+        a bare query string."""
         base, sep, query = value.partition("?")
         if not sep:
+            if not assume_query:
+                return value
             base, query = "", value
-        if "=" not in query:
-            return value
-        redacted = urlencode(
-            [(k, REDACTED if matches_any(self.query_param_patterns, k) else v) for k, v in parse_qsl(query)]
-        )
+        # Legacy semicolon separators would otherwise smuggle values past redaction
+        pairs = parse_qsl(query.replace(";", "&"), keep_blank_values=True)
+        redacted = urlencode([(k, REDACTED if matches_any(self.query_param_patterns, k) else v) for k, v in pairs])
         return f"{base}?{redacted}" if sep else redacted
 
     def redact_headers(self, headers: Mapping[str, Any]) -> dict[str, Any]:

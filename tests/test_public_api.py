@@ -60,6 +60,11 @@ def test_capture_exception_records_event_on_server_span(tracer, exporter):
     assert "exception.stacktrace" in event.attributes
 
 
+def test_capture_exception_with_non_exception_does_not_raise(tracer):
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        capture_exception("not an exception")  # ty: ignore[invalid-argument-type]
+
+
 def test_instrument_creates_child_span_under_server_span(tracer, exporter):
     @instrument
     def compute():

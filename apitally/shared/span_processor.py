@@ -41,7 +41,7 @@ EXCLUDE_USER_AGENT_PATTERNS = compile_patterns(
     ]
 )
 
-QUERY_ATTRIBUTES = ("url.query", "http.target", "http.url")
+QUERY_ATTRIBUTES = ("url.query", "http.target", "http.url", "url.full")
 HEADER_ATTRIBUTE_PREFIXES = ("http.request.header.", "http.response.header.")
 NOISE_NAME_SUFFIXES = (" http send", " http receive", " websocket send", " websocket receive")
 NOISE_SCOPE_PREFIX = "opentelemetry.instrumentation."
@@ -140,7 +140,7 @@ class ApitallySpanProcessor(SpanProcessor):
         changed = False
         for key, value in attributes.items():
             if key in QUERY_ATTRIBUTES and isinstance(value, str):
-                redacted = self.redaction.redact_query_params(value)
+                redacted = self.redaction.redact_query_params(value, assume_query=key == "url.query")
             elif key.startswith(HEADER_ATTRIBUTE_PREFIXES):
                 header = key.removeprefix("http.request.header.").removeprefix("http.response.header.")
                 if not self.redaction.should_redact_header(header):

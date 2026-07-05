@@ -227,6 +227,18 @@ async def test_mask_callback_none_or_raise_yields_masked(caplog):
     assert any("mask_request_body" in record.getMessage() for record in caplog.records)
 
 
+async def test_invalid_user_pattern_dropped_and_request_succeeds(caplog):
+    with caplog.at_level(logging.ERROR, logger="apitally"):
+        configure(write_token=TOKEN, log_request_headers=True, mask_headers=["("])
+    tracer, exporter = create_trace_pipeline()
+    app = EchoApp()
+    await send_request(tracer, app, request_headers=[("Authorization", "Bearer x")])
+
+    assert any("mask_headers" in r.getMessage() for r in caplog.records)
+    (span,) = exporter.get_finished_spans()
+    assert header_values(span, "http.request.header.authorization") == (REDACTED,)
+
+
 async def test_headers_redacted_and_repeated_as_list():
     configure(write_token=TOKEN, log_request_headers=True, log_response_headers=True)
     tracer, exporter = create_trace_pipeline()
