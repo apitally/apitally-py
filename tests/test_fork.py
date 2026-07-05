@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import multiprocessing
 import os
 import sys
 import threading
 import time
+from typing import Any
 
 import pytest
 from opentelemetry import trace
@@ -10,6 +13,7 @@ from opentelemetry.trace import SpanKind
 
 from apitally.shared import activation, metrics
 from apitally.shared.span_processor import ApitallySpanProcessor
+from tests.conftest import CreatedExporters
 
 
 TOKEN = "apt_" + "a" * 24
@@ -17,14 +21,14 @@ TOKEN = "apt_" + "a" * 24
 linux_only = pytest.mark.skipif(sys.platform != "linux", reason="real-fork tests run on Linux CI only")
 
 
-def configure_and_activate(monkeypatch):
+def configure_and_activate(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     activation.configure(write_token=TOKEN)
     activation.activate()
     assert activation.is_activated()
 
 
-def test_before_fork_quiesces_sdk_threads(memory_exporters, monkeypatch):
+def test_before_fork_quiesces_sdk_threads(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     threads_before = set(threading.enumerate())
     configure_and_activate(monkeypatch)
     started = [t for t in threading.enumerate() if t not in threads_before]
@@ -35,7 +39,9 @@ def test_before_fork_quiesces_sdk_threads(memory_exporters, monkeypatch):
     assert metrics.reader is None
 
 
-def test_after_fork_in_parent_reactivates_pipelines(memory_exporters, monkeypatch):
+def test_after_fork_in_parent_reactivates_pipelines(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     configure_and_activate(monkeypatch)
     assert len(memory_exporters.span) == 1
     old_reader = metrics.reader
@@ -54,7 +60,9 @@ def test_after_fork_in_parent_reactivates_pipelines(memory_exporters, monkeypatc
     assert memory_exporters.span[0].get_finished_spans() == ()
 
 
-def test_after_fork_in_child_leaves_fresh_acquirable_lock(memory_exporters, monkeypatch):
+def test_after_fork_in_child_leaves_fresh_acquirable_lock(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     configure_and_activate(monkeypatch)
     activation.before_fork()  # holds the lock, as at the instant of fork
 
@@ -64,7 +72,9 @@ def test_after_fork_in_child_leaves_fresh_acquirable_lock(memory_exporters, monk
     activation.activation_lock.release()
 
 
-def test_child_reactivation_reuses_inherited_span_processor(memory_exporters, monkeypatch):
+def test_child_reactivation_reuses_inherited_span_processor(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     configure_and_activate(monkeypatch)
     provider = trace.get_tracer_provider()
 
@@ -82,7 +92,7 @@ def test_child_reactivation_reuses_inherited_span_processor(memory_exporters, mo
     assert len(memory_exporters.span[-1].get_finished_spans()) == 1
 
 
-def child_probe(queue):
+def child_probe(queue: multiprocessing.Queue[dict[str, Any]]) -> None:
     inert_after_fork = not activation.is_activated()
     activation.activate()
     resource = activation.resource
@@ -96,7 +106,9 @@ def child_probe(queue):
 
 
 @linux_only
-def test_forked_child_stays_inert_until_activation_gate(memory_exporters, monkeypatch):
+def test_forked_child_stays_inert_until_activation_gate(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     configure_and_activate(monkeypatch)
     assert activation.resource is not None
     parent_instance_id = activation.resource.attributes["service.instance.id"]
@@ -116,7 +128,9 @@ def test_forked_child_stays_inert_until_activation_gate(memory_exporters, monkey
 
 
 @linux_only
-def test_os_fork_in_activated_process_does_not_deadlock(memory_exporters, monkeypatch):
+def test_os_fork_in_activated_process_does_not_deadlock(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     configure_and_activate(monkeypatch)
     pid = os.fork()
     if pid == 0:

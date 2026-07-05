@@ -1,4 +1,5 @@
 import json
+from typing import Any, Iterator, NoReturn
 
 import pytest
 from flask import Flask, Response, jsonify
@@ -11,33 +12,34 @@ from apitally.flask import init_apitally
 from apitally.shared import activation, metrics
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
+from tests.conftest import CreatedExporters
 
 
 TOKEN = "apt_" + "a" * 24
 
 
 @pytest.fixture()
-def app():
+def app() -> Iterator[Flask]:
     app = Flask("test")
 
     @app.get("/items/<int:item_id>")
-    def get_item(item_id: int):
+    def get_item(item_id: int) -> Response:
         return jsonify({"id": item_id})
 
     @app.post("/items")
-    def create_item():
+    def create_item() -> Response:
         return jsonify({"id": 1, "token": "abc123"})
 
     @app.get("/stream")
-    def stream():
+    def stream() -> Response:
         return Response(iter([b'{"a":', b" 1}"]), mimetype="application/json", direct_passthrough=True)
 
     @app.get("/headers")
-    def headers():
+    def headers() -> tuple[Response, int, dict[str, str]]:
         return jsonify({"ok": True}), 200, {"X-Custom": "value"}
 
     @app.get("/consumer")
-    def consumer():
+    def consumer() -> Response:
         set_consumer("tester")
         return jsonify({"ok": True})
 
@@ -46,7 +48,7 @@ def app():
         FlaskInstrumentor.uninstrument_app(app)
 
 
-def init(app: Flask, monkeypatch: pytest.MonkeyPatch, **kwargs) -> None:
+def init(app: Flask, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     init_apitally(app, write_token=TOKEN, **kwargs)
 
@@ -59,7 +61,7 @@ def activate_with_metric_reader() -> InMemoryMetricReader:
     return reader
 
 
-def exported_spans(memory_exporters) -> list[ReadableSpan]:
+def exported_spans(memory_exporters: CreatedExporters) -> list[ReadableSpan]:
     assert activation.span_processor is not None
     activation.span_processor.force_flush()
     return [span for exporter in memory_exporters.span for span in exporter.get_finished_spans()]
@@ -77,7 +79,9 @@ def collect_metric(reader: InMemoryMetricReader, name: str) -> Metric | None:
     return None
 
 
-def test_first_request_activates_and_is_recorded(app, memory_exporters, monkeypatch):
+def test_first_request_activates_and_is_recorded(
+    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     init(app, monkeypatch)
     assert not activation.is_activated()
 
@@ -92,7 +96,9 @@ def test_first_request_activates_and_is_recorded(app, memory_exporters, monkeypa
     assert attributes["http.response.status_code"] == 200
 
 
-def test_bodies_captured_while_span_recording(app, memory_exporters, monkeypatch):
+def test_bodies_captured_while_span_recording(
+    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     init(app, monkeypatch, log_request_body=True, log_response_body=True)
 
     response = app.test_client().post("/items", json={"password": "secret123", "name": "x"})
@@ -105,7 +111,9 @@ def test_bodies_captured_while_span_recording(app, memory_exporters, monkeypatch
     assert json.loads(str(attributes["apitally.response.body"])) == {"id": 1, "token": REDACTED}
 
 
-def test_streaming_response_uncaptured_but_recorded(app, memory_exporters, monkeypatch):
+def test_streaming_response_uncaptured_but_recorded(
+    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     init(app, monkeypatch, log_response_body=True)
     reader = activate_with_metric_reader()
 
@@ -123,12 +131,14 @@ def test_streaming_response_uncaptured_but_recorded(app, memory_exporters, monke
     assert (point.attributes or {})["http.route"] == "/stream"
 
 
-def test_generator_response_not_flattened_by_capture(app, memory_exporters, monkeypatch):
+def test_generator_response_not_flattened_by_capture(
+    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     consumed = []
 
     @app.get("/gen")
-    def gen():
-        def generate():
+    def gen() -> Response:
+        def generate() -> Iterator[bytes]:
             consumed.append(True)
             yield b'{"a":'
             yield b" 1}"
@@ -139,7 +149,7 @@ def test_generator_response_not_flattened_by_capture(app, memory_exporters, monk
 
     # after_request hooks run in reverse registration order, so this runs after the capture hook
     @app.after_request
-    def check(response):
+    def check(response: Response) -> Response:
         streamed_after_capture["value"] = response.is_streamed and not consumed
         return response
 
@@ -155,7 +165,9 @@ def test_generator_response_not_flattened_by_capture(app, memory_exporters, monk
     assert "apitally.response.body" not in attributes
 
 
-def test_response_headers_captured_wire_final(app, memory_exporters, monkeypatch):
+def test_response_headers_captured_wire_final(
+    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     init(app, monkeypatch, log_response_headers=True)
 
     app.test_client().get("/headers")
@@ -167,7 +179,9 @@ def test_response_headers_captured_wire_final(app, memory_exporters, monkeypatch
     assert "http.response.header.content-length" in attributes
 
 
-def test_consumer_set_in_route_reaches_span_and_histogram(app, memory_exporters, monkeypatch):
+def test_consumer_set_in_route_reaches_span_and_histogram(
+    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     init(app, monkeypatch)
     reader = activate_with_metric_reader()
 
@@ -184,8 +198,8 @@ def test_consumer_set_in_route_reaches_span_and_histogram(app, memory_exporters,
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
 
 
-def test_init_apitally_swallows_instrumentation_errors(app, monkeypatch):
-    def raise_error(*args, **kwargs):
+def test_init_apitally_swallows_instrumentation_errors(app: Flask, monkeypatch: pytest.MonkeyPatch):
+    def raise_error(*args: Any, **kwargs: Any) -> NoReturn:
         raise RuntimeError("instrumentation failed")
 
     monkeypatch.setattr(FlaskInstrumentor, "instrument_app", raise_error)
@@ -196,7 +210,9 @@ def test_init_apitally_swallows_instrumentation_errors(app, monkeypatch):
     assert response.status_code == 200
 
 
-def test_pre_instrumented_app_adapts_without_double_spans(app, memory_exporters, monkeypatch):
+def test_pre_instrumented_app_adapts_without_double_spans(
+    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     FlaskInstrumentor().instrument_app(app)
     init(app, monkeypatch, log_response_headers=True)
 

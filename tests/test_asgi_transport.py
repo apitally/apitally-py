@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -27,13 +28,13 @@ JSON_HEADERS = [("content-type", "application/json")]
 
 
 @pytest.fixture(autouse=True)
-def reset_config():
+def reset_config() -> Iterator[None]:
     yield
     config.reset()
 
 
 @pytest.fixture(autouse=True)
-def metric_reader():
+def metric_reader() -> Iterator[InMemoryMetricReader]:
     provider = metrics.setup(Resource.create({}))
     reader = InMemoryMetricReader(**metrics.HISTOGRAM_OVERRIDES)
     provider.add_metric_reader(reader)
@@ -178,7 +179,7 @@ async def test_capture_off_passthrough_and_size_from_content_length():
     ("content_type", "captured"),
     [("image/png", False), ("text/plain; charset=utf-8", True)],
 )
-async def test_content_type_allowlist(content_type, captured):
+async def test_content_type_allowlist(content_type: str, captured: bool):
     configure(write_token=TOKEN, log_request_body=True)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
@@ -208,8 +209,8 @@ async def test_body_over_cap_sentinel_with_passthrough():
     assert span.attributes["http.request.body.size"] == 60_000
 
 
-async def test_mask_callback_none_or_raise_yields_masked(caplog):
-    def mask(span, body):
+async def test_mask_callback_none_or_raise_yields_masked(caplog: pytest.LogCaptureFixture):
+    def mask(span: ReadableSpan, body: bytes) -> bytes | None:
         if b"boom" in body:
             raise ValueError("boom")
         return None
@@ -266,7 +267,7 @@ async def test_aborted_response_body_not_exported():
     assert "apitally.response.body" not in (span.attributes or {})
 
 
-async def test_invalid_user_pattern_dropped_and_request_succeeds(caplog):
+async def test_invalid_user_pattern_dropped_and_request_succeeds(caplog: pytest.LogCaptureFixture):
     with caplog.at_level(logging.ERROR, logger="apitally"):
         configure(write_token=TOKEN, log_request_headers=True, mask_headers=["("])
     tracer, exporter = create_trace_pipeline()
@@ -305,7 +306,7 @@ async def test_size_backfill_and_chunked_response_counter():
     assert span.attributes["http.response.body.size"] == 5
 
 
-async def test_histogram_records_once_with_consumer(metric_reader):
+async def test_histogram_records_once_with_consumer(metric_reader: InMemoryMetricReader):
     configure(write_token=TOKEN)
     tracer, _ = create_trace_pipeline()
     app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
@@ -324,7 +325,7 @@ async def test_histogram_records_once_with_consumer(metric_reader):
     }
 
 
-async def test_sampled_out_request_still_records_metrics(metric_reader):
+async def test_sampled_out_request_still_records_metrics(metric_reader: InMemoryMetricReader):
     configure(write_token=TOKEN)
     tracer, exporter = create_trace_pipeline(sampler=TraceIdRatioBased(0.0))
     app = EchoApp(on_request=lambda: set_consumer("tenant-1"))

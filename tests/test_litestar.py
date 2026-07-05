@@ -5,6 +5,7 @@ import platform
 from importlib import metadata
 from typing import Any
 
+import pytest
 from litestar import Litestar, get, post
 from litestar.middleware.base import DefineMiddleware
 from litestar.plugins.opentelemetry import (
@@ -20,6 +21,7 @@ from opentelemetry.trace import SpanKind, StatusCode
 from apitally.litestar import ApitallyPlugin
 from apitally.shared import activation, config, metrics, startup
 from apitally.shared.redaction import REDACTED
+from tests.conftest import CreatedExporters
 
 
 TOKEN = "apt_" + "a" * 24
@@ -56,13 +58,13 @@ def make_app(plugins: list[Any] | None = None, middleware: list[Any] | None = No
     )
 
 
-def flush_spans(memory_exporters) -> list[ReadableSpan]:
+def flush_spans(memory_exporters: CreatedExporters) -> list[ReadableSpan]:
     assert activation.span_processor is not None
     activation.span_processor.force_flush()
     return [span for exporter in memory_exporters.span for span in exporter.get_finished_spans()]
 
 
-def test_route_repair_metrics_and_no_noise_spans(memory_exporters, monkeypatch):
+def test_route_repair_metrics_and_no_noise_spans(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     with TestClient(app=make_app()) as client:
         assert metrics.meter_provider is not None
@@ -89,7 +91,7 @@ def test_route_repair_metrics_and_no_noise_spans(memory_exporters, monkeypatch):
     assert points[0]["http.route"] == "/users/{user_id}"
 
 
-def test_user_otel_plugin_detected_and_repaired(memory_exporters, monkeypatch):
+def test_user_otel_plugin_detected_and_repaired(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     app = make_app(plugins=[OpenTelemetryPlugin(OpenTelemetryConfig())])
     assert sum(isinstance(plugin, OpenTelemetryPlugin) for plugin in app.plugins.init) == 1
@@ -103,7 +105,9 @@ def test_user_otel_plugin_detected_and_repaired(memory_exporters, monkeypatch):
     assert (span.attributes or {})["http.route"] == "/users/{user_id}"
 
 
-def test_legacy_otel_middleware_detected_and_repaired(memory_exporters, monkeypatch):
+def test_legacy_otel_middleware_detected_and_repaired(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     legacy = DefineMiddleware(OpenTelemetryInstrumentationMiddleware, config=OpenTelemetryConfig())
     app = make_app(middleware=[legacy])
@@ -116,7 +120,7 @@ def test_legacy_otel_middleware_detected_and_repaired(memory_exporters, monkeypa
     assert span.name == "GET /users/{user_id}"
 
 
-def test_excluded_request_exports_nothing(memory_exporters, monkeypatch):
+def test_excluded_request_exports_nothing(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     with TestClient(app=make_app()) as client:
         assert client.get("/healthz").status_code == 200
@@ -124,7 +128,7 @@ def test_excluded_request_exports_nothing(memory_exporters, monkeypatch):
     assert flush_spans(memory_exporters) == []
 
 
-def test_body_capture_on_server_span(memory_exporters, monkeypatch):
+def test_body_capture_on_server_span(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     with TestClient(app=make_app(log_request_body=True, log_response_body=True)) as client:
         response = client.post("/users", json={"user": "u", "password": "secret"})
@@ -136,7 +140,9 @@ def test_body_capture_on_server_span(memory_exporters, monkeypatch):
     assert json.loads(str(attributes["apitally.response.body"])) == {"user": "u", "password": REDACTED}
 
 
-def test_unhandled_exception_recorded_on_server_span(memory_exporters, monkeypatch):
+def test_unhandled_exception_recorded_on_server_span(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     app = Litestar(route_handlers=[error_route], plugins=[ApitallyPlugin(write_token=TOKEN)])
     with TestClient(app=app) as client:
@@ -151,7 +157,9 @@ def test_unhandled_exception_recorded_on_server_span(memory_exporters, monkeypat
     assert (event.attributes or {})["exception.message"] == "boom"
 
 
-def test_on_startup_activates_and_emits_startup_event(memory_exporters, monkeypatch):
+def test_on_startup_activates_and_emits_startup_event(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     app = make_app(app_version="1.2.3")
     assert not activation.is_activated()
@@ -167,6 +175,7 @@ def test_on_startup_activates_and_emits_startup_event(memory_exporters, monkeypa
         for record in exporter.get_finished_logs()
         if record.log_record.event_name == startup.EVENT_NAME
     ]
+    assert isinstance(exported.log_record.body, str)
     payload = json.loads(exported.log_record.body)
     assert payload["framework"] == "litestar"
     assert payload["versions"] == {
@@ -182,7 +191,7 @@ def test_on_startup_activates_and_emits_startup_event(memory_exporters, monkeypa
     assert "/users/{user_id}" in json.loads(payload["openapi"])["paths"]
 
 
-def test_plugin_reconstruction_same_kwargs_is_noop(memory_exporters, monkeypatch):
+def test_plugin_reconstruction_same_kwargs_is_noop(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     make_app(env="dev")
     first_config = config.get_config()
