@@ -31,7 +31,7 @@ class ApitallyConfig:
     mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None
     log_request_headers: bool = False
     log_request_body: bool = False
-    log_response_headers: bool = False
+    log_response_headers: bool = True
     log_response_body: bool = False
     mask_query_params: list[str] = field(default_factory=list)
     mask_headers: list[str] = field(default_factory=list)

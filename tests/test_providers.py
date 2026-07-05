@@ -147,7 +147,7 @@ def test_exporter_endpoint_override(monkeypatch):
 def test_cooperative_span_limit_warning(caplog):
     user_provider = TracerProvider(span_limits=SpanLimits(max_span_attribute_length=4_096))
 
-    configure(write_token=TOKEN)
+    configure(write_token=TOKEN, log_response_headers=False)
     with caplog.at_level(logging.WARNING, logger="apitally"):
         providers.attach_to_tracer_provider(user_provider, SimpleSpanProcessor(InMemorySpanExporter()))
     assert not [r for r in caplog.records if "truncated" in r.getMessage()]
