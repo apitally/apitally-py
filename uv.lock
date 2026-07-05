@@ -137,6 +137,14 @@ test = [
     { name = "starlette" },
     { name = "uritemplate" },
 ]
+test-base = [
+    { name = "httpx" },
+    { name = "opentelemetry-test-utils" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-mock" },
+]
 types = [
     { name = "django-types" },
     { name = "djangorestframework-types" },
@@ -144,12 +152,12 @@ types = [
 
 [package.metadata]
 requires-dist = [
-    { name = "blacksheep", marker = "extra == 'blacksheep'", specifier = ">=2" },
-    { name = "django", marker = "extra == 'django'", specifier = ">=2.2" },
-    { name = "django", marker = "extra == 'django-ninja'", specifier = ">=2.2" },
-    { name = "django", marker = "extra == 'django-rest-framework'", specifier = ">=2.2" },
+    { name = "blacksheep", marker = "extra == 'blacksheep'", specifier = ">=2.6.1" },
+    { name = "django", marker = "extra == 'django'", specifier = ">=3.2" },
+    { name = "django", marker = "extra == 'django-ninja'", specifier = ">=3.2" },
+    { name = "django", marker = "extra == 'django-rest-framework'", specifier = ">=3.2" },
     { name = "django-ninja", marker = "extra == 'django-ninja'", specifier = ">=1.0.0" },
-    { name = "djangorestframework", marker = "extra == 'django-rest-framework'", specifier = ">=3.10.0" },
+    { name = "djangorestframework", marker = "extra == 'django-rest-framework'", specifier = ">=3.12.0" },
     { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.94.1" },
     { name = "flask", marker = "extra == 'flask'", specifier = ">=2.0.0" },
     { name = "inflection", marker = "extra == 'django-rest-framework'", specifier = ">=0.5.1" },
@@ -194,7 +202,7 @@ otel = [
 ]
 sentry = [{ name = "sentry-sdk", specifier = ">=2.2.0" }]
 test = [
-    { name = "blacksheep", specifier = ">=2" },
+    { name = "blacksheep", specifier = ">=2.6.1" },
     { name = "django" },
     { name = "django-ninja" },
     { name = "djangorestframework" },
@@ -215,6 +223,14 @@ test = [
     { name = "pytest-mock", specifier = "~=3.15.0" },
     { name = "starlette" },
     { name = "uritemplate" },
+]
+test-base = [
+    { name = "httpx" },
+    { name = "opentelemetry-test-utils", specifier = ">=0.64b0" },
+    { name = "pytest", specifier = "~=8.4.0" },
+    { name = "pytest-asyncio", specifier = "~=0.21.2" },
+    { name = "pytest-cov", specifier = "~=7.1.0" },
+    { name = "pytest-mock", specifier = "~=3.15.0" },
 ]
 types = [
     { name = "django-types" },

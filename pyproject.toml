@@ -42,16 +42,16 @@ dependencies = [
 dynamic = ["version"]
 
 [project.optional-dependencies]
-blacksheep = ["blacksheep>=2", "opentelemetry-instrumentation-asgi>=0.64b0"]
-django = ["django>=2.2", "opentelemetry-instrumentation-django>=0.64b0"]
+blacksheep = ["blacksheep>=2.6.1", "opentelemetry-instrumentation-asgi>=0.64b0"]
+django = ["django>=3.2", "opentelemetry-instrumentation-django>=0.64b0"]
 django_ninja = [
-    "django>=2.2",
+    "django>=3.2",
     "django-ninja>=1.0.0",
     "opentelemetry-instrumentation-django>=0.64b0",
 ]
 django_rest_framework = [
-    "django>=2.2",
-    "djangorestframework>=3.10.0",
+    "django>=3.2",
+    "djangorestframework>=3.12.0",
     "opentelemetry-instrumentation-django>=0.64b0",
     "uritemplate>=3.0.0",                    # required for schema generation
     "inflection>=0.5.1",                     # required for schema generation
@@ -79,14 +79,22 @@ dev = [
     "ruff~=0.15.0",
     "ty~=0.0.44",
 ]
+test-base = [
+    "httpx",
+    "opentelemetry-test-utils>=0.64b0",
+    "pytest~=8.4.0",
+    "pytest-asyncio~=0.21.2",
+    "pytest-cov~=7.1.0",
+    "pytest-mock~=3.15.0",
+]
 test = [
-    "blacksheep>=2",
+    { include-group = "test-base" },
+    "blacksheep>=2.6.1",
     "django",
     "django-ninja",
     "djangorestframework",
     "fastapi",
     "flask",
-    "httpx",
     "inflection",
     "litestar",
     "opentelemetry-instrumentation-asgi>=0.64b0",
@@ -94,11 +102,6 @@ test = [
     "opentelemetry-instrumentation-fastapi>=0.64b0",
     "opentelemetry-instrumentation-flask>=0.64b0",
     "opentelemetry-instrumentation-starlette>=0.64b0",
-    "opentelemetry-test-utils>=0.64b0",
-    "pytest~=8.4.0",
-    "pytest-asyncio~=0.21.2",
-    "pytest-cov~=7.1.0",
-    "pytest-mock~=3.15.0",
     "starlette",
     "uritemplate",
 ]
