@@ -177,6 +177,18 @@ def test_forwarded_span_redacted_and_original_unmutated(tracer, exporter):
     assert span.attributes["http.request.header.authorization"] == ("Bearer secret123",)
 
 
+def test_client_span_url_full_redacted(tracer, exporter):
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        with tracer.start_as_current_span(
+            "GET", kind=SpanKind.CLIENT, attributes={"url.full": "https://x.example/v1?api-key=secret&ok=1"}
+        ):
+            pass
+    client = next(s for s in exporter.get_finished_spans() if s.kind == SpanKind.CLIENT)
+    url = str(client.attributes["url.full"])
+    assert url.startswith("https://x.example/v1?")
+    assert dict(parse_qsl(url.partition("?")[2])) == {"api-key": REDACTED, "ok": "1"}
+
+
 def test_context_var_resolves_server_span_inside_request_only(tracer):
     def handle_request():
         with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as server:

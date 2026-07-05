@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from importlib import metadata
 from typing import TYPE_CHECKING, Any
@@ -27,6 +28,8 @@ if TYPE_CHECKING:
 
 
 __all__ = ["ApitallyPlugin"]
+
+logger = logging.getLogger(__name__)
 
 
 class ApitallyPlugin(InitPluginProtocol):
@@ -57,30 +60,36 @@ class ApitallyPlugin(InitPluginProtocol):
         self.app_version = app_version
 
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
-        activation.configure(**self.configure_kwargs)
-        if not _has_otel_instrumentation(app_config):
-            # Install via the plugin registry, never the middleware list: the hoist path
-            # is last-one-wins and silently discards a coexisting config (litestar.md)
-            otel_plugin = OpenTelemetryPlugin(OpenTelemetryConfig(exclude_spans=["receive", "send"]))
-            app_config.plugins = [*app_config.plugins, otel_plugin]
-        app_config.middleware.append(
-            DefineMiddleware(ApitallyASGIMiddleware, resolve_route=_resolve_route)  # ty: ignore[invalid-argument-type]
-        )
-        app_config.before_send.append(_before_send)
-        app_config.on_startup.append(self.on_startup)
+        try:
+            activation.configure(**self.configure_kwargs)
+            if not _has_otel_instrumentation(app_config):
+                # Install via the plugin registry, never the middleware list: the hoist path
+                # is last-one-wins and silently discards a coexisting config (litestar.md)
+                otel_plugin = OpenTelemetryPlugin(OpenTelemetryConfig(exclude_spans=["receive", "send"]))
+                app_config.plugins = [*app_config.plugins, otel_plugin]
+            app_config.middleware.append(
+                DefineMiddleware(ApitallyASGIMiddleware, resolve_route=_resolve_route)  # ty: ignore[invalid-argument-type]
+            )
+            app_config.before_send.append(_before_send)
+            app_config.on_startup.append(self.on_startup)
+        except Exception:
+            logger.exception("Error initializing Apitally for Litestar")
         return app_config
 
     def on_startup(self, app: Litestar) -> None:
-        versions = {"litestar": metadata.version("litestar")}
-        if self.app_version:
-            versions["app"] = self.app_version
-        startup.set_app_info(
-            framework="litestar",
-            paths=lambda: _get_paths(app),
-            versions=versions,
-            openapi=lambda: _get_openapi(app),
-        )
-        activation.activate()
+        try:
+            versions = {"litestar": metadata.version("litestar")}
+            if self.app_version:
+                versions["app"] = self.app_version
+            startup.set_app_info(
+                framework="litestar",
+                paths=lambda: _get_paths(app),
+                versions=versions,
+                openapi=lambda: _get_openapi(app),
+            )
+            activation.activate()
+        except Exception:
+            logger.exception("Error initializing Apitally for Litestar")
 
 
 def _has_otel_instrumentation(app_config: AppConfig) -> bool:
@@ -95,14 +104,17 @@ def _has_otel_instrumentation(app_config: AppConfig) -> bool:
 
 async def _before_send(message: Message, scope: Scope) -> None:
     """Repair http.route and the span name from the routed template (litestar.md)."""
-    if message.get("type") != "http.response.start":
-        return
-    path_template = scope.get("path_template")
-    span = get_server_span()
-    if path_template and span is not None and span.is_recording():
-        # The bare template per semconv; the method prefix belongs only in the span name
-        span.set_attribute("http.route", str(path_template))
-        span.update_name(f"{scope.get('method', '')} {path_template}".strip())
+    try:
+        if message.get("type") != "http.response.start":
+            return
+        path_template = scope.get("path_template")
+        span = get_server_span()
+        if path_template and span is not None and span.is_recording():
+            # The bare template per semconv; the method prefix belongs only in the span name
+            span.set_attribute("http.route", str(path_template))
+            span.update_name(f"{scope.get('method', '')} {path_template}".strip())
+    except Exception:
+        logger.exception("Error in Apitally before_send hook")
 
 
 def _resolve_route(scope: dict[str, Any]) -> str | None:

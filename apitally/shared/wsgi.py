@@ -42,11 +42,16 @@ class CaptureMixin:
     redaction: Redaction
 
     def refresh_config(self) -> ApitallyConfig:
-        config = get_config() or ApitallyConfig()
-        if config is not self.config:
-            self.config = config
-            self.redaction = Redaction(config.mask_query_params, config.mask_headers, config.mask_body_fields)
-        return config
+        # Must never raise: it runs at request entry, outside the per-request try/except
+        try:
+            config = get_config() or ApitallyConfig()
+            if config is not self.config:
+                self.config = config
+                self.redaction = Redaction(config.mask_query_params, config.mask_headers, config.mask_body_fields)
+            return config
+        except Exception:
+            logger.exception("Error refreshing Apitally config")
+            return self.config or ApitallyConfig()
 
     def set_body_attribute(
         self,

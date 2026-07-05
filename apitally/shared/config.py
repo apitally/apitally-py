@@ -41,6 +41,7 @@ class ApitallyConfig:
 
 
 CONFIG_FIELDS = frozenset(f.name for f in fields(ApitallyConfig))
+PATTERN_FIELDS = ("mask_query_params", "mask_headers", "mask_body_fields", "exclude_paths")
 
 current_config: ApitallyConfig | None = None
 fixed_fields: set[str] = set()
@@ -93,8 +94,21 @@ def mask_token(token: str) -> str:
     return f"{token[:8]}..."
 
 
+def drop_invalid_patterns(config: ApitallyConfig) -> None:
+    for name in PATTERN_FIELDS:
+        valid = []
+        for pattern in getattr(config, name):
+            try:
+                re.compile(pattern)
+                valid.append(pattern)
+            except Exception:
+                logger.error("Invalid regex pattern in %s ignored: %r", name, pattern)
+        setattr(config, name, valid)
+
+
 def resolve_config(kwargs: dict[str, Any]) -> tuple[ApitallyConfig, str | None]:
     config = ApitallyConfig(**{k: v for k, v in kwargs.items() if k in CONFIG_FIELDS})
+    drop_invalid_patterns(config)
     if "write_token" not in kwargs and (token := os.environ.get("APITALLY_WRITE_TOKEN")):
         config.write_token = token
     if "env" not in kwargs and (env := os.environ.get("APITALLY_ENV")):
