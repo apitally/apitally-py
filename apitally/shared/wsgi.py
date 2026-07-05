@@ -83,9 +83,17 @@ class CaptureMixin:
                 return
             body = masked
         try:
-            value = json.dumps(self.redaction.redact_body(json.loads(body)), separators=(",", ":"))
+            data = json.loads(body)
         except Exception:
-            value = body.decode("utf-8", errors="replace")
+            # Non-JSON but allowlisted (e.g. text/plain): stored as-is (design.md section 6)
+            span.set_attribute(key, body.decode("utf-8", errors="replace"))
+            return
+        try:
+            value = json.dumps(self.redaction.redact_body(data), separators=(",", ":"), ensure_ascii=False)
+        except Exception:
+            # Fail closed: privacy over fidelity when redaction breaks on parsed JSON
+            logger.warning("Error redacting body, replaced with %s", BODY_MASKED, exc_info=True)
+            value = BODY_MASKED
         span.set_attribute(key, value)
 
 
@@ -96,9 +104,11 @@ class WsgiTransportMiddleware(CaptureMixin):
         self,
         app: WSGIApplication,
         get_route: Callable[[WSGIEnvironment], str | None] | None = None,
+        capture_response_body: bool = True,
     ) -> None:
         self.app = app
         self.get_route = get_route
+        self.capture_response_body = capture_response_body
         self.config: ApitallyConfig | None = None
         self.redaction = Redaction()
 
@@ -150,7 +160,11 @@ class WsgiTransportMiddleware(CaptureMixin):
         headers = group_headers(response_headers)
         content_length = parse_content_length(next(iter(headers.get("content-length", [])), None))
         state.response_size = content_length
-        if config.log_response_body and is_allowed_content_type(next(iter(headers.get("content-type", [])), None)):
+        if (
+            self.capture_response_body
+            and config.log_response_body
+            and is_allowed_content_type(next(iter(headers.get("content-type", [])), None))
+        ):
             over_cap = content_length is not None and content_length > MAX_BODY_SIZE
             state.response_body = BODY_TOO_LARGE if over_cap else bytearray()
 

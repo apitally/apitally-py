@@ -12,7 +12,7 @@ from opentelemetry.trace import SpanKind
 from apitally.shared.config import configure
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor, server_span_var
-from apitally.shared.wsgi import BODY_TOO_LARGE, WsgiTransportMiddleware
+from apitally.shared.wsgi import BODY_MASKED, BODY_TOO_LARGE, WsgiTransportMiddleware
 
 
 TOKEN = "apt_" + "a" * 24
@@ -158,6 +158,24 @@ def test_captured_body_reemitted_and_redacted(tracer, exporter):
 
     assert received["body"] == body
     assert json.loads(str(attributes["apitally.request.body"])) == {"password": REDACTED, "item": "x"}
+
+
+def test_redaction_failure_after_parse_fails_closed(tracer, exporter, monkeypatch):
+    configure(write_token=TOKEN, log_request_body=True)
+    body = b'{"a": 1}'
+
+    def app(environ, start_response):
+        start_response("200 OK", [("Content-Type", "text/plain")])
+        return [b"ok"]
+
+    def boom(self, data):
+        raise ValueError("boom")
+
+    monkeypatch.setattr("apitally.shared.redaction.Redaction.redact_body", boom)
+    environ = make_environ(method="POST", body=body, content_type="application/json", content_length=str(len(body)))
+    attributes = run_request(WsgiTransportMiddleware(app), environ, tracer, exporter)
+
+    assert attributes["apitally.request.body"] == BODY_MASKED
 
 
 def test_non_allowlisted_mime_never_touches_input(tracer, exporter):

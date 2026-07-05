@@ -14,11 +14,12 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler, TraceIdRatioBas
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import config, metrics
-from apitally.shared.asgi import BODY_MASKED, BODY_TOO_LARGE, ApitallyASGIMiddleware
+from apitally.shared.asgi import BODY_TOO_LARGE, ApitallyASGIMiddleware
 from apitally.shared.config import configure
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor
+from apitally.shared.wsgi import BODY_MASKED
 
 
 TOKEN = "apt_" + "a" * 24
@@ -225,6 +226,43 @@ async def test_mask_callback_none_or_raise_yields_masked(caplog):
         assert span.attributes is not None
         assert span.attributes["apitally.request.body"] == BODY_MASKED
     assert any("mask_request_body" in record.getMessage() for record in caplog.records)
+
+
+async def test_mask_callback_output_over_cap_yields_too_large():
+    configure(write_token=TOKEN, log_request_body=True, mask_request_body=lambda span, body: b"x" * 50_001)
+    tracer, exporter = create_trace_pipeline()
+    app = EchoApp()
+    await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a": 1}'])
+
+    (span,) = exporter.get_finished_spans()
+    assert span.attributes is not None
+    assert span.attributes["apitally.request.body"] == BODY_TOO_LARGE
+
+
+async def test_aborted_response_body_not_exported():
+    configure(write_token=TOKEN, log_response_body=True)
+    tracer, exporter = create_trace_pipeline()
+
+    async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        await receive()
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"application/json")]})
+        await send({"type": "http.response.body", "body": b'{"a":', "more_body": True})
+        raise RuntimeError("aborted mid-stream")
+
+    middleware = ApitallyASGIMiddleware(app)
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: dict[str, Any]) -> None:
+        pass
+
+    with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER):
+        with pytest.raises(RuntimeError):
+            await middleware(make_scope(), receive, send)
+
+    (span,) = exporter.get_finished_spans()
+    assert "apitally.response.body" not in (span.attributes or {})
 
 
 async def test_invalid_user_pattern_dropped_and_request_succeeds(caplog):
