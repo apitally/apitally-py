@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import time
 from collections.abc import Awaitable, Callable, Iterable
@@ -13,7 +12,7 @@ from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import get_consumer_identifier, reset_consumer_identifier
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import get_server_span
-from apitally.shared.wsgi import ALLOWED_CONTENT_TYPES, BODY_MASKED, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
+from apitally.shared.wsgi import ALLOWED_CONTENT_TYPES, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
 
 
 logger = logging.getLogger(__name__)
@@ -23,7 +22,6 @@ Message = dict[str, Any]
 Receive = Callable[[], Awaitable[Message]]
 Send = Callable[[Message], Awaitable[None]]
 ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
-MaskCallback = Callable[[Any, bytes], "bytes | None"]
 
 
 class ApitallyASGIMiddleware(CaptureMixin):
@@ -43,7 +41,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
         config = self.refresh_config()
         start_time = time.perf_counter()
         request_size: int | None = None
-        request_body = b""
+        request_body = bytearray()
         request_body_length = 0
         request_body_complete = False
         request_too_large = False
@@ -52,7 +50,8 @@ class ApitallyASGIMiddleware(CaptureMixin):
         response_started = False
         response_size: int | None = None
         response_size_counter = 0
-        response_body = b""
+        response_body = bytearray()
+        response_body_complete = False
         response_too_large = False
         capture_response = False
         completed = False
@@ -82,7 +81,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
                         request_body += body
                         if len(request_body) > MAX_BODY_SIZE:
                             request_too_large = True
-                            request_body = b""
+                            request_body = bytearray()
                     if not message.get("more_body", False):
                         request_body_complete = True
             except Exception:
@@ -107,19 +106,26 @@ class ApitallyASGIMiddleware(CaptureMixin):
                     span.set_attribute("http.request.body.size", final_request_size)
                 if final_response_size is not None:
                     span.set_attribute("http.response.body.size", final_response_size)
+                # Partial buffers from aborted requests/responses are never exported (spec 6.3)
                 if request_too_large:
                     span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
-                elif capture_request and request_body:
-                    span.set_attribute(
+                elif capture_request and request_body and request_body_complete:
+                    self.set_body_attribute(
+                        span,
                         "apitally.request.body",
-                        self.process_body(span, request_body, config.mask_request_body, "mask_request_body"),
+                        bytes(request_body),
+                        config.mask_request_body,
+                        "mask_request_body",
                     )
                 if response_too_large:
                     span.set_attribute("apitally.response.body", BODY_TOO_LARGE)
-                elif capture_response and response_body:
-                    span.set_attribute(
+                elif capture_response and response_body and response_body_complete:
+                    self.set_body_attribute(
+                        span,
                         "apitally.response.body",
-                        self.process_body(span, response_body, config.mask_response_body, "mask_response_body"),
+                        bytes(response_body),
+                        config.mask_response_body,
+                        "mask_response_body",
                     )
             try:
                 route = self.resolve_route(scope)
@@ -139,7 +145,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
 
         async def send_wrapper(message: Message) -> None:
             nonlocal status, response_started, response_size, response_size_counter
-            nonlocal response_body, response_too_large, capture_response
+            nonlocal response_body, response_body_complete, response_too_large, capture_response
             try:
                 if message["type"] == "http.response.start":
                     response_started = True
@@ -164,9 +170,10 @@ class ApitallyASGIMiddleware(CaptureMixin):
                         response_body += body
                         if len(response_body) > MAX_BODY_SIZE:
                             response_too_large = True
-                            response_body = b""
+                            response_body = bytearray()
                     if not message.get("more_body", False):
                         # Final message: write size attributes and record metrics while the span is still recording
+                        response_body_complete = True
                         finish()
             except Exception:
                 logger.exception("Error in Apitally ASGI middleware")
@@ -184,28 +191,6 @@ class ApitallyASGIMiddleware(CaptureMixin):
                 finish()
             except Exception:
                 logger.exception("Error in Apitally ASGI middleware")
-
-    def process_body(self, span: Span, body: bytes, mask_callback: MaskCallback | None, callback_name: str) -> str:
-        if mask_callback is not None:
-            try:
-                masked = mask_callback(span, body)
-            except Exception:
-                logger.warning(
-                    "Apitally %s callback raised an exception, body replaced with %s",
-                    callback_name,
-                    BODY_MASKED,
-                    exc_info=True,
-                )
-                masked = None
-            if masked is None:
-                return BODY_MASKED
-            body = masked
-        try:
-            data = json.loads(body)
-        except Exception:
-            # Non-JSON but allowlisted (e.g. text/plain): stored as-is (design.md section 6)
-            return body.decode("utf-8", errors="replace")
-        return json.dumps(self.redaction.redact_body(data), separators=(",", ":"))
 
     def set_header_attributes(self, span: Span, prefix: str, headers: Iterable[tuple[bytes, bytes]]) -> None:
         grouped: dict[str, list[str]] = {}

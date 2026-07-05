@@ -123,6 +123,38 @@ def test_streaming_response_uncaptured_but_recorded(app, memory_exporters, monke
     assert (point.attributes or {})["http.route"] == "/stream"
 
 
+def test_generator_response_not_flattened_by_capture(app, memory_exporters, monkeypatch):
+    consumed = []
+
+    @app.get("/gen")
+    def gen():
+        def generate():
+            consumed.append(True)
+            yield b'{"a":'
+            yield b" 1}"
+
+        return Response(generate(), mimetype="application/json")
+
+    streamed_after_capture = {}
+
+    # after_request hooks run in reverse registration order, so this runs after the capture hook
+    @app.after_request
+    def check(response):
+        streamed_after_capture["value"] = response.is_streamed and not consumed
+        return response
+
+    init(app, monkeypatch, log_response_body=True)
+
+    response = app.test_client().get("/gen")
+
+    assert response.data == b'{"a": 1}'
+    assert streamed_after_capture["value"] is True
+    (span,) = exported_spans(memory_exporters)
+    attributes = dict(span.attributes or {})
+    assert attributes["http.route"] == "/gen"
+    assert "apitally.response.body" not in attributes
+
+
 def test_response_headers_captured_wire_final(app, memory_exporters, monkeypatch):
     init(app, monkeypatch, log_response_headers=True)
 

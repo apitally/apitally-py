@@ -49,7 +49,9 @@ def init_apitally(
         activation.configure(**config.explicit_kwargs(locals()))
         if isinstance(app.wsgi_app, activation.WSGIActivationShim):
             return
-        transport = WsgiTransportMiddleware(app.wsgi_app, get_route=_create_route_resolver(app))
+        transport = WsgiTransportMiddleware(
+            app.wsgi_app, get_route=_create_route_resolver(app), capture_response_body=False
+        )
         app.wsgi_app = transport  # ty: ignore[invalid-assignment]
         if getattr(app, "_is_instrumented_by_opentelemetry", False):
             logger.debug("Flask app is already instrumented by OpenTelemetry, adapting")
@@ -66,12 +68,13 @@ def _create_response_body_hook(transport: WsgiTransportMiddleware) -> Callable[[
     def capture_response_body(response: Response) -> Response:
         # The instrumentor's SERVER span ends in teardown_request, before the response
         # iterable reaches any WSGI layer, so the body is written here while the span
-        # is still recording; direct_passthrough responses are not captured (design.md section 6)
+        # is still recording; streaming responses are not captured (design.md section 6)
         try:
             config = transport.refresh_config()
             if (
                 config.log_response_body
                 and not response.direct_passthrough
+                and not response.is_streamed
                 and is_allowed_content_type(response.content_type)
                 and (span := get_server_span()) is not None
                 and span.is_recording()
