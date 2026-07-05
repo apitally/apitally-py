@@ -4,7 +4,7 @@
 
 Per design.md §6, the MIME allowlist check runs first, from the `CONTENT_TYPE` header alone: a request outside the allowlist gets no capture and `wsgi.input` is never touched or replaced, regardless of size. Both gates (MIME and Content-Length) are header-only, so a request that won't be captured costs zero body I/O.
 
-For allowlisted requests, the WSGI middleware captures the body only when `CONTENT_LENGTH` parses to an int. When it exceeds the 50,000-byte cap (spec §6.3), the attribute is set to `<body too large>` without reading a byte. Otherwise the body is read in full and re-emitted as a `BytesIO`, so the downstream app sees the identical stream. Reading in full avoids partial-stream re-emission entirely.
+For allowlisted requests, the WSGI middleware captures the body only when `CONTENT_LENGTH` parses to an int. When it exceeds the 50,000-byte cap (spec §6.3), the attribute is set to `[BODY_TOO_LARGE]` without reading a byte. Otherwise the body is read in full and re-emitted as a `BytesIO`, so the downstream app sees the identical stream. Reading in full avoids partial-stream re-emission entirely.
 
 ```python
 # after the MIME allowlist check has passed (header-only, see above)

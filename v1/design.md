@@ -123,7 +123,7 @@ Behavior:
 | `capture_logs` | `bool` | `True` | Auto-install root logger bridge — see §10 |
 | `exclude_on_request` | `Callable[[ReadableSpan], bool]` | `None` | `True` = exclude, decided at span start (§3). Guarantee: nothing about the request is transmitted. Filter on semconv attributes (`url.path`, `http.request.method`, `user_agent.original`, ...). |
 | `exclude_on_response` | `Callable[[ReadableSpan], bool]` | `None` | `True` = exclude, decided at SERVER span end (§3). Guarantee: the request is not recorded; mid-request telemetry may have transited and is discarded at ingest. Filter on `http.response.status_code`, `apitally.consumer.*`, custom attributes. |
-| `mask_request_body` | `Callable[[ReadableSpan, bytes], bytes \| None]` | `None` | Replaces the captured request body before pattern redaction; `None` or a raise → the literal `<masked>` (fail closed, §6). Renamed from 0.x `mask_request_body_callback`. |
+| `mask_request_body` | `Callable[[ReadableSpan, bytes], bytes \| None]` | `None` | Replaces the captured request body before pattern redaction; `None` or a raise → the literal `[REDACTED]` (fail closed, §6). Renamed from 0.x `mask_request_body_callback`. |
 | `mask_response_body` | `Callable[[ReadableSpan, bytes], bytes \| None]` | `None` | Same for response bodies. Renamed from 0.x `mask_response_body_callback`. |
 | Body/header capture toggles, redaction extras, excluded paths, etc. | (per legacy SDK option names) | (per spec) | Off by default — see §6 |
 
@@ -174,11 +174,11 @@ Ordering rule: the transport middleware MUST run inside the instrumentor's middl
 
 Capture mechanics (per spec section 6.3), in pipeline order — both capture decisions are header-only, so a request that won't be captured costs zero body I/O:
 - MIME allowlist first (spec § 6.3), from the request headers / response-start headers, before any body is read or buffered: `application/json`, `application/problem+json`, `application/vnd.api+json`, `application/ld+json`, `application/x-ndjson`, `text/markdown`, `text/plain` (case-insensitive prefix match, ignoring `; charset=...`). Outside the list → no attribute set, regardless of size — the body is never touched (on WSGI, `wsgi.input` isn't even replaced).
-- Size cap 50,000 bytes (spec § 6.3): an over-cap body sets the attribute to `<body too large>` — never a truncated body.
+- Size cap 50,000 bytes (spec § 6.3): an over-cap body sets the attribute to `[BODY_TOO_LARGE]` — never a truncated body.
 - Request bodies, WSGI: capture only when `CONTENT_LENGTH` parses to an int. Over cap → sentinel without reading a byte; otherwise `read(content_length)` and re-emit as `BytesIO` (the 0.x mechanism — see `wsgi.md`). Never read past or without Content-Length: PEP 3333 makes EOF simulation a SHOULD, and raw-socket servers (wsgiref, werkzeug dev server) block on over-reads until the client gives up. Chunked/absent-length request bodies are not captured, matching 0.x.
 - Request bodies, ASGI: accumulate `http.request` messages with a running length check, always forwarding every chunk; crossing the cap discards the buffer and sets the sentinel.
 - Response bodies (both transports): accumulate sent chunks under the same running-length rule.
-- Mask callbacks (spec § 6.3): `mask_request_body` / `mask_response_body` (§5) are called with the SERVER span and the captured body bytes. Return value replaces the body; `None` sets the attribute to the literal `<masked>`; a raising callback also yields `<masked>` — fail closed, never export a body the user tried to mask.
+- Mask callbacks (spec § 6.3): `mask_request_body` / `mask_response_body` (§5) are called with the SERVER span and the captured body bytes. Return value replaces the body; `None` sets the attribute to the literal `[REDACTED]`; a raising callback also yields `[REDACTED]` — fail closed, never export a body the user tried to mask.
 - Then: parse JSON if applicable → redact → re-serialize → set `apitally.request.body` / `apitally.response.body` on the active SERVER span (§5 ContextVar). Pattern redaction applies to whatever the mask callback returned.
 - Default redaction patterns per spec § 6.7. User-supplied patterns add to defaults, never replace.
 

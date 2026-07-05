@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from apitally.shared.config import ApitallyConfig, get_config
-from apitally.shared.redaction import Redaction
+from apitally.shared.redaction import REDACTED, Redaction
 
 
 if TYPE_CHECKING:
@@ -16,8 +16,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MAX_BODY_SIZE = 50_000
-BODY_TOO_LARGE = "<body too large>"
-BODY_MASKED = "<masked>"
+BODY_TOO_LARGE = "[BODY_TOO_LARGE]"
 ALLOWED_CONTENT_TYPES = (
     "application/json",
     "application/problem+json",
@@ -69,12 +68,12 @@ class CaptureMixin:
                 logger.warning(
                     "Apitally %s callback raised an exception, body replaced with %s",
                     callback_name,
-                    BODY_MASKED,
+                    REDACTED,
                     exc_info=True,
                 )
                 masked = None
             if masked is None:
-                span.set_attribute(key, BODY_MASKED)
+                span.set_attribute(key, REDACTED)
                 return
             if len(masked) > MAX_BODY_SIZE:
                 span.set_attribute(key, BODY_TOO_LARGE)
@@ -90,6 +89,6 @@ class CaptureMixin:
             value = json.dumps(self.redaction.redact_body(data), separators=(",", ":"), ensure_ascii=False)
         except Exception:
             # Fail closed: privacy over fidelity when redaction breaks on parsed JSON
-            logger.warning("Error redacting body, replaced with %s", BODY_MASKED, exc_info=True)
-            value = BODY_MASKED
+            logger.warning("Error redacting body, replaced with %s", REDACTED, exc_info=True)
+            value = REDACTED
         span.set_attribute(key, value)

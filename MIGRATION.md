@@ -100,12 +100,12 @@ init_apitally(
 
 ## Masking request and response bodies
 
-`mask_request_body_callback` and `mask_response_body_callback` are renamed to `mask_request_body` and `mask_response_body`. They no longer receive request/response dicts; the new signature is `(span, body: bytes) -> bytes | None`, where `span` is the request's SERVER span. Returning `None` replaces the captured body with `<masked>`.
+`mask_request_body_callback` and `mask_response_body_callback` are renamed to `mask_request_body` and `mask_response_body`. They no longer receive request/response dicts; the new signature is `(span, body: bytes) -> bytes | None`, where `span` is the request's SERVER span. Returning `None` replaces the captured body with `[REDACTED]`.
 
 ```python
 def mask_request_body(span, body):
     if span.attributes.get("url.path") == "/users":
-        return None  # body is replaced with <masked>
+        return None  # body is replaced with [REDACTED]
     return body
 ```
 
