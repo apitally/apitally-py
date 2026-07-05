@@ -11,7 +11,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Decision, Sampler, SamplingResult, TraceIdRatioBased
 
-from apitally.shared import providers
+from apitally.shared import config, providers
 from apitally.shared.config import configure
 
 
@@ -152,6 +152,8 @@ def test_cooperative_span_limit_warning(caplog):
         providers.attach_to_tracer_provider(user_provider, SimpleSpanProcessor(InMemorySpanExporter()))
     assert not [r for r in caplog.records if "truncated" in r.getMessage()]
 
+    # Second half models a separate process with capture enabled
+    config.reset()
     configure(write_token=TOKEN, log_request_body=True)
     with caplog.at_level(logging.WARNING, logger="apitally"):
         providers.attach_to_tracer_provider(user_provider, SimpleSpanProcessor(InMemorySpanExporter()))

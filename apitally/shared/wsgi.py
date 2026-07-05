@@ -10,7 +10,7 @@ from apitally.shared import metrics
 from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
 from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier
-from apitally.shared.redaction import REDACTED, Redaction
+from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import get_server_span
 
 
@@ -34,11 +34,10 @@ class ApitallyWSGIMiddleware(CaptureMixin):
         self.app = app
         self.get_route = get_route
         self.capture_response_body = capture_response_body
-        self.config: ApitallyConfig | None = None
-        self.redaction = Redaction()
+        self.bind_config()
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
-        config = self.refresh_config()
+        config = self.config
         state = RequestState()
         try:
             reset_consumer_identifier()

@@ -21,9 +21,6 @@ from apitally.shared.span_processor import ApitallySpanProcessor
 
 logger = logging.getLogger(__name__)
 
-# Baked into the exporters, resource, and root handler constructed at activation (design.md section 8)
-FIXED_AT_ACTIVATION = ("write_token", "env", "capture_logs", "otlp_endpoint")
-
 activation_lock = threading.Lock()
 activation_attempted = False
 activated = False
@@ -165,7 +162,6 @@ def start_pipelines() -> None:
     logger_provider = providers.create_logger_provider(resource, [log_processor])
     install_root_handler(logger_provider)
     metrics.attach_reader(env)
-    config.mark_fixed(*FIXED_AT_ACTIVATION)
 
 
 def before_fork() -> None:

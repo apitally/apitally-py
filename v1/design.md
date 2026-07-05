@@ -109,7 +109,7 @@ For Django: `init_apitally(...)` with no `app` argument, called at the **end of 
 For Litestar: no `init_apitally(app, ...)` — `Litestar.plugins` is built from a frozenset at construction and there is no late-registration API (see `litestar.md`). Setup is `Litestar(plugins=[ApitallyPlugin(...)])` at construction; the plugin takes the same kwargs and runs the same configure/activate path from its `on_app_init` hook. Document the asymmetry in the user-facing setup docs.
 
 Behavior:
-- **Idempotent**: re-calling with the same args is a no-op. Different args: last call wins (reconfigure exporters, env, redaction, body-capture toggles).
+- **First call wins**: re-calling with the same args is a silent no-op. Different args: warn once and ignore; the first configuration stays active.
 - **Returns `None`**: side-effecting function. No return value users can grab.
 - **Explicit kwargs**: each per-framework function signature spells out its kwargs. Some framework-specific kwargs exist (e.g., FastAPI's `app_version`, `openapi_url`).
 
@@ -265,11 +265,12 @@ Checked at activation boundary (not on every request):
 - `os.environ.get("APITALLY_DISABLED")` truthy → skip activation.
 - `disabled=True` kwarg → skip activation.
 
-## 8. Idempotency and re-call semantics
+## 8. Re-call semantics
 
-- `init_apitally(...)` is idempotent. Re-calling with the same args: no-op.
-- Different args: last call wins. Reconfigure what can be reconfigured (write_token, env, redaction config, body-capture toggles, exporter endpoint). Provider-level pieces that can't be swapped after construction (e.g., the global sampler) stay as the first-call set.
-- Implementation: module-level singleton holding last-applied config; diff on re-call.
+- The first `init_apitally(...)` call applies; configuration is immutable from then on.
+- Re-calling with the same args: silent no-op. Legitimate re-calls happen — settings modules imported twice, app factories invoked more than once — and must stay quiet.
+- Re-calling with different args: warn once per process and ignore the call; the first configuration stays active. One rule, no per-field asterisks — no config field can silently disagree with what the running pipelines were built from.
+- Implementation: module-level singleton holding the first-applied config; equality check on re-call. Because config never changes, components bind it and their derived state (compiled exclude patterns, redaction tables) once at construction — there is no refresh path.
 
 ## 9. Error handling — never break the app, ever
 
@@ -438,7 +439,7 @@ apitally/
     startup.py                      # startup event emission
     consumer.py                     # set_consumer et al., reading the §5 SERVER-span ContextVar (set in span_processor.py on_start)
     redaction.py                    # default + user patterns, applied on body/headers/query
-    config.py                       # kwarg/env-var loading, idempotency state
+    config.py                       # kwarg/env-var loading, first-call-wins singleton
     activation.py                   # configure/activate state machine, os.register_at_fork handlers
     sentry.py                       # auto-detect + event-id hook
 ```

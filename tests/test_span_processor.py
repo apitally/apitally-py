@@ -49,6 +49,14 @@ def tracer(tracer_provider):
     return tracer_provider.get_tracer(CONTRIB_SCOPE)
 
 
+def create_tracer(exporter):
+    # For tests that configure() in the body: the processor binds config at construction,
+    # so it must be built after configure, not in a fixture
+    provider = TracerProvider(sampler=ALWAYS_ON)
+    provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
+    return provider.get_tracer(CONTRIB_SCOPE)
+
+
 def test_server_root_and_child_kept(tracer, processor, exporter):
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as server:
         with tracer.start_as_current_span("child") as child:
@@ -94,27 +102,30 @@ def test_default_excluded_requests_dropped(tracer, exporter, attributes):
     assert exporter.get_finished_spans() == ()
 
 
-def test_user_exclude_paths_add_to_defaults(tracer, exporter):
+def test_user_exclude_paths_add_to_defaults(exporter):
     configure(write_token=TOKEN, exclude_paths=[r"^/internal/"])
+    tracer = create_tracer(exporter)
     for path in ["/internal/jobs", "/healthz", "/items"]:
         with tracer.start_as_current_span(f"GET {path}", kind=SpanKind.SERVER, attributes={"url.path": path}):
             pass
     assert [s.name for s in exporter.get_finished_spans()] == ["GET /items"]
 
 
-def test_exclude_on_request_callback(tracer, exporter):
+def test_exclude_on_request_callback(exporter):
     configure(write_token=TOKEN, exclude_on_request=lambda span: span.attributes.get("url.path") == "/admin")
+    tracer = create_tracer(exporter)
     with tracer.start_as_current_span("GET /admin", kind=SpanKind.SERVER, attributes={"url.path": "/admin"}):
         with tracer.start_as_current_span("child"):
             pass
     assert exporter.get_finished_spans() == ()
 
 
-def test_raising_exclude_on_request_warns_and_keeps(tracer, exporter, caplog):
+def test_raising_exclude_on_request_warns_and_keeps(exporter, caplog):
     def callback(span):
         raise ValueError("boom")
 
     configure(write_token=TOKEN, exclude_on_request=callback)
+    tracer = create_tracer(exporter)
     with caplog.at_level(logging.WARNING, logger="apitally"):
         with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
             pass
@@ -122,11 +133,12 @@ def test_raising_exclude_on_request_warns_and_keeps(tracer, exporter, caplog):
     assert any("exclude_on_request" in r.getMessage() for r in caplog.records)
 
 
-def test_exclude_on_response_callback(tracer, exporter):
+def test_exclude_on_response_callback(exporter):
     configure(
         write_token=TOKEN,
         exclude_on_response=lambda span: span.attributes.get("http.response.status_code") == 404,
     )
+    tracer = create_tracer(exporter)
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as span:
         span.set_attribute("http.response.status_code", 404)
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as span:

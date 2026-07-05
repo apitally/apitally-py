@@ -33,22 +33,16 @@ def is_allowed_content_type(content_type: str | None) -> bool:
 
 
 class CaptureMixin:
-    """Config refresh and redaction-aware body attribute writing shared by the transport middlewares."""
+    """Config binding and redaction-aware body attribute writing shared by the transport middlewares."""
 
-    config: ApitallyConfig | None
+    config: ApitallyConfig
     redaction: Redaction
 
-    def refresh_config(self) -> ApitallyConfig:
-        # Must never raise: it runs at request entry, outside the per-request try/except
-        try:
-            config = get_config() or ApitallyConfig()
-            if config is not self.config:
-                self.config = config
-                self.redaction = Redaction(config.mask_query_params, config.mask_headers, config.mask_body_fields)
-            return config
-        except Exception:
-            logger.exception("Error refreshing Apitally config")
-            return self.config or ApitallyConfig()
+    def bind_config(self) -> None:
+        self.config = get_config() or ApitallyConfig()
+        self.redaction = Redaction(
+            self.config.mask_query_params, self.config.mask_headers, self.config.mask_body_fields
+        )
 
     def set_body_attribute(
         self,

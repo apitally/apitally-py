@@ -74,7 +74,7 @@ def _create_response_body_hook(transport: ApitallyWSGIMiddleware) -> Callable[[R
         # iterable reaches any WSGI layer, so the body is written here while the span
         # is still recording; streaming responses are not captured (design.md section 6)
         try:
-            config = transport.refresh_config()
+            config = transport.config
             if (
                 config.log_response_body
                 and not response.direct_passthrough

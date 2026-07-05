@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Callable
 from contextvars import ContextVar
 
@@ -60,10 +59,11 @@ class ApitallySpanProcessor(SpanProcessor):
         # Settable so fork re-activation can swap in a fresh batch processor (design.md section 7)
         self.downstream = downstream
         self.spans: dict[int, tuple[bool, int | None]] = {}
-        self.config: ApitallyConfig | None = None
-        self.exclude_path_patterns: list[re.Pattern[str]] = []
-        self.redaction = Redaction()
-        self.refresh_config()
+        self.config = get_config() or ApitallyConfig()
+        self.exclude_path_patterns = compile_patterns(DEFAULT_EXCLUDE_PATH_PATTERNS + self.config.exclude_paths)
+        self.redaction = Redaction(
+            self.config.mask_query_params, self.config.mask_headers, self.config.mask_body_fields
+        )
 
     def on_start(self, span: Span, parent_context: Context | None = None) -> None:
         try:
@@ -91,9 +91,8 @@ class ApitallySpanProcessor(SpanProcessor):
             keep, _ = self.spans.pop(context.span_id, (False, None))
             if not keep:
                 return
-            config = self.refresh_config()
             if span.kind == SpanKind.SERVER and self.callback_excludes(
-                config.exclude_on_response, span, "exclude_on_response"
+                self.config.exclude_on_response, span, "exclude_on_response"
             ):
                 return
             self.downstream.on_end(self.redact_span(span))
@@ -112,7 +111,6 @@ class ApitallySpanProcessor(SpanProcessor):
         return self.downstream.force_flush(timeout_millis)
 
     def exclude_request(self, span: Span) -> bool:
-        config = self.refresh_config()
         attributes = span.attributes or {}
         method = attributes.get("http.request.method") or attributes.get("http.method")
         if method == "OPTIONS":
@@ -123,7 +121,7 @@ class ApitallySpanProcessor(SpanProcessor):
         user_agent = attributes.get("user_agent.original") or attributes.get("http.user_agent")
         if user_agent and matches_any(EXCLUDE_USER_AGENT_PATTERNS, str(user_agent)):
             return True
-        return self.callback_excludes(config.exclude_on_request, span, "exclude_on_request")
+        return self.callback_excludes(self.config.exclude_on_request, span, "exclude_on_request")
 
     def callback_excludes(self, callback: Callable[[ReadableSpan], bool] | None, span: ReadableSpan, name: str) -> bool:
         if callback is None:
@@ -171,14 +169,6 @@ class ApitallySpanProcessor(SpanProcessor):
             end_time=span.end_time,
             instrumentation_scope=span.instrumentation_scope,
         )
-
-    def refresh_config(self) -> ApitallyConfig:
-        config = get_config() or ApitallyConfig()
-        if config is not self.config:
-            self.config = config
-            self.exclude_path_patterns = compile_patterns(DEFAULT_EXCLUDE_PATH_PATTERNS + config.exclude_paths)
-            self.redaction = Redaction(config.mask_query_params, config.mask_headers, config.mask_body_fields)
-        return config
 
 
 def is_noise_span(span: Span) -> bool:
