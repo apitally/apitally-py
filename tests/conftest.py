@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from importlib.util import find_spec
 from typing import Any
 
 import pytest
@@ -8,6 +9,31 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.test.globals_test import reset_trace_globals
 
 from apitally.shared import activation, config, metrics, providers, startup
+
+
+def installed(*modules: str) -> bool:
+    return all(find_spec(module) is not None for module in modules)
+
+
+# Skip collection of framework test modules whose framework or instrumentor is not installed,
+# so the CI test matrix can run with a single framework at a time
+collect_ignore = []
+if not installed("blacksheep", "opentelemetry.instrumentation.asgi"):
+    collect_ignore.append("test_blacksheep.py")
+if not installed("django", "opentelemetry.instrumentation.django"):
+    collect_ignore.extend(["test_django.py", "test_django_ninja.py", "test_django_rest_framework.py"])
+if not installed("ninja"):
+    collect_ignore.append("test_django_ninja.py")
+if not installed("rest_framework"):
+    collect_ignore.append("test_django_rest_framework.py")
+if not installed("fastapi", "opentelemetry.instrumentation.fastapi"):
+    collect_ignore.append("test_fastapi.py")
+if not installed("flask", "opentelemetry.instrumentation.flask"):
+    collect_ignore.append("test_flask.py")
+if not installed("litestar", "opentelemetry.instrumentation.asgi"):
+    collect_ignore.append("test_litestar.py")
+if not installed("starlette", "opentelemetry.instrumentation.starlette"):
+    collect_ignore.append("test_starlette.py")
 
 
 @pytest.fixture(autouse=True)
