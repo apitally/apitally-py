@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass, field
 from importlib.util import find_spec
 from typing import Any
@@ -38,8 +39,15 @@ if not installed("starlette", "opentelemetry.instrumentation.starlette"):
 
 @pytest.fixture(autouse=True)
 def reset_apitally_config():
+    # configure() sets OTEL_SEMCONV_STABILITY_OPT_IN via setdefault; restore it so the
+    # value never leaks between tests
+    semconv_before = os.environ.get("OTEL_SEMCONV_STABILITY_OPT_IN")
     yield
     config.reset()
+    if semconv_before is None:
+        os.environ.pop("OTEL_SEMCONV_STABILITY_OPT_IN", None)
+    else:
+        os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = semconv_before
 
 
 @pytest.fixture(autouse=True)

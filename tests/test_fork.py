@@ -9,6 +9,7 @@ from opentelemetry import trace
 from opentelemetry.trace import SpanKind
 
 from apitally.shared import activation, metrics
+from apitally.shared.span_processor import ApitallySpanProcessor
 
 
 TOKEN = "apt_" + "a" * 24
@@ -51,6 +52,34 @@ def test_after_fork_in_parent_reactivates_pipelines(memory_exporters, monkeypatc
     assert activation.span_processor.downstream.force_flush()
     assert len(memory_exporters.span[1].get_finished_spans()) == 1
     assert memory_exporters.span[0].get_finished_spans() == ()
+
+
+def test_after_fork_in_child_leaves_fresh_acquirable_lock(memory_exporters, monkeypatch):
+    configure_and_activate(monkeypatch)
+    activation.before_fork()  # holds the lock, as at the instant of fork
+
+    activation.after_fork_in_child()
+
+    assert activation.activation_lock.acquire(blocking=False)
+    activation.activation_lock.release()
+
+
+def test_child_reactivation_reuses_inherited_span_processor(memory_exporters, monkeypatch):
+    configure_and_activate(monkeypatch)
+    provider = trace.get_tracer_provider()
+
+    activation.before_fork()
+    activation.after_fork_in_child()
+    activation.activate()
+
+    assert activation.is_activated()
+    processors = provider._active_span_processor._span_processors  # ty: ignore[unresolved-attribute]
+    assert sum(1 for p in processors if isinstance(p, ApitallySpanProcessor)) == 1
+    with trace.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        pass
+    assert activation.span_processor is not None
+    assert activation.span_processor.downstream.force_flush()
+    assert len(memory_exporters.span[-1].get_finished_spans()) == 1
 
 
 def child_probe(queue):

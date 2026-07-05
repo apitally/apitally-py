@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING
 
 from flask import Flask, Response
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
 from apitally.shared import activation, config, startup
+from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, is_allowed_content_type
 from apitally.shared.span_processor import get_server_span
-from apitally.shared.wsgi import BODY_TOO_LARGE, MAX_BODY_SIZE, WsgiTransportMiddleware, is_allowed_content_type
+from apitally.shared.wsgi import ApitallyWSGIMiddleware
 
 
 if TYPE_CHECKING:
@@ -49,7 +49,7 @@ def init_apitally(
         activation.configure(**config.explicit_kwargs(locals()))
         if isinstance(app.wsgi_app, activation.WSGIActivationShim):
             return
-        transport = WsgiTransportMiddleware(
+        transport = ApitallyWSGIMiddleware(
             app.wsgi_app, get_route=_create_route_resolver(app), capture_response_body=False
         )
         app.wsgi_app = transport  # ty: ignore[invalid-assignment]
@@ -59,12 +59,16 @@ def init_apitally(
             FlaskInstrumentor().instrument_app(app)
         app.after_request(_create_response_body_hook(transport))
         app.wsgi_app = activation.WSGIActivationShim(app.wsgi_app)  # ty: ignore[invalid-assignment]
-        startup.set_app_info(framework="flask", paths=lambda: _get_paths(app), versions=_get_versions(app_version))
+        startup.set_app_info(
+            framework="flask",
+            paths=lambda: _get_paths(app),
+            versions=startup.resolve_versions(app_version, flask="flask"),
+        )
     except Exception:
         logger.exception("Error initializing Apitally for Flask")
 
 
-def _create_response_body_hook(transport: WsgiTransportMiddleware) -> Callable[[Response], Response]:
+def _create_response_body_hook(transport: ApitallyWSGIMiddleware) -> Callable[[Response], Response]:
     def capture_response_body(response: Response) -> Response:
         # The instrumentor's SERVER span ends in teardown_request, before the response
         # iterable reaches any WSGI layer, so the body is written here while the span
@@ -115,14 +119,3 @@ def _get_paths(app: Flask) -> list[dict[str, str]]:
         for method in rule.methods
         if method not in ("HEAD", "OPTIONS")
     ]
-
-
-def _get_versions(app_version: str | None) -> dict[str, str]:
-    versions: dict[str, str] = {}
-    try:
-        versions["flask"] = version("flask")
-    except PackageNotFoundError:
-        pass
-    if app_version:
-        versions["app"] = app_version
-    return versions

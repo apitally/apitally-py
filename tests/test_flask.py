@@ -184,10 +184,19 @@ def test_consumer_set_in_route_reaches_span_and_histogram(app, memory_exporters,
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
 
 
+def test_init_apitally_swallows_instrumentation_errors(app, monkeypatch):
+    def raise_error(*args, **kwargs):
+        raise RuntimeError("instrumentation failed")
+
+    monkeypatch.setattr(FlaskInstrumentor, "instrument_app", raise_error)
+    init_apitally(app, write_token=TOKEN)
+
+    response = app.test_client().get("/items/1")
+
+    assert response.status_code == 200
+
+
 def test_pre_instrumented_app_adapts_without_double_spans(app, memory_exporters, monkeypatch):
-    # Set before the user's instrument call so the process-global semconv latch cannot
-    # snap to old-only names when this test runs in isolation (design.md section 4)
-    monkeypatch.setenv("OTEL_SEMCONV_STABILITY_OPT_IN", "http/dup")
     FlaskInstrumentor().instrument_app(app)
     init(app, monkeypatch, log_response_headers=True)
 

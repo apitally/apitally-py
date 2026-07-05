@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable, Iterator
-from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
@@ -51,7 +50,7 @@ def init_apitally(
         startup.set_app_info(
             framework="fastapi",
             paths=lambda: _get_paths(app),
-            versions=_get_versions(app_version),
+            versions=startup.resolve_versions(app_version, fastapi="fastapi", starlette="starlette"),
             openapi=lambda: _get_openapi(app, openapi_url),
         )
     except Exception:
@@ -117,15 +116,3 @@ def _get_openapi(app: FastAPI, openapi_url: str | None) -> str | None:
     if not openapi_url or not any(getattr(route, "path", None) == openapi_url for route in app.routes):
         return None
     return json.dumps(app.openapi())
-
-
-def _get_versions(app_version: str | None) -> dict[str, str]:
-    versions = {}
-    for package in ("fastapi", "starlette"):
-        try:
-            versions[package] = version(package)
-        except PackageNotFoundError:
-            pass
-    if app_version:
-        versions["app"] = app_version
-    return versions

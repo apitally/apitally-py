@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
@@ -53,7 +52,7 @@ def init_apitally(
         startup.set_app_info(
             framework="starlette",
             paths=lambda: _get_paths(app),
-            versions=_get_versions(app_version),
+            versions=startup.resolve_versions(app_version, starlette="starlette"),
         )
     except Exception:
         logger.exception("Apitally setup for Starlette failed")
@@ -98,14 +97,3 @@ def _resolve_route(scope: dict[str, Any], routes: list[Any] | None = None) -> st
 def _get_paths(app: Starlette) -> list[dict[str, str]]:
     endpoints = SchemaGenerator({}).get_endpoints(app.routes)
     return [{"method": endpoint.http_method, "path": endpoint.path} for endpoint in endpoints]
-
-
-def _get_versions(app_version: str | None) -> dict[str, str]:
-    versions = {}
-    try:
-        versions["starlette"] = version("starlette")
-    except PackageNotFoundError:
-        pass
-    if app_version:
-        versions["app"] = app_version
-    return versions

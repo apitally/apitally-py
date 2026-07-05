@@ -8,11 +8,11 @@ from typing import Any
 from opentelemetry.sdk.trace import Span
 
 from apitally.shared import metrics
+from apitally.shared.capture import ALLOWED_CONTENT_TYPES, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
 from apitally.shared.config import ApitallyConfig
-from apitally.shared.consumer import get_consumer_identifier, reset_consumer_identifier
+from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import get_server_span
-from apitally.shared.wsgi import ALLOWED_CONTENT_TYPES, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
 
 
 logger = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
                 method=scope.get("method", ""),
                 route=route or "",
                 status_code=status,
-                consumer=get_consumer_identifier(),
+                consumer=resolve_consumer_identifier(span),
                 duration=duration,
                 request_size=final_request_size,
                 response_size=final_response_size,
