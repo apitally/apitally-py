@@ -52,4 +52,4 @@ The user passes the plugin at construction:
 app = Litestar(plugins=[ApitallyPlugin(...)], ...)
 ```
 
-`ApitallyPlugin` takes the same kwargs as `init_apitally` and runs the same configure/activate path from its `on_app_init` hook, going through the §8 config singleton, so idempotency and re-call semantics match the other frameworks. This is asymmetric to FastAPI/Flask/etc. where `init_apitally(app, ...)` mutates the app in place. Document in the user-facing setup docs.
+`ApitallyPlugin` takes the same kwargs as `init_apitally` and runs the same configure/activate path from its `on_app_init` hook, going through the §8 config singleton, so the first-call-wins re-call semantics match the other frameworks. This is asymmetric to FastAPI/Flask/etc. where `init_apitally(app, ...)` mutates the app in place. Document in the user-facing setup docs.

@@ -36,21 +36,15 @@ def test_invalid_token_logs_masked_form_only(caplog):
     assert all(invalid_token not in m for m in messages)
 
 
-def test_recall_semantics():
+def test_recall_semantics(caplog):
     first = config.configure(write_token=VALID_TOKEN, env="staging")
-    assert config.configure(write_token=VALID_TOKEN, env="staging") is first
-    recalled = config.configure(write_token=VALID_TOKEN, env="dev")
-    assert recalled.env == "dev"
-    assert config.get_config() is recalled
-
-
-def test_fixed_fields_keep_value_on_reconfigure():
-    other_token = "apt_" + "b" * 24
-    config.configure(write_token=VALID_TOKEN, env="staging")
-    config.mark_fixed("write_token")
-    cfg = config.configure(write_token=other_token, env="dev")
-    assert cfg.write_token == VALID_TOKEN
-    assert cfg.env == "dev"
+    with caplog.at_level(logging.WARNING, logger="apitally"):
+        assert config.configure(write_token=VALID_TOKEN, env="staging") is first
+        assert not caplog.records
+        assert config.configure(write_token=VALID_TOKEN, env="dev") is first
+        assert config.configure(write_token=VALID_TOKEN, env="prod") is first
+    assert first.env == "staging"
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
 
 
 def test_semconv_helper(monkeypatch):

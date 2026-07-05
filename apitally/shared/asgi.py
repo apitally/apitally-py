@@ -9,9 +9,8 @@ from opentelemetry.sdk.trace import Span
 
 from apitally.shared import metrics
 from apitally.shared.capture import ALLOWED_CONTENT_TYPES, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
-from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier
-from apitally.shared.redaction import REDACTED, Redaction
+from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import get_server_span
 
 
@@ -30,15 +29,14 @@ class ApitallyASGIMiddleware(CaptureMixin):
     def __init__(self, app: ASGIApp, resolve_route: Callable[[Scope], str | None] | None = None) -> None:
         self.app = app
         self.resolve_route = resolve_route or resolve_route_from_scope
-        self.config: ApitallyConfig | None = None
-        self.redaction = Redaction()
+        self.bind_config()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
-        config = self.refresh_config()
+        config = self.config
         start_time = time.perf_counter()
         request_size: int | None = None
         request_body = bytearray()

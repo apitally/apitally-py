@@ -65,7 +65,7 @@ def test_emitted_once_across_activation_lifecycle(memory_exporters, monkeypatch)
     startup.set_app_info(framework="flask", paths=PATHS)
     activate(monkeypatch)
 
-    # Re-configure (adapter re-init) and simulated after-fork-in-parent re-activation
+    # Ignored re-call (adapter re-init) and simulated after-fork-in-parent re-activation
     activation.configure(write_token=TOKEN, env="dev")
     startup.set_app_info(framework="flask", paths=PATHS)
     activation.activate()

@@ -44,7 +44,7 @@ CONFIG_FIELDS = frozenset(f.name for f in fields(ApitallyConfig))
 PATTERN_FIELDS = ("mask_query_params", "mask_headers", "mask_body_fields", "exclude_paths")
 
 current_config: ApitallyConfig | None = None
-fixed_fields: set[str] = set()
+recall_warned = False
 
 
 def explicit_kwargs(params: dict[str, Any]) -> dict[str, Any]:
@@ -54,15 +54,15 @@ def explicit_kwargs(params: dict[str, Any]) -> dict[str, Any]:
 
 
 def configure(**kwargs: Any) -> ApitallyConfig:
-    global current_config
+    global current_config, recall_warned
     config, error = resolve_config(kwargs)
     if current_config is not None:
-        if config == current_config:
-            return current_config
-        for name in fixed_fields:
-            if getattr(config, name) != getattr(current_config, name):
-                logger.debug("Config field '%s' cannot be changed after activation, keeping previous value", name)
-                setattr(config, name, getattr(current_config, name))
+        if config != current_config and not recall_warned:
+            recall_warned = True
+            logger.warning(
+                "init_apitally was called again with different arguments; the first configuration remains active"
+            )
+        return current_config
     if error:
         logger.error(error)
     current_config = config
@@ -73,14 +73,10 @@ def get_config() -> ApitallyConfig | None:
     return current_config
 
 
-def mark_fixed(*field_names: str) -> None:
-    fixed_fields.update(field_names)
-
-
 def reset() -> None:
-    global current_config
+    global current_config, recall_warned
     current_config = None
-    fixed_fields.clear()
+    recall_warned = False
 
 
 def ensure_semconv_opt_in() -> None:

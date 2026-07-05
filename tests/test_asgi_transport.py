@@ -209,16 +209,17 @@ async def test_body_over_cap_sentinel_with_passthrough():
 
 
 async def test_mask_callback_none_or_raise_yields_masked(caplog):
-    def raising_mask(span, body):
-        raise ValueError("boom")
+    def mask(span, body):
+        if b"boom" in body:
+            raise ValueError("boom")
+        return None
 
+    configure(write_token=TOKEN, log_request_body=True, mask_request_body=mask)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
-    configure(write_token=TOKEN, log_request_body=True, mask_request_body=lambda span, body: None)
     await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a": 1}'])
-    configure(write_token=TOKEN, log_request_body=True, mask_request_body=raising_mask)
     with caplog.at_level(logging.WARNING, logger="apitally"):
-        await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a": 1}'])
+        await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a": "boom"}'])
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 2

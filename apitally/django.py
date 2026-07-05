@@ -23,7 +23,7 @@ from apitally.shared import activation, config, metrics, startup
 from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
 from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier
-from apitally.shared.redaction import REDACTED, Redaction
+from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import get_server_span
 from apitally.shared.wsgi import parse_content_length
 
@@ -119,11 +119,10 @@ class ApitallyDjangoMiddleware(CaptureMixin):
 
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response
-        self.config: ApitallyConfig | None = None
-        self.redaction = Redaction()
+        self.bind_config()
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
-        config = self.refresh_config()
+        config = self.config
         start_time = time.perf_counter()
         request_size: int | None = None
         request_body: bytes | str | None = None
