@@ -30,10 +30,6 @@ def init_apitally(
     openapi_url: str | None = "/openapi.json",
     disabled: bool | None = None,
     capture_logs: bool | None = None,
-    exclude_on_request: Callable[[ReadableSpan], bool] | None = None,
-    exclude_on_response: Callable[[ReadableSpan], bool] | None = None,
-    mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
-    mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
     log_request_headers: bool | None = None,
     log_request_body: bool | None = None,
     log_response_headers: bool | None = None,
@@ -41,7 +37,11 @@ def init_apitally(
     mask_query_params: list[str] | None = None,
     mask_headers: list[str] | None = None,
     mask_body_fields: list[str] | None = None,
+    mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
+    mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
     exclude_paths: list[str] | None = None,
+    exclude_on_request: Callable[[ReadableSpan], bool] | None = None,
+    exclude_on_response: Callable[[ReadableSpan], bool] | None = None,
 ) -> None:
     """Set up Apitally for a FastAPI application. Errors never propagate (design.md section 9)."""
     try:

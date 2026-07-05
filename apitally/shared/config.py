@@ -25,10 +25,6 @@ class ApitallyConfig:
     env: str = "prod"
     disabled: bool = False
     capture_logs: bool = True
-    exclude_on_request: Callable[[ReadableSpan], bool] | None = None
-    exclude_on_response: Callable[[ReadableSpan], bool] | None = None
-    mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None
-    mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None
     log_request_headers: bool = False
     log_request_body: bool = False
     log_response_headers: bool = True
@@ -36,7 +32,11 @@ class ApitallyConfig:
     mask_query_params: list[str] = field(default_factory=list)
     mask_headers: list[str] = field(default_factory=list)
     mask_body_fields: list[str] = field(default_factory=list)
+    mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None
+    mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None
     exclude_paths: list[str] = field(default_factory=list)
+    exclude_on_request: Callable[[ReadableSpan], bool] | None = None
+    exclude_on_response: Callable[[ReadableSpan], bool] | None = None
     otlp_endpoint: str = DEFAULT_OTLP_ENDPOINT
 
 

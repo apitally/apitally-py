@@ -22,7 +22,7 @@ from apitally.shared.span_processor import ApitallySpanProcessor
 logger = logging.getLogger(__name__)
 
 # Baked into the exporters, resource, and root handler constructed at activation (design.md section 8)
-FIXED_AT_ACTIVATION = ("write_token", "env", "otlp_endpoint", "capture_logs")
+FIXED_AT_ACTIVATION = ("write_token", "env", "capture_logs", "otlp_endpoint")
 
 activation_lock = threading.Lock()
 activation_attempted = False
