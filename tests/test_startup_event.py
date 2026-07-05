@@ -1,21 +1,25 @@
 import json
 import platform
 
+import pytest
+from opentelemetry.sdk._logs import ReadableLogRecord
+
 from apitally.shared import activation, startup
+from tests.conftest import CreatedExporters
 
 
 TOKEN = "apt_" + "a" * 24
 PATHS = [{"method": "GET", "path": "/users"}, {"method": "POST", "path": "/users"}]
 
 
-def activate(monkeypatch):
+def activate(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     activation.configure(write_token=TOKEN)
     activation.activate()
     assert activation.is_activated()
 
 
-def startup_records(memory_exporters):
+def startup_records(memory_exporters: CreatedExporters) -> list[ReadableLogRecord]:
     if activation.log_processor is not None:
         activation.log_processor.force_flush()
     return [
@@ -26,7 +30,7 @@ def startup_records(memory_exporters):
     ]
 
 
-def test_startup_event_record_and_payload(memory_exporters, monkeypatch):
+def test_startup_event_record_and_payload(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     startup.set_app_info(
         framework="fastapi",
         paths=lambda: PATHS,
@@ -42,6 +46,7 @@ def test_startup_event_record_and_payload(memory_exporters, monkeypatch):
     assert record.event_name == "apitally.app.startup"
     assert record.timestamp is not None
     assert record.trace_id == 0
+    assert isinstance(record.body, str)
     assert json.loads(record.body) == {
         "framework": "fastapi",
         "versions": {"python": platform.python_version(), "fastapi": "0.115.0", "app": "2.3.1"},
@@ -50,18 +55,19 @@ def test_startup_event_record_and_payload(memory_exporters, monkeypatch):
     }
 
 
-def test_openapi_over_4mb_omitted_paths_remain(memory_exporters, monkeypatch):
+def test_openapi_over_4mb_omitted_paths_remain(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     openapi = '{"openapi": "3.1.0", "padding": "' + "x" * 4_000_000 + '"}'
     startup.set_app_info(framework="fastapi", paths=PATHS, openapi=openapi)
     activate(monkeypatch)
 
     (exported,) = startup_records(memory_exporters)
+    assert isinstance(exported.log_record.body, str)
     payload = json.loads(exported.log_record.body)
     assert "openapi" not in payload
     assert payload["paths"] == PATHS
 
 
-def test_emitted_once_across_activation_lifecycle(memory_exporters, monkeypatch):
+def test_emitted_once_across_activation_lifecycle(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     startup.set_app_info(framework="flask", paths=PATHS)
     activate(monkeypatch)
 

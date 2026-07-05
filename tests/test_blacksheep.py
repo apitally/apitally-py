@@ -17,6 +17,7 @@ from opentelemetry.trace import SpanKind, StatusCode
 from apitally.blacksheep import init_apitally
 from apitally.shared import activation, metrics, startup
 from apitally.shared.redaction import REDACTED
+from tests.conftest import CreatedExporters
 
 
 TOKEN = "apt_" + "a" * 24
@@ -50,7 +51,7 @@ def create_client(asgi_app: Any) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=asgi_app), base_url="http://testserver")
 
 
-def exported_spans(memory_exporters) -> list[ReadableSpan]:
+def exported_spans(memory_exporters: CreatedExporters) -> list[ReadableSpan]:
     assert activation.span_processor is not None
     activation.span_processor.force_flush()
     return [span for exporter in memory_exporters.span for span in exporter.get_finished_spans()]
@@ -77,7 +78,9 @@ def duration_data_points(reader: InMemoryMetricReader) -> list[Any]:
     ]
 
 
-async def test_request_exports_span_with_route_and_records_metrics(memory_exporters, monkeypatch):
+async def test_request_exports_span_with_route_and_records_metrics(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     allow_activation(monkeypatch)
     app = create_app()
     await app.start()
@@ -107,6 +110,7 @@ async def test_request_exports_span_with_route_and_records_metrics(memory_export
         for exported in exporter.get_finished_logs()
         if exported.log_record.event_name == startup.EVENT_NAME
     ]
+    assert isinstance(record.body, str)
     payload = json.loads(record.body)
     assert payload["framework"] == "blacksheep"
     assert payload["versions"]["blacksheep"] == version("blacksheep")
@@ -116,7 +120,9 @@ async def test_request_exports_span_with_route_and_records_metrics(memory_export
     assert "openapi" not in payload
 
 
-async def test_unmatched_request_has_no_route_and_no_histogram_point(memory_exporters, monkeypatch):
+async def test_unmatched_request_has_no_route_and_no_histogram_point(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     allow_activation(monkeypatch)
     app = create_app()
     await app.start()
@@ -132,7 +138,9 @@ async def test_unmatched_request_has_no_route_and_no_histogram_point(memory_expo
     assert duration_data_points(reader) == []
 
 
-async def test_first_request_activates_and_records_without_lifespan(memory_exporters, monkeypatch):
+async def test_first_request_activates_and_records_without_lifespan(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     # PRIVATE-API CANARY (design.md section 4): init_apitally wraps app._handle_http, the one
     # private-API dependency. This test drives the app without lifespan so the request flows
     # through __call__ -> _handle_http; it fails loudly if BlackSheep renames or re-signatures
@@ -153,7 +161,9 @@ async def test_first_request_activates_and_records_without_lifespan(memory_expor
     assert span.name == "GET /items/{id}"
 
 
-async def test_preinstrumented_app_adapted_without_duplicate_server_spans(memory_exporters, monkeypatch):
+async def test_preinstrumented_app_adapted_without_duplicate_server_spans(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     allow_activation(monkeypatch)
     app = Application(router=Router())
     wrapped = OpenTelemetryMiddleware(app)
@@ -178,7 +188,9 @@ async def test_preinstrumented_app_adapted_without_duplicate_server_spans(memory
     assert [s for s in spans if s.kind == SpanKind.INTERNAL] == []
 
 
-async def test_unhandled_exception_recorded_on_server_span(memory_exporters, monkeypatch):
+async def test_unhandled_exception_recorded_on_server_span(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     allow_activation(monkeypatch)
     app = create_app()
 
@@ -201,7 +213,7 @@ async def test_unhandled_exception_recorded_on_server_span(memory_exporters, mon
     assert (event.attributes or {})["exception.message"] == "boom"
 
 
-async def test_request_body_captured_and_redacted(memory_exporters, monkeypatch):
+async def test_request_body_captured_and_redacted(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     allow_activation(monkeypatch)
     app = create_app(log_request_body=True)
     await app.start()

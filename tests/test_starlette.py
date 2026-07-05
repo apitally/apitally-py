@@ -1,12 +1,16 @@
 import json
 import logging
+from typing import Any, Iterator, cast
 
 import pytest
+from opentelemetry._logs import LogRecord
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.starlette import StarletteInstrumentor
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import SpanKind
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
@@ -14,13 +18,14 @@ from starlette.testclient import TestClient
 from apitally.shared import activation, metrics, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.starlette import init_apitally
+from tests.conftest import CreatedExporters, unwrap
 
 
 TOKEN = "apt_" + "a" * 24
 
 
 def create_app() -> Starlette:
-    async def get_item(request):
+    async def get_item(request: Request) -> JSONResponse:
         logging.getLogger("myapp").warning("handling item")
         return JSONResponse({"item_id": request.path_params["item_id"]})
 
@@ -28,19 +33,19 @@ def create_app() -> Starlette:
 
 
 @pytest.fixture()
-def app():
+def app() -> Iterator[Starlette]:
     app = create_app()
     yield app
     StarletteInstrumentor.uninstrument_app(app)
 
 
-def get_finished_spans(memory_exporters):
+def get_finished_spans(memory_exporters: CreatedExporters) -> list[ReadableSpan]:
     assert activation.span_processor is not None
     activation.span_processor.force_flush()
     return [span for exporter in memory_exporters.span for span in exporter.get_finished_spans()]
 
 
-def get_log_records(memory_exporters):
+def get_log_records(memory_exporters: CreatedExporters) -> list[LogRecord]:
     assert activation.log_processor is not None
     activation.log_processor.force_flush()
     return [exported.log_record for exporter in memory_exporters.log for exported in exporter.get_finished_logs()]
@@ -53,7 +58,7 @@ def attach_metric_reader() -> InMemoryMetricReader:
     return reader
 
 
-def duration_points(reader: InMemoryMetricReader):
+def duration_points(reader: InMemoryMetricReader) -> list[Any]:
     data = reader.get_metrics_data()
     if data is None:
         return []
@@ -67,7 +72,9 @@ def duration_points(reader: InMemoryMetricReader):
     ]
 
 
-def test_request_flow_span_histogram_and_startup_event(app, memory_exporters, monkeypatch):
+def test_request_flow_span_histogram_and_startup_event(
+    app: Starlette, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     init_apitally(app, write_token=TOKEN)
     assert not activation.is_activated()
@@ -80,26 +87,27 @@ def test_request_flow_span_histogram_and_startup_event(app, memory_exporters, mo
     # (no exclude_spans support) and the span processor backstop drops them
     (span,) = get_finished_spans(memory_exporters)
     assert span.kind == SpanKind.SERVER
-    assert span.attributes["http.request.method"] == "GET"
-    assert span.attributes["http.route"] == "/items/{item_id}"
-    assert span.attributes["http.response.status_code"] == 200
+    assert unwrap(span.attributes)["http.request.method"] == "GET"
+    assert unwrap(span.attributes)["http.route"] == "/items/{item_id}"
+    assert unwrap(span.attributes)["http.response.status_code"] == 200
 
     (point,) = duration_points(reader)
-    assert point.attributes["http.route"] == "/items/{item_id}"
-    assert point.attributes["http.request.method"] == "GET"
+    assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
+    assert unwrap(point.attributes)["http.request.method"] == "GET"
 
     records = get_log_records(memory_exporters)
     assert records[0].event_name == startup.EVENT_NAME
+    assert isinstance(records[0].body, str)
     payload = json.loads(records[0].body)
     assert payload["framework"] == "starlette"
     assert "starlette" in payload["versions"]
     assert {"method": "get", "path": "/items/{item_id}"} in payload["paths"]
     (record,) = [r for r in records if r.body == "handling item"]
-    assert record.attributes["apitally.request.server_span_id"] == format(span.context.span_id, "016x")
+    assert unwrap(record.attributes)["apitally.request.server_span_id"] == format(span.context.span_id, "016x")
 
 
-def test_init_apitally_swallows_instrumentation_errors(app, monkeypatch):
-    def raise_error(*args, **kwargs):
+def test_init_apitally_swallows_instrumentation_errors(app: Starlette, monkeypatch: pytest.MonkeyPatch):
+    def raise_error(*args: Any, **kwargs: Any) -> None:
         raise RuntimeError("instrumentation failed")
 
     monkeypatch.setattr(StarletteInstrumentor, "instrument_app", raise_error)
@@ -109,12 +117,14 @@ def test_init_apitally_swallows_instrumentation_errors(app, monkeypatch):
     assert response.status_code == 200
 
 
-def test_pre_instrumented_app_inserts_transport_inside_otel_middleware(app, memory_exporters, monkeypatch):
+def test_pre_instrumented_app_inserts_transport_inside_otel_middleware(
+    app: Starlette, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     StarletteInstrumentor.instrument_app(app)
     init_apitally(app, write_token=TOKEN)
 
-    classes = [m.cls for m in app.user_middleware]
+    classes = [cast(type, m.cls) for m in app.user_middleware]
     assert classes.index(activation.ASGIActivationShim) == 0
     assert classes.index(ApitallyASGIMiddleware) == classes.index(OpenTelemetryMiddleware) + 1
 
@@ -123,6 +133,7 @@ def test_pre_instrumented_app_inserts_transport_inside_otel_middleware(app, memo
         client.get("/items/42")
     (span,) = get_finished_spans(memory_exporters)
     assert span.kind == SpanKind.SERVER
-    assert span.attributes["http.response.body.size"] > 0
+    response_body_size = unwrap(span.attributes)["http.response.body.size"]
+    assert isinstance(response_body_size, int) and response_body_size > 0
     (point,) = duration_points(reader)
-    assert point.attributes["http.route"] == "/items/{item_id}"
+    assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"

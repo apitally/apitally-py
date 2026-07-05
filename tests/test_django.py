@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Iterator
 
 import pytest
 from django.test import Client
@@ -9,6 +10,7 @@ from django.test import Client
 from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE
 from apitally.shared import activation, config
 from apitally.shared.redaction import REDACTED
+from tests.conftest import CreatedExporters
 from tests.django_utils import (
     activate_via_signal,
     attach_metric_reader,
@@ -23,19 +25,19 @@ from tests.django_utils import (
 
 
 @pytest.fixture(scope="module", autouse=True)
-def django_settings():
+def django_settings() -> Iterator[None]:
     configure_django_settings(ROOT_URLCONF="tests.django_urls")
     yield
     reset_django_settings()
 
 
 @pytest.fixture(autouse=True)
-def django_teardown():
+def django_teardown() -> Iterator[None]:
     yield
     teardown_django_instrumentation()
 
 
-def test_request_span_and_activation_order(memory_exporters, monkeypatch):
+def test_request_span_and_activation_order(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     assert not activation.is_activated()
 
@@ -53,7 +55,9 @@ def test_request_span_and_activation_order(memory_exporters, monkeypatch):
     assert payload["versions"]["django"]
 
 
-def test_management_command_configures_but_never_activates(memory_exporters, monkeypatch):
+def test_management_command_configures_but_never_activates(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(sys, "argv", ["manage.py", "migrate"])
     from apitally.django import init_apitally
@@ -64,7 +68,7 @@ def test_management_command_configures_but_never_activates(memory_exporters, mon
     assert memory_exporters.span == []
 
 
-def test_request_body_capture_redacts_fields(memory_exporters, monkeypatch):
+def test_request_body_capture_redacts_fields(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch, log_request_body=True, mask_body_fields=["custom_field"])
     response = Client().post(
         "/items/",
@@ -79,7 +83,9 @@ def test_request_body_capture_redacts_fields(memory_exporters, monkeypatch):
     assert body == {"name": "a", "password": REDACTED, "custom_field": REDACTED}
 
 
-def test_streaming_response_recorded_without_body_and_size(memory_exporters, monkeypatch):
+def test_streaming_response_recorded_without_body_and_size(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     init(monkeypatch, log_response_body=True)
     activate_via_signal()
     reader = attach_metric_reader()
@@ -96,7 +102,7 @@ def test_streaming_response_recorded_without_body_and_size(memory_exporters, mon
     assert get_histogram_points(reader, "http.server.response.body.size") == []
 
 
-def test_consumer_reaches_span_and_histogram(memory_exporters, monkeypatch):
+def test_consumer_reaches_span_and_histogram(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
     reader = attach_metric_reader()
@@ -111,7 +117,7 @@ def test_consumer_reaches_span_and_histogram(memory_exporters, monkeypatch):
     assert point.attributes["apitally.consumer.identifier"] == "tester"
 
 
-def test_unhandled_exception_recorded(memory_exporters, monkeypatch):
+def test_unhandled_exception_recorded(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
     reader = attach_metric_reader()
@@ -130,7 +136,7 @@ def test_unhandled_exception_recorded(memory_exporters, monkeypatch):
     assert point.attributes["error.type"] == "500"
 
 
-def test_init_from_settings_module(monkeypatch):
+def test_init_from_settings_module(monkeypatch: pytest.MonkeyPatch):
     from django.conf import settings
     from django.utils.functional import empty
 

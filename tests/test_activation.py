@@ -1,19 +1,29 @@
+from __future__ import annotations
+
 import sys
 import threading
+from collections.abc import MutableMapping
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from apitally.shared import activation, log_processor, metrics, providers
+from apitally.shared.asgi import Message, Receive, Scope, Send
+from tests.conftest import CreatedExporters
+
+
+if TYPE_CHECKING:
+    from _typeshed.wsgi import StartResponse, WSGIEnvironment
 
 
 TOKEN = "apt_" + "a" * 24
 
 
 async def drive_lifespan(shim: activation.ASGIActivationShim) -> None:
-    async def receive():
+    async def receive() -> Message:
         return {"type": "lifespan.startup"}
 
-    async def send(message):
+    async def send(message: MutableMapping[str, Any]) -> None:
         pass
 
     await shim({"type": "lifespan"}, receive, send)
@@ -26,13 +36,15 @@ def test_configure_starts_no_threads():
     assert not activation.is_activated()
 
 
-async def test_asgi_shim_activates_once_on_lifespan_startup_complete(memory_exporters, monkeypatch):
+async def test_asgi_shim_activates_once_on_lifespan_startup_complete(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     activation.configure(write_token=TOKEN)
     hook_calls = []
     activation.register_on_activate_hook(lambda: hook_calls.append(1))
 
-    async def app(scope, receive, send):
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
         await receive()
         await send({"type": "lifespan.startup.complete"})
 
@@ -44,12 +56,14 @@ async def test_asgi_shim_activates_once_on_lifespan_startup_complete(memory_expo
     assert hook_calls == [1]
 
 
-async def test_asgi_shim_startup_failed_defers_to_first_request(memory_exporters, monkeypatch):
+async def test_asgi_shim_startup_failed_defers_to_first_request(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     activation.configure(write_token=TOKEN)
     activated_during_request = []
 
-    async def app(scope, receive, send):
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "lifespan":
             await receive()
             await send({"type": "lifespan.startup.failed"})
@@ -60,22 +74,24 @@ async def test_asgi_shim_startup_failed_defers_to_first_request(memory_exporters
     await drive_lifespan(shim)
     assert not activation.is_activated()
 
-    async def receive():
+    async def receive() -> Message:
         return {"type": "http.request"}
 
-    async def send(message):
+    async def send(message: MutableMapping[str, Any]) -> None:
         pass
 
     await shim({"type": "http"}, receive, send)
     assert activated_during_request == [True]
 
 
-def test_wsgi_shim_activates_before_first_request_proceeds(memory_exporters, monkeypatch):
+def test_wsgi_shim_activates_before_first_request_proceeds(
+    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     activation.configure(write_token=TOKEN)
     activated_during_request = []
 
-    def wsgi_app(environ, start_response):
+    def wsgi_app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
         activated_during_request.append(activation.is_activated())
         start_response("200 OK", [])
         return [b"ok"]
@@ -86,7 +102,7 @@ def test_wsgi_shim_activates_before_first_request_proceeds(memory_exporters, mon
 
 
 @pytest.mark.parametrize("guard", ["pytest_env", "manage_py_test", "disabled_env", "disabled_kwarg"])
-def test_test_environment_guard_skips_activation(monkeypatch, guard):
+def test_test_environment_guard_skips_activation(monkeypatch: pytest.MonkeyPatch, guard: str):
     exporter_calls = []
     monkeypatch.setattr(providers, "create_span_exporter", lambda env: exporter_calls.append("span"))
     monkeypatch.setattr(providers, "create_log_exporter", lambda env: exporter_calls.append("log"))
@@ -105,7 +121,7 @@ def test_test_environment_guard_skips_activation(monkeypatch, guard):
     assert exporter_calls == []
 
 
-def test_on_activate_hooks_run_last(memory_exporters, monkeypatch):
+def test_on_activate_hooks_run_last(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     observed = []
     activation.register_on_activate_hook(

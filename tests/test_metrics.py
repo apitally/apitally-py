@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+
 import pytest
 from opentelemetry.sdk.metrics import Histogram as SDKHistogram
 from opentelemetry.sdk.metrics.export import (
@@ -15,7 +17,7 @@ from apitally.shared import metrics
 
 
 @pytest.fixture(autouse=True)
-def reset_metrics():
+def reset_metrics() -> Iterator[None]:
     yield
     metrics.reset()
 
@@ -85,7 +87,7 @@ def test_histograms_under_apitally_scope():
     assert get_scope_names(reader)["http.server.request.duration"] == "apitally"
 
 
-def test_export_interval_ignores_env(monkeypatch):
+def test_export_interval_ignores_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OTEL_METRIC_EXPORT_INTERVAL", "5000")
     provider = metrics.setup(Resource.create({}))
     metrics.attach_reader("prod")

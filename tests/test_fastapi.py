@@ -1,17 +1,22 @@
 import json
 import logging
+from collections.abc import Iterator
+from typing import Any, NoReturn
 
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
+from opentelemetry._logs import LogRecord
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.metrics.export import DataPointT, InMemoryMetricReader
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import SpanKind
 
 from apitally import set_consumer
 from apitally.fastapi import init_apitally
 from apitally.shared import activation, metrics, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
+from tests.conftest import CreatedExporters, unwrap
 
 
 TOKEN = "apt_" + "a" * 24
@@ -21,31 +26,31 @@ def create_app() -> FastAPI:
     app = FastAPI()
 
     @app.get("/items/{item_id}", summary="Get item")
-    def get_item(item_id: int):
+    def get_item(item_id: int) -> dict[str, int]:
         logging.getLogger("myapp").warning("handling item %s", item_id)
         return {"item_id": item_id}
 
     @app.post("/items")
-    def create_item(data: dict):
+    def create_item(data: dict[str, Any]) -> dict[str, Any]:
         return data
 
     @app.get("/healthz")
-    def healthz():
+    def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
     @app.get("/error")
-    def error():
+    def error() -> None:
         raise ValueError("boom")
 
     @app.get("/consumer")
-    def consumer():
+    def consumer() -> dict[str, bool]:
         set_consumer("tester")
         return {"ok": True}
 
     router = APIRouter()
 
     @router.get("/users/{user_id}")
-    def get_user(user_id: int):
+    def get_user(user_id: int) -> dict[str, int]:
         return {"user_id": user_id}
 
     app.include_router(router, prefix="/v1")
@@ -53,19 +58,19 @@ def create_app() -> FastAPI:
 
 
 @pytest.fixture()
-def app():
+def app() -> Iterator[FastAPI]:
     app = create_app()
     yield app
     FastAPIInstrumentor.uninstrument_app(app)
 
 
-def get_finished_spans(memory_exporters):
+def get_finished_spans(memory_exporters: CreatedExporters) -> list[ReadableSpan]:
     assert activation.span_processor is not None
     activation.span_processor.force_flush()
     return [span for exporter in memory_exporters.span for span in exporter.get_finished_spans()]
 
 
-def get_log_records(memory_exporters):
+def get_log_records(memory_exporters: CreatedExporters) -> list[LogRecord]:
     assert activation.log_processor is not None
     activation.log_processor.force_flush()
     return [exported.log_record for exporter in memory_exporters.log for exported in exporter.get_finished_logs()]
@@ -78,7 +83,7 @@ def attach_metric_reader() -> InMemoryMetricReader:
     return reader
 
 
-def duration_points(reader: InMemoryMetricReader):
+def duration_points(reader: InMemoryMetricReader) -> list[DataPointT]:
     data = reader.get_metrics_data()
     if data is None:
         return []
@@ -92,19 +97,23 @@ def duration_points(reader: InMemoryMetricReader):
     ]
 
 
-def test_request_exports_single_server_span_with_stable_semconv(app, memory_exporters, monkeypatch):
+def test_request_exports_single_server_span_with_stable_semconv(
+    app: FastAPI, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     init_apitally(app, write_token=TOKEN)
     with TestClient(app) as client:
         client.get("/items/42")
     (span,) = get_finished_spans(memory_exporters)  # exactly one: no receive/send spans
     assert span.kind == SpanKind.SERVER
-    assert span.attributes["http.request.method"] == "GET"
-    assert span.attributes["http.route"] == "/items/{item_id}"
-    assert span.attributes["http.response.status_code"] == 200
+    assert unwrap(span.attributes)["http.request.method"] == "GET"
+    assert unwrap(span.attributes)["http.route"] == "/items/{item_id}"
+    assert unwrap(span.attributes)["http.response.status_code"] == 200
 
 
-def test_histogram_attributes_and_log_correlation(app, memory_exporters, monkeypatch):
+def test_histogram_attributes_and_log_correlation(
+    app: FastAPI, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     init_apitally(app, write_token=TOKEN)
     with TestClient(app) as client:
@@ -112,8 +121,8 @@ def test_histogram_attributes_and_log_correlation(app, memory_exporters, monkeyp
         client.get("/items/42")
         client.get("/v1/users/7")
 
-    spans = {span.attributes["http.route"]: span for span in get_finished_spans(memory_exporters)}
-    points = {point.attributes["http.route"]: point for point in duration_points(reader)}
+    spans = {unwrap(span.attributes)["http.route"]: span for span in get_finished_spans(memory_exporters)}
+    points = {unwrap(point.attributes)["http.route"]: point for point in duration_points(reader)}
     assert points["/items/{item_id}"].attributes == {
         "http.request.method": "GET",
         "http.route": "/items/{item_id}",
@@ -125,10 +134,12 @@ def test_histogram_attributes_and_log_correlation(app, memory_exporters, monkeyp
 
     (record,) = [r for r in get_log_records(memory_exporters) if r.body == "handling item 42"]
     server_span_id = format(spans["/items/{item_id}"].context.span_id, "016x")
-    assert record.attributes["apitally.request.server_span_id"] == server_span_id
+    assert unwrap(record.attributes)["apitally.request.server_span_id"] == server_span_id
 
 
-def test_lifespan_activates_before_first_request_and_startup_event_first(app, memory_exporters, monkeypatch):
+def test_lifespan_activates_before_first_request_and_startup_event_first(
+    app: FastAPI, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     init_apitally(app, write_token=TOKEN)
     assert not activation.is_activated()
@@ -140,7 +151,9 @@ def test_lifespan_activates_before_first_request_and_startup_event_first(app, me
     assert records[0].event_name == startup.EVENT_NAME
 
 
-def test_healthz_excluded_from_spans_counted_in_metrics_options_in_neither(app, memory_exporters, monkeypatch):
+def test_healthz_excluded_from_spans_counted_in_metrics_options_in_neither(
+    app: FastAPI, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     init_apitally(app, write_token=TOKEN)
     with TestClient(app) as client:
@@ -149,20 +162,27 @@ def test_healthz_excluded_from_spans_counted_in_metrics_options_in_neither(app, 
         client.options("/items/42")
     assert get_finished_spans(memory_exporters) == []
     (point,) = duration_points(reader)
-    assert point.attributes["http.route"] == "/healthz"
+    assert unwrap(point.attributes)["http.route"] == "/healthz"
 
 
-def test_request_body_captured_and_redacted(app, memory_exporters, monkeypatch):
+def test_request_body_captured_and_redacted(
+    app: FastAPI, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     init_apitally(app, write_token=TOKEN, log_request_body=True)
     with TestClient(app) as client:
         client.post("/items", json={"name": "widget", "password": "hunter2"})
     (span,) = get_finished_spans(memory_exporters)
-    assert json.loads(span.attributes["apitally.request.body"]) == {"name": "widget", "password": "[REDACTED]"}
-    assert span.attributes["http.request.body.size"] > 0
+    body = unwrap(span.attributes)["apitally.request.body"]
+    assert isinstance(body, str)
+    assert json.loads(body) == {"name": "widget", "password": "[REDACTED]"}
+    body_size = unwrap(span.attributes)["http.request.body.size"]
+    assert isinstance(body_size, int) and body_size > 0
 
 
-def test_pre_instrumented_app_adapts_without_duplicate_spans(app, memory_exporters, monkeypatch):
+def test_pre_instrumented_app_adapts_without_duplicate_spans(
+    app: FastAPI, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     FastAPIInstrumentor.instrument_app(app)
     init_apitally(app, write_token=TOKEN)
@@ -173,30 +193,36 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(app, memory_exporte
     # call are dropped by the span processor backstop
     (span,) = get_finished_spans(memory_exporters)
     assert span.kind == SpanKind.SERVER
-    assert span.attributes["http.response.body.size"] > 0
+    response_body_size = unwrap(span.attributes)["http.response.body.size"]
+    assert isinstance(response_body_size, int) and response_body_size > 0
     (point,) = duration_points(reader)
-    assert point.attributes["http.route"] == "/items/{item_id}"
+    assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
 
 
-def test_unhandled_exception_recorded_as_event_on_500_span(app, memory_exporters, monkeypatch):
+def test_unhandled_exception_recorded_as_event_on_500_span(
+    app: FastAPI, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     init_apitally(app, write_token=TOKEN)
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get("/error")
     assert response.status_code == 500
     (span,) = get_finished_spans(memory_exporters)
-    assert span.attributes["http.response.status_code"] == 500
+    assert unwrap(span.attributes)["http.response.status_code"] == 500
     (event,) = [e for e in span.events if e.name == "exception"]
-    assert event.attributes["exception.type"] == "ValueError"
-    assert event.attributes["exception.message"] == "boom"
+    assert unwrap(event.attributes)["exception.type"] == "ValueError"
+    assert unwrap(event.attributes)["exception.message"] == "boom"
 
 
-def test_startup_event_paths_match_routes_and_openapi_parses(app, memory_exporters, monkeypatch):
+def test_startup_event_paths_match_routes_and_openapi_parses(
+    app: FastAPI, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     init_apitally(app, write_token=TOKEN, app_version="1.2.3")
     with TestClient(app):
         pass
     (record,) = [r for r in get_log_records(memory_exporters) if r.event_name == startup.EVENT_NAME]
+    assert isinstance(record.body, str)
     payload = json.loads(record.body)
     assert payload["framework"] == "fastapi"
     assert "fastapi" in payload["versions"]
@@ -211,7 +237,9 @@ def test_startup_event_paths_match_routes_and_openapi_parses(app, memory_exporte
     assert "/items/{item_id}" in openapi["paths"]
 
 
-def test_consumer_set_in_sync_endpoint_reaches_metrics(app, memory_exporters, monkeypatch):
+def test_consumer_set_in_sync_endpoint_reaches_metrics(
+    app: FastAPI, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     # def endpoints run in a copied context (threadpool), so the ContextVar write is lost
     # and the span attribute fallback must carry the consumer into the histogram
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
@@ -220,11 +248,11 @@ def test_consumer_set_in_sync_endpoint_reaches_metrics(app, memory_exporters, mo
         reader = attach_metric_reader()
         client.get("/consumer")
     (point,) = duration_points(reader)
-    assert point.attributes["apitally.consumer.identifier"] == "tester"
+    assert unwrap(point.attributes)["apitally.consumer.identifier"] == "tester"
 
 
-def test_init_apitally_swallows_instrumentation_errors(app, monkeypatch):
-    def raise_error(*args, **kwargs):
+def test_init_apitally_swallows_instrumentation_errors(app: FastAPI, monkeypatch: pytest.MonkeyPatch):
+    def raise_error(*args: Any, **kwargs: Any) -> NoReturn:
         raise RuntimeError("instrumentation failed")
 
     monkeypatch.setattr(FastAPIInstrumentor, "instrument_app", raise_error)
@@ -234,7 +262,9 @@ def test_init_apitally_swallows_instrumentation_errors(app, monkeypatch):
     assert response.status_code == 200
 
 
-def test_init_twice_does_not_stack_middleware(app, memory_exporters, monkeypatch):
+def test_init_twice_does_not_stack_middleware(
+    app: FastAPI, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     init_apitally(app, write_token=TOKEN)
     init_apitally(app, write_token=TOKEN)

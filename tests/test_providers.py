@@ -1,6 +1,8 @@
 import logging
 import uuid
+from typing import Any
 
+import pytest
 from opentelemetry import metrics, trace
 from opentelemetry._logs import get_logger_provider
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
@@ -19,10 +21,10 @@ TOKEN = "apt_" + "a" * 24
 
 
 class CustomSampler(Sampler):
-    def should_sample(self, *args, **kwargs):
+    def should_sample(self, *args: Any, **kwargs: Any) -> SamplingResult:
         return SamplingResult(Decision.RECORD_AND_SAMPLE)
 
-    def get_description(self):
+    def get_description(self) -> str:
         return "CustomSampler"
 
 
@@ -33,7 +35,7 @@ def test_mode_detection():
     assert providers.get_user_tracer_provider() is user_provider
 
 
-def test_own_it_all_tracer_provider(monkeypatch):
+def test_own_it_all_tracer_provider(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OTEL_TRACES_SAMPLER", "always_off")
     monkeypatch.setenv("OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT", "100")
     monkeypatch.setenv("OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT", "100")
@@ -82,7 +84,7 @@ def test_cooperative_pipeline():
     assert len(our_exporter.get_finished_spans()) == 1
 
 
-def test_cooperative_lossy_sampler_warns_once(caplog):
+def test_cooperative_lossy_sampler_warns_once(caplog: pytest.LogCaptureFixture):
     configure(write_token=TOKEN)
     user_provider = TracerProvider(sampler=TraceIdRatioBased(0.1))
     with caplog.at_level(logging.WARNING, logger="apitally"):
@@ -93,7 +95,7 @@ def test_cooperative_lossy_sampler_warns_once(caplog):
     assert "sampling rate" in warnings[0].getMessage()
 
 
-def test_custom_sampler_debug_only(caplog):
+def test_custom_sampler_debug_only(caplog: pytest.LogCaptureFixture):
     configure(write_token=TOKEN)
     user_provider = TracerProvider(sampler=CustomSampler())
     with caplog.at_level(logging.DEBUG, logger="apitally"):
@@ -103,7 +105,7 @@ def test_custom_sampler_debug_only(caplog):
     assert len(debugs) == 1
 
 
-def test_cooperative_env_conflict_warns_and_uses_resource_value(caplog):
+def test_cooperative_env_conflict_warns_and_uses_resource_value(caplog: pytest.LogCaptureFixture):
     configure(write_token=TOKEN, env="staging")
     user_provider = TracerProvider(resource=Resource.create({"deployment.environment.name": "production"}))
     with caplog.at_level(logging.WARNING, logger="apitally"):
@@ -128,7 +130,7 @@ def test_apitally_env_header_matches_resource_in_both_modes():
     assert log_exporter._headers["Apitally-Env"] == "production"
 
 
-def test_exporter_endpoint_override(monkeypatch):
+def test_exporter_endpoint_override(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("APITALLY_OTLP_ENDPOINT", "http://localhost:4318")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.example.com")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "https://collector.example.com/v1/traces")
@@ -144,7 +146,7 @@ def test_exporter_endpoint_override(monkeypatch):
     assert "x-other" not in span_exporter._headers
 
 
-def test_cooperative_span_limit_warning(caplog):
+def test_cooperative_span_limit_warning(caplog: pytest.LogCaptureFixture):
     user_provider = TracerProvider(span_limits=SpanLimits(max_span_attribute_length=4_096))
 
     configure(write_token=TOKEN, log_response_headers=False)

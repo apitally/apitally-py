@@ -1,7 +1,8 @@
 import os
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from importlib.util import find_spec
-from typing import Any
+from typing import Any, TypeVar
 
 import pytest
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
@@ -14,6 +15,14 @@ from apitally.shared import activation, config, metrics, providers, startup
 
 def installed(*modules: str) -> bool:
     return all(find_spec(module) is not None for module in modules)
+
+
+_T = TypeVar("_T")
+
+
+def unwrap(value: _T | None) -> _T:
+    assert value is not None
+    return value
 
 
 # Skip collection of framework test modules whose framework or instrumentor is not installed,
@@ -38,7 +47,7 @@ if not installed("starlette", "opentelemetry.instrumentation.starlette"):
 
 
 @pytest.fixture(autouse=True)
-def reset_apitally_config():
+def reset_apitally_config() -> Iterator[None]:
     # configure() sets OTEL_SEMCONV_STABILITY_OPT_IN via setdefault; restore it so the
     # value never leaks between tests
     semconv_before = os.environ.get("OTEL_SEMCONV_STABILITY_OPT_IN")
@@ -51,14 +60,14 @@ def reset_apitally_config():
 
 
 @pytest.fixture(autouse=True)
-def reset_otel_trace_globals():
+def reset_otel_trace_globals() -> Iterator[None]:
     yield
     reset_trace_globals()
     providers.reset()
 
 
 @pytest.fixture(autouse=True)
-def reset_apitally_activation():
+def reset_apitally_activation() -> Iterator[None]:
     yield
     activation.reset()
     startup.reset()
@@ -83,7 +92,7 @@ class CreatedExporters:
 
 
 @pytest.fixture
-def memory_exporters(monkeypatch):
+def memory_exporters(monkeypatch: pytest.MonkeyPatch) -> CreatedExporters:
     """Replace the OTLP exporter factories so activation never constructs network exporters."""
     created = CreatedExporters()
 

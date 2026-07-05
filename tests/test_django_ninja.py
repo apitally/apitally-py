@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 
 import pytest
 from django.test import Client
 
+from tests.conftest import CreatedExporters
 from tests.django_utils import (
     activate_via_signal,
     attach_metric_reader,
@@ -19,19 +21,19 @@ from tests.django_utils import (
 
 
 @pytest.fixture(scope="module", autouse=True)
-def django_settings():
+def django_settings() -> Iterator[None]:
     configure_django_settings(ROOT_URLCONF="tests.django_ninja_urls")
     yield
     reset_django_settings()
 
 
 @pytest.fixture(autouse=True)
-def django_teardown():
+def django_teardown() -> Iterator[None]:
     yield
     teardown_django_instrumentation()
 
 
-def test_startup_paths_and_openapi(memory_exporters, monkeypatch):
+def test_startup_paths_and_openapi(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch, app_version="1.2.3")
     activate_via_signal()
 
@@ -45,7 +47,7 @@ def test_startup_paths_and_openapi(memory_exporters, monkeypatch):
     assert set(openapi["paths"]) == {"/api/foo", "/api/foo/{bar}"}
 
 
-def test_request_flow(memory_exporters, monkeypatch):
+def test_request_flow(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
     reader = attach_metric_reader()
