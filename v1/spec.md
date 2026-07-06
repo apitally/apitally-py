@@ -91,10 +91,10 @@ Unhandled exceptions MUST be recorded as the standard OTel `exception` span even
 
 ### 6.5 Span selection
 
-- The SERVER span (the request boundary, section 6) and its descendants MUST be exported, except for `OPTIONS` requests (CORS preflight) and excluded requests (section 6.8), which MUST NOT be exported.
+- The SERVER span (the request boundary, section 6) and its descendants MUST be exported, except for `OPTIONS` requests (CORS preflight), excluded requests (section 6.8), and requests sampled out by the SDK's own sampling configuration, which MUST NOT be exported. Sampled-out requests are still counted in request metrics (section 7), same as excluded requests.
 - A root span of any other kind (background jobs, queue consumers, schedulers) and its descendants MUST NOT be exported.
 - A request MUST be exported even when its upstream parent was not sampled; upstream sampling MUST NOT suppress local requests.
-- Descendant spans and request-scoped logs whose SERVER span never arrives are never surfaced: all request data derives from the SERVER span, so telemetry without one is unreachable by construction and ages out with normal retention. An SDK dropping a SERVER span at response time (e.g. a response-based exclusion callback) MAY rely on this to abandon telemetry the request already emitted.
+- Descendant spans and request-scoped logs whose SERVER span never arrives are never surfaced: all request data derives from the SERVER span, so telemetry without one is unreachable by construction and ages out with normal retention. An SDK dropping a SERVER span at response time (e.g. a response-based sampling callback) MAY rely on this to abandon telemetry the request already emitted.
 
 ### 6.6 Span noise
 
@@ -235,7 +235,7 @@ Per-language idioms win; this aligns naming and setup UX across SDKs.
 - Setup mirrors the legacy SDK: one entry point per framework, e.g. `use_apitally(app, write_token=..., env=...)` — the distro wires exporters, sampler, processors, and instrumentation internally; no OTel knowledge required from the user.
 - Config: `write_token` (snake/camel/Pascal per language), also readable from an `APITALLY_WRITE_TOKEN` env var; `env` defaulting to `prod`.
 - Consumer API keeps its name: `set_consumer(identifier, name=None, group=None)` / `setConsumer(...)`, writing the section 6.2 attributes.
-- Request logging config (body/header capture toggles, masking) stays close to the legacy SDK option names; renames for cross-option consistency are fine (e.g. Python drops the `_callback` suffix: `mask_request_body_callback` → `mask_request_body`, `exclude_callback` → `exclude_on_request` / `exclude_on_response`).
+- Request logging config (body/header capture toggles, masking) stays close to the legacy SDK option names; renames for cross-option consistency are fine (e.g. Python drops the `_callback` suffix: `mask_request_body_callback` → `mask_request_body`). The legacy `exclude_callback` becomes the sampling callbacks `sample_on_request` / `sample_on_response`, which return a keep probability (`float` in `[0, 1]`, `bool`, or `None` to abstain) refining the static `sample_rate`; note the polarity flip from exclude to keep.
 - Build on the official OTel SDK and contrib instrumentations of each language; do not reimplement OTLP export.
 
 ## 12. Legacy → OTel mapping

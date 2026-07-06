@@ -83,6 +83,33 @@ def test_request_body_capture_redacts_fields(memory_exporters: CreatedExporters,
     assert body == {"name": "a", "password": REDACTED, "custom_field": REDACTED}
 
 
+def test_sampled_out_request_skips_capture(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+    mask_calls: list[bytes] = []
+
+    def mask(span: object, body: bytes) -> bytes:
+        mask_calls.append(body)
+        return body
+
+    init(
+        monkeypatch,
+        sample_rate=0.0,
+        log_request_body=True,
+        log_response_body=True,
+        mask_request_body=mask,
+        mask_response_body=mask,
+    )
+    activate_via_signal()
+    reader = attach_metric_reader()
+
+    response = Client().post("/items/", data={"name": "a"}, content_type="application/json")
+    assert response.status_code == 201
+
+    assert not mask_calls
+    assert get_server_spans(memory_exporters) == []
+    (point,) = get_histogram_points(reader, "http.server.request.duration")
+    assert point.count == 1
+
+
 def test_streaming_response_recorded_without_body_and_size(
     memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
 ):

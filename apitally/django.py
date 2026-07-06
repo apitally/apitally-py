@@ -24,7 +24,7 @@ from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin,
 from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier
 from apitally.shared.redaction import REDACTED
-from apitally.shared.span_processor import get_server_span
+from apitally.shared.span_processor import get_server_span, is_server_span_kept
 from apitally.shared.wsgi import parse_content_length
 
 
@@ -64,8 +64,9 @@ def init_apitally(
     mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
     mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
     exclude_paths: list[str] | None = None,
-    exclude_on_request: Callable[[ReadableSpan], bool] | None = None,
-    exclude_on_response: Callable[[ReadableSpan], bool] | None = None,
+    sample_rate: float | None = None,
+    sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
+    sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
 ) -> None:
     """Set up Apitally for Django; call at the end of settings.py, after MIDDLEWARE is defined."""
     global _urlconfs, _include_django_views
@@ -142,7 +143,12 @@ class ApitallyDjangoMiddleware(CaptureMixin):
     def capture_request_body(
         self, request: HttpRequest, config: ApitallyConfig, request_size: int | None
     ) -> bytes | str | None:
-        if not config.log_request_body or not is_allowed_content_type(request.headers.get("Content-Type")):
+        # Excluded and sampled-out requests skip all capture work; metrics are still recorded
+        if (
+            not is_server_span_kept()
+            or not config.log_request_body
+            or not is_allowed_content_type(request.headers.get("Content-Type"))
+        ):
             return None
         if request_size is None:
             return None
@@ -176,7 +182,7 @@ class ApitallyDjangoMiddleware(CaptureMixin):
             response_size = len(response.content)
         route = self.get_route(request)
         span = get_server_span()
-        if span is not None and span.is_recording():
+        if is_server_span_kept() and span is not None and span.is_recording():
             if route is not None:
                 # Overwrites the instrumentor's raw route so spans and metrics agree on the template
                 span.set_attribute("http.route", route)
