@@ -69,7 +69,7 @@ def test_log_in_nested_span_carries_server_span_id(
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as server:
         with tracer.start_as_current_span("child") as child:
             logging.getLogger("myapp").warning("inside child")
-        # Buffered until the SERVER span's response-stage decision (buffering.md R1)
+        # Buffered until the SERVER span's response-stage decision
         assert log_exporter.get_finished_logs() == ()
     (exported,) = log_exporter.get_finished_logs()
     record = exported.log_record

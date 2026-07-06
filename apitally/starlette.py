@@ -46,7 +46,7 @@ def init_apitally(
     sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
     sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
 ) -> None:
-    """Set up Apitally for a Starlette application. Errors never propagate (design.md section 9)."""
+    """Set up Apitally for a Starlette application. Errors never propagate."""
     try:
         activation.configure(**config.explicit_kwargs(locals()))
         _instrument_app(app)
@@ -64,7 +64,7 @@ def _instrument_app(app: Starlette) -> None:
         return
     if getattr(app, "_is_instrumented_by_opentelemetry", False):
         # Pre-instrumented app: insert the transport middleware just inside the existing
-        # OpenTelemetryMiddleware so it runs inside the SERVER span (design.md section 4)
+        # OpenTelemetryMiddleware so it runs inside the SERVER span
         index = next(i for i, m in enumerate(app.user_middleware) if m.cls is OpenTelemetryMiddleware)
         app.user_middleware.insert(index + 1, Middleware(ApitallyASGIMiddleware, resolve_route=_resolve_route))
         app.user_middleware.insert(0, Middleware(activation.ASGIActivationShim))

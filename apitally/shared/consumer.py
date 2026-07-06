@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # Request-scoped consumer holder: the transport middleware (asgi.py/wsgi.py) calls
 # reset_consumer_identifier() at request entry and resolve_consumer_identifier() at request
 # completion, so consumer-dimension metrics stay complete even when a cooperative
-# sampler drops the SERVER span (design.md section 5)
+# sampler drops the SERVER span
 consumer_identifier_var: ContextVar[str | None] = ContextVar("apitally_consumer_identifier", default=None)
 
 

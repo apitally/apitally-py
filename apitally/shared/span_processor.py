@@ -66,10 +66,10 @@ def sampled_in(trace_id: int, bound: int) -> bool:
 
 
 class ApitallySpanProcessor(SpanProcessor):
-    """Single keep/drop mechanism in front of the wrapped export processor (design.md section 3)."""
+    """Single keep/drop mechanism in front of the wrapped export processor."""
 
     def __init__(self, downstream: SpanProcessor) -> None:
-        # Settable so fork re-activation can swap in a fresh batch processor (design.md section 7)
+        # Settable so fork re-activation can swap in a fresh batch processor
         self.downstream = downstream
         self.spans: dict[int, tuple[bool, int | None]] = {}
         self.pending: dict[int, list[ReadableSpan]] = {}
@@ -120,7 +120,7 @@ class ApitallySpanProcessor(SpanProcessor):
                         self.downstream.on_end(self.redact_span(buffered_span))
                     self.downstream.on_end(self.redact_span(span))
                 else:
-                    # Flip in-flight entries so the request's late telemetry drops locally (design.md section 3)
+                    # Flip in-flight entries so the request's late telemetry drops locally
                     for span_id, entry in list(self.spans.items()):
                         if entry[1] == context.span_id:
                             self.spans[span_id] = (False, None)
@@ -235,7 +235,7 @@ class ApitallySpanProcessor(SpanProcessor):
 
 
 def is_noise_span(span: Span) -> bool:
-    # Spec section 6.6 backstop; user-owned spans with these names are kept (design.md section 3)
+    # Spans with these names from user-owned instrumentation are kept
     return (
         span.kind == SpanKind.INTERNAL
         and span.name.endswith(NOISE_NAME_SUFFIXES)

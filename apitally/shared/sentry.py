@@ -12,7 +12,7 @@ installed = False
 
 
 def install() -> None:
-    """Install a global Sentry event processor once, if sentry-sdk is importable (design.md section 15)."""
+    """Install a global Sentry event processor once, if sentry-sdk is importable."""
     global installed
     if installed:
         return

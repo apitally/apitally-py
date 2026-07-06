@@ -73,7 +73,7 @@ def _create_response_body_hook(transport: ApitallyWSGIMiddleware) -> Callable[[R
     def capture_response_body(response: Response) -> Response:
         # The instrumentor's SERVER span ends in teardown_request, before the response
         # iterable reaches any WSGI layer, so the body is written here while the span
-        # is still recording; streaming responses are not captured (design.md section 6)
+        # is still recording; streaming responses are not captured
         try:
             config = transport.config
             if (

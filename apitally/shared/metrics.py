@@ -18,13 +18,13 @@ from apitally.shared.providers import create_meter_provider, create_metric_expor
 EXPORT_INTERVAL_MILLIS = 60_000
 
 # Keyed on the SDK instrument class (the API class raises at reader construction), so the
-# process gauges keep their default aggregation and temporality (design.md section 4)
+# process gauges keep their default aggregation and temporality
 HISTOGRAM_OVERRIDES: dict[str, Any] = {
     "preferred_temporality": {SDKHistogram: AggregationTemporality.DELTA},
     "preferred_aggregation": {SDKHistogram: ExponentialBucketHistogramAggregation(max_scale=3)},
 }
 
-# None values: these two instruments emit a single unlabeled observation each (design.md section 12)
+# None values: these two instruments emit a single unlabeled observation each
 SYSTEM_METRICS_CONFIG: dict[str, list[str] | None] = {
     "process.cpu.utilization": None,
     "process.memory.usage": None,
@@ -38,7 +38,7 @@ response_body_size: Histogram | None = None
 start_time: float = 0.0
 
 # OTel's fork handlers hold weak references to readers; keep detached instances
-# alive to avoid unraisable noise on a later fork (design.md section 7)
+# alive to avoid unraisable noise on a later fork
 detached_readers: list[ApitallyMetricReader] = []
 
 
@@ -97,7 +97,7 @@ def attach_reader(env: str) -> None:
         return
     detach_reader()
     # Interval passed explicitly so OTEL_METRIC_EXPORT_INTERVAL never applies; the 60 s
-    # cadence is the liveness heartbeat (design.md section 4, spec section 7.3)
+    # cadence is the liveness heartbeat
     exporter = create_metric_exporter(env, **HISTOGRAM_OVERRIDES)
     reader = ApitallyMetricReader(exporter, export_interval_millis=EXPORT_INTERVAL_MILLIS)
     meter_provider.add_metric_reader(reader)
@@ -130,6 +130,6 @@ def observe_uptime(options: CallbackOptions) -> Iterable[Observation]:
 class ApitallyMetricReader(PeriodicExportingMetricReader):
     def collect(self, timeout_millis: float = 10_000) -> None:  # ty: ignore[override-of-final-method]
         # Detaching nulls the collect callback; the final ticker collect must no-op
-        # instead of logging a not-registered warning (design.md section 7)
+        # instead of logging a not-registered warning
         if self._collect is not None:
             super().collect(timeout_millis=timeout_millis)

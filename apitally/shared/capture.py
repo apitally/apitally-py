@@ -76,7 +76,7 @@ class CaptureMixin:
         try:
             data = json.loads(body)
         except Exception:
-            # Non-JSON but allowlisted (e.g. text/plain): stored as-is (design.md section 6)
+            # Non-JSON but allowlisted (e.g. text/plain): stored as-is
             span.set_attribute(key, body.decode("utf-8", errors="replace"))
             return
         try:
