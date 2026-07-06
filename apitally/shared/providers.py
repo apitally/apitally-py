@@ -140,8 +140,6 @@ def check_sampler(sampler: Sampler) -> None:
                 "tracer provider.",
                 sampler.get_description(),
             )
-    else:
-        logger.debug("Existing OpenTelemetry sampler: %s", sampler.get_description())
 
 
 def check_span_limits(user_provider: TracerProvider) -> None:

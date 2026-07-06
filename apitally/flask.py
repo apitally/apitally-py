@@ -45,18 +45,18 @@ def init_apitally(
     sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
     sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
 ) -> None:
-    """Set up Apitally for a Flask app; activation happens on the first request."""
+    """Set up Apitally for a Flask app. Activation happens on the first request."""
     try:
         activation.configure(**config.explicit_kwargs(locals()))
         if isinstance(app.wsgi_app, activation.WSGIActivationShim):
             return
         transport = ApitallyWSGIMiddleware(
-            app.wsgi_app, get_route=_create_route_resolver(app), capture_response_body=False
+            app.wsgi_app,
+            get_route=_create_route_resolver(app),
+            capture_response_body=False,
         )
         app.wsgi_app = transport  # ty: ignore[invalid-assignment]
-        if getattr(app, "_is_instrumented_by_opentelemetry", False):
-            logger.debug("Flask app is already instrumented by OpenTelemetry, adapting")
-        else:
+        if not getattr(app, "_is_instrumented_by_opentelemetry", False):
             FlaskInstrumentor().instrument_app(app)
         app.after_request(_create_response_body_hook(transport))
         app.wsgi_app = activation.WSGIActivationShim(app.wsgi_app)  # ty: ignore[invalid-assignment]

@@ -68,7 +68,7 @@ def init_apitally(
     sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
     sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
 ) -> None:
-    """Set up Apitally for Django; call at the end of settings.py, after MIDDLEWARE is defined."""
+    """Set up Apitally for Django. Call this at the end of settings.py, after MIDDLEWARE is defined."""
     global _urlconfs, _include_django_views
     try:
         config_kwargs = config.explicit_kwargs(locals())
@@ -116,7 +116,7 @@ def _handle_request_started(sender: Any, **kwargs: Any) -> None:
 
 
 class ApitallyDjangoMiddleware(CaptureMixin):
-    """Transport glue running inside the OTel Django middleware, while the SERVER span records."""
+    """Transport glue running inside the OTel Django middleware while the SERVER span is recording."""
 
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response

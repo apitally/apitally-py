@@ -33,8 +33,6 @@ logger = logging.getLogger(__name__)
 
 
 class ApitallyPlugin(InitPluginProtocol):
-    """Apitally setup for Litestar; pass at construction: Litestar(plugins=[ApitallyPlugin(...)])."""
-
     def __init__(
         self,
         *,

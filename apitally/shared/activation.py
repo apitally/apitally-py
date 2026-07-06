@@ -43,7 +43,7 @@ inherited_span_processor: ApitallySpanProcessor | None = None
 
 
 def configure(**kwargs: Any) -> ApitallyConfig:
-    """Configure phase: record config only, no threads, no network."""
+    """Records configuration only. Threads and network I/O are deferred to activate()."""
     global fork_handlers_registered
     cfg = config.configure(**kwargs)
     config.ensure_semconv_opt_in()
@@ -57,14 +57,13 @@ def configure(**kwargs: Any) -> ApitallyConfig:
 
 
 def activate() -> None:
-    """Activate the telemetry pipelines exactly once; errors never propagate."""
+    """Activate the telemetry pipelines exactly once."""
     global activation_attempted, activated
     with activation_lock:
         if activation_attempted:
             return
         activation_attempted = True
         if skip_activation():
-            logger.debug("Apitally activation skipped")
             return
         try:
             start_pipelines()
@@ -88,7 +87,7 @@ def register_on_activate_hook(hook: Callable[[], None]) -> None:
 
 
 class ASGIActivationShim:
-    """Outermost ASGI layer: activates on lifespan startup completion or the first request."""
+    """Outermost ASGI layer. Activates on lifespan startup completion or on the first request."""
 
     def __init__(self, app: Callable[..., Awaitable[Any]]) -> None:
         self.app = app
@@ -114,7 +113,7 @@ class ASGIActivationShim:
 
 
 class WSGIActivationShim:
-    """Outermost WSGI layer: activates on the first request."""
+    """Outermost WSGI layer. Activates on the first request."""
 
     def __init__(self, wsgi_app: Callable[..., Iterable[bytes]]) -> None:
         self.wsgi_app = wsgi_app
@@ -206,7 +205,7 @@ def after_fork_in_parent() -> None:
 
 
 def after_fork_in_child() -> None:
-    """Reset to configured state; the child activates itself if it ever serves."""
+    """Reset to configured state. Child activates itself if it ever serves."""
     global activation_lock, activation_attempted, activated, env, resource
     global span_processor, log_processor, logger_provider, inherited_span_processor
     activation_lock = threading.Lock()
@@ -228,7 +227,7 @@ def after_fork_in_child() -> None:
 
 
 def reset() -> None:
-    """Full teardown for tests; retired processors stay referenced."""
+    """Full teardown for tests. Shuts down and drops all pipeline state."""
     global activation_lock, activation_attempted, activated, env, resource
     global span_processor, log_processor, logger_provider, inherited_span_processor
     activation_lock = threading.Lock()

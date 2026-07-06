@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class ApitallyWSGIMiddleware(CaptureMixin):
-    """Transport-level capture middleware; must run inside the instrumentor's middleware."""
+    """Transport-level capture middleware. Must run inside the instrumentor's middleware."""
 
     def __init__(
         self,
