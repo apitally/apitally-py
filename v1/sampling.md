@@ -53,7 +53,7 @@ That leaves high-traffic apps with no volume control except binary exclusion: ca
 **Sampling semantics**
 
 - R5. The request-stage decision (`sample_on_request`, else `sample_rate`) is evaluated at SERVER span start. A request sampled out there transmits nothing: its spans and logs are dropped locally, the same guarantee `exclude_on_request` carried.
-- R6. The response-stage decision (`sample_on_response`) is evaluated at SERVER span end. Dropping there abandons already-streamed descendants and logs as ingest orphans per spec §6.5: they are stored but never surfaced, identical to `exclude_on_response` today; the per-request buffer named in Scope Boundaries removes it in a follow-up PR.
+- R6. The response-stage decision (`sample_on_response`) is evaluated at SERVER span end. Dropping there abandons already-streamed descendants and logs as ingest orphans per spec §6.5: they are stored but never surfaced, identical to `exclude_on_response` today; the per-request buffer named in Scope Boundaries removes it in a follow-up PR. *Superseded by `v1/buffering.md`: descendants and logs are now buffered until the decision, so a response-stage drop exports nothing and consumes no quota.*
 - R7. The keep decision derives from the trace ID tested against the effective rate, deterministic per trace; the overall capture probability of a request is the minimum of its request-stage and response-stage rates.
 - R8. Exclusion runs first: OPTIONS and pattern-excluded requests never reach sampling; sampling applies only to what survives.
 - R16. A request dropped at the request stage (exclusion or request-stage sampling) skips capture work in the transport middleware: no body buffering, no header or body attribute writes, no mask callback invocations. This extends to pattern-excluded requests, which today pay full capture cost despite never exporting. Response-stage sampling cannot skip capture — the body has already streamed when that decision runs.
@@ -89,7 +89,7 @@ flowchart TB
 ### Acceptance Examples
 
 - AE1. **Covers R1, R9.** Given `sample_rate=0.1` and no callbacks, when 1,000 non-excluded requests arrive, then exactly those whose trace IDs fall under the 0.1 bound (~10% by construction) have traces and logs, and the duration histogram counts all 1,000.
-- AE2. **Covers R2, R6.** Given `sample_on_response=lambda span: True if status(span) >= 500 else 0.05`, when requests complete, then every 5xx is captured, ~5% of healthy responses are captured, and the descendants of dropped healthy requests were exported, stored unreachable, and counted toward quota.
+- AE2. **Covers R2, R6.** Given `sample_on_response=lambda span: True if status(span) >= 500 else 0.05`, when requests complete, then every 5xx is captured, ~5% of healthy responses are captured, and the descendants of dropped healthy requests were exported, stored unreachable, and counted toward quota. *Superseded by `v1/buffering.md` AE1: dropped healthy requests now export nothing.*
 - AE3. **Covers R2, R5.** Given `sample_on_request` returning `0.01` for one noisy path and `None` otherwise, when traffic arrives, then the noisy path is captured at 1% with nothing transmitted for its sampled-out requests, and all other paths follow `sample_rate`.
 - AE4. **Covers R7.** Given a request-stage rate of `0.5` and a response callback returning `0.5`, when the same trace ID is evaluated at both stages, then the two tests agree and the overall capture rate is 50%, not 25%.
 - AE5. **Covers R2, R3.** Given `sample_on_request=lambda span: not is_bot(span)`, when a bot request arrives, then it is dropped with the request-stage no-transmission guarantee — binary exclusion expressed as the `0.0` edge of sampling.
@@ -98,7 +98,7 @@ flowchart TB
 ### Scope Boundaries
 
 - Transmitting sampling metadata to the cloud (labeling the request log as sampled, extrapolation) — a possible future spec change; v1 sampling is silent.
-- Per-request buffering of descendants and logs until the response-stage decision — the designated mechanism for eliminating orphan egress and quota consumption (Sentry's transaction-envelope model, done as a holding layer in our processor before the batch export). Deferred to a follow-up PR. It composes with the API unchanged: `sample_on_response` semantics stay identical, the waste just disappears.
+- Per-request buffering of descendants and logs until the response-stage decision — the designated mechanism for eliminating orphan egress and quota consumption (Sentry's transaction-envelope model, done as a holding layer in our processor before the batch export). Deferred to a follow-up PR. It composes with the API unchanged: `sample_on_response` semantics stay identical, the waste just disappears. *Delivered by `v1/buffering.md`.*
 - Sampling of individual signals (logs-only or metrics sampling) — sampling governs the trace-plus-logs unit of a request; metrics are never sampled.
 
 ### Dependencies / Assumptions
