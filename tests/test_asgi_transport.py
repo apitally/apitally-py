@@ -353,6 +353,20 @@ async def test_apitally_sampled_out_request_still_records_metrics(metric_reader:
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tenant-1"
 
 
+async def test_response_stage_dropped_request_still_records_metrics(metric_reader: InMemoryMetricReader):
+    # Response-stage twin: buffered spans discard at SERVER end while metrics record regardless (buffering.md AE6)
+    configure(write_token=TOKEN, sample_on_response=lambda span: False)
+    tracer, exporter = create_trace_pipeline()
+    app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
+    await send_request(tracer, app, method="GET")
+
+    assert exporter.get_finished_spans() == ()
+    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
+    assert isinstance(duration_metric.data, ExponentialHistogram)
+    (point,) = duration_metric.data.data_points
+    assert (point.attributes or {})["apitally.consumer.identifier"] == "tenant-1"
+
+
 async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricReader):
     mask_calls: list[bytes] = []
 
