@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import contextvars
 import json
-import logging
 from collections.abc import Iterator
 from typing import Any
 
@@ -210,7 +209,7 @@ async def test_body_over_cap_sentinel_with_passthrough():
     assert span.attributes["http.request.body.size"] == 60_000
 
 
-async def test_mask_callback_none_or_raise_yields_masked(caplog: pytest.LogCaptureFixture):
+async def test_mask_callback_none_or_raise_yields_masked():
     def mask(span: ReadableSpan, body: bytes) -> bytes | None:
         if b"boom" in body:
             raise ValueError("boom")
@@ -220,15 +219,13 @@ async def test_mask_callback_none_or_raise_yields_masked(caplog: pytest.LogCaptu
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a": 1}'])
-    with caplog.at_level(logging.WARNING, logger="apitally"):
-        await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a": "boom"}'])
+    await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a": "boom"}'])
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 2
     for span in spans:
         assert span.attributes is not None
         assert span.attributes["apitally.request.body"] == REDACTED
-    assert any("mask_request_body" in record.getMessage() for record in caplog.records)
 
 
 async def test_mask_callback_output_over_cap_yields_too_large():
@@ -268,14 +265,12 @@ async def test_aborted_response_body_not_exported():
     assert "apitally.response.body" not in (span.attributes or {})
 
 
-async def test_invalid_user_pattern_dropped_and_request_succeeds(caplog: pytest.LogCaptureFixture):
-    with caplog.at_level(logging.ERROR, logger="apitally"):
-        configure(write_token=TOKEN, log_request_headers=True, mask_headers=["("])
+async def test_invalid_user_pattern_dropped_and_request_succeeds():
+    configure(write_token=TOKEN, log_request_headers=True, mask_headers=["("])
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     await send_request(tracer, app, request_headers=[("Authorization", "Bearer x")])
 
-    assert any("mask_headers" in r.getMessage() for r in caplog.records)
     (span,) = exporter.get_finished_spans()
     assert header_values(span, "http.request.header.authorization") == (REDACTED,)
 

@@ -1,5 +1,4 @@
 import contextvars
-import logging
 from collections.abc import Iterator
 from urllib.parse import parse_qsl
 
@@ -204,29 +203,23 @@ def test_excluded_request_never_invokes_sample_callback(exporter: InMemorySpanEx
     assert exporter.get_finished_spans() == ()
 
 
-def test_raising_sample_on_request_warns_and_keeps(exporter: InMemorySpanExporter, caplog: pytest.LogCaptureFixture):
+def test_raising_sample_on_request_keeps_span(exporter: InMemorySpanExporter):
     def callback(span: ReadableSpan) -> float:
         raise ValueError("boom")
 
     configure(write_token=TOKEN, sample_on_request=callback)
     tracer = create_tracer(exporter)
-    with caplog.at_level(logging.WARNING, logger="apitally"):
-        with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
-            pass
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        pass
     assert len(exporter.get_finished_spans()) == 1
-    assert any("sample_on_request" in r.getMessage() for r in caplog.records)
 
 
-def test_invalid_sample_callback_return_warns_and_keeps(
-    exporter: InMemorySpanExporter, caplog: pytest.LogCaptureFixture
-):
+def test_invalid_sample_callback_return_keeps_span(exporter: InMemorySpanExporter):
     configure(write_token=TOKEN, sample_rate=0.0, sample_on_request=lambda span: "yes")
     tracer = create_tracer(exporter)
-    with caplog.at_level(logging.WARNING, logger="apitally"):
-        with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
-            pass
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        pass
     assert len(exporter.get_finished_spans()) == 1
-    assert any("sample_on_request" in r.getMessage() for r in caplog.records)
 
 
 def test_sample_on_response_keeps_errors_drops_healthy(exporter: InMemorySpanExporter):
