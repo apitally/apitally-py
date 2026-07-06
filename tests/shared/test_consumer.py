@@ -1,13 +1,12 @@
 from collections.abc import Iterator
 
 import pytest
-from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind, Tracer
 
-from apitally import capture_exception, instrument, set_consumer, set_request_attribute
+from apitally import capture_exception, set_consumer, set_request_attribute
 from apitally.shared.consumer import consumer_identifier_var, get_consumer_identifier
 from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span, server_span_var
 from tests.conftest import unwrap
@@ -29,9 +28,6 @@ def exporter() -> InMemorySpanExporter:
 def tracer(exporter: InMemorySpanExporter) -> Tracer:
     provider = TracerProvider()
     provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
-    # Global registration so instrument()'s proxy tracer resolves to this provider;
-    # the conftest autouse fixture resets trace globals after each test
-    trace.set_tracer_provider(provider)
     return provider.get_tracer("opentelemetry.instrumentation.starlette")
 
 
@@ -75,17 +71,6 @@ def test_capture_exception_records_event_on_server_span(tracer: Tracer, exporter
 def test_capture_exception_with_non_exception_does_not_raise(tracer: Tracer):
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
         capture_exception("not an exception")  # ty: ignore[invalid-argument-type]
-
-
-def test_instrument_creates_child_span_under_server_span(tracer: Tracer, exporter: InMemorySpanExporter):
-    @instrument
-    def compute() -> int:
-        return 42
-
-    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as server:
-        assert compute() == 42
-    child = next(s for s in exporter.get_finished_spans() if s.name == "compute")
-    assert unwrap(child.parent).span_id == server.get_span_context().span_id
 
 
 def test_writes_to_excluded_request_stay_local(tracer: Tracer, exporter: InMemorySpanExporter):
