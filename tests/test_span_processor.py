@@ -17,6 +17,7 @@ from apitally.shared.config import configure
 from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier, set_consumer
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import (
+    MAX_BUFFERED_SPANS,
     ApitallySpanProcessor,
     get_server_span,
     is_server_span_kept,
@@ -83,6 +84,16 @@ def test_server_root_and_child_kept(tracer: Tracer, processor: ApitallySpanProce
             )
     assert {s.name for s in exporter.get_finished_spans()} == {"GET /items", "child"}
     assert not processor.spans
+    assert not processor.pending
+
+
+def test_nothing_exported_before_server_span_ends(tracer: Tracer, exporter: InMemorySpanExporter):
+    # A request's telemetry is exported when the request completes, buffered descendants first (buffering.md R1, R4)
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        with tracer.start_as_current_span("child"):
+            pass
+        assert exporter.get_finished_spans() == ()
+    assert [s.name for s in exporter.get_finished_spans()] == ["child", "GET /items"]
 
 
 def test_server_span_with_unsampled_remote_parent_kept(tracer: Tracer, exporter: InMemorySpanExporter):
@@ -229,13 +240,57 @@ def test_sample_on_response_keeps_errors_drops_healthy(exporter: InMemorySpanExp
         with tracer.start_as_current_span("child"):
             pass
         span.set_attribute("http.response.status_code", 200)
-    # The healthy request is dropped at span end, after its child was already forwarded (spec section 6.5 orphan)
-    assert [s.name for s in exporter.get_finished_spans()] == ["child"]
+    # The buffered child is discarded with its dropped request: zero items exported (buffering.md R2)
+    assert exporter.get_finished_spans() == ()
 
-    exporter.clear()
     with tracer.start_as_current_span("GET /b", kind=SpanKind.SERVER, context=remote_parent_context(bound)) as span:
+        with tracer.start_as_current_span("child"):
+            pass
         span.set_attribute("http.response.status_code", 500)
-    assert [s.name for s in exporter.get_finished_spans()] == ["GET /b"]
+    assert [s.name for s in exporter.get_finished_spans()] == ["child", "GET /b"]
+
+
+def test_span_buffer_cap_bounds_kept_and_dropped_requests(exporter: InMemorySpanExporter):
+    configure(
+        write_token=TOKEN,
+        sample_on_response=lambda span: span.attributes.get("http.response.status_code") == 500,
+    )
+    tracer = create_tracer(exporter)
+    for status_code, expected_count in [(500, MAX_BUFFERED_SPANS + 1), (200, 0)]:
+        with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as span:
+            for _ in range(MAX_BUFFERED_SPANS + 1):
+                with tracer.start_as_current_span("child"):
+                    pass
+            span.set_attribute("http.response.status_code", status_code)
+        assert len(exporter.get_finished_spans()) == expected_count
+        exporter.clear()
+
+
+def test_late_descendant_follows_request_decision(exporter: InMemorySpanExporter):
+    configure(
+        write_token=TOKEN,
+        sample_on_response=lambda span: span.attributes.get("http.response.status_code") == 500,
+    )
+    tracer = create_tracer(exporter)
+    for status_code, expected_names in [(500, {"GET /items", "late"}), (200, set())]:
+        with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as span:
+            late = tracer.start_span("late")
+            span.set_attribute("http.response.status_code", status_code)
+        # A kept request's late telemetry streams as before buffering; a dropped request's is dropped locally
+        late.end()
+        assert {s.name for s in exporter.get_finished_spans()} == expected_names
+        exporter.clear()
+
+
+def test_shutdown_discards_pending_buffers(
+    tracer: Tracer, processor: ApitallySpanProcessor, exporter: InMemorySpanExporter
+):
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        with tracer.start_as_current_span("child"):
+            pass
+        processor.shutdown()
+        assert not processor.pending
+    assert exporter.get_finished_spans() == ()
 
 
 def test_same_trace_id_verdict_at_both_stages(exporter: InMemorySpanExporter):

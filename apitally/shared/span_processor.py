@@ -45,6 +45,7 @@ QUERY_ATTRIBUTES = ("url.query", "http.target", "http.url", "url.full")
 HEADER_ATTRIBUTE_PREFIXES = ("http.request.header.", "http.response.header.")
 NOISE_NAME_SUFFIXES = (" http send", " http receive", " websocket send", " websocket receive")
 NOISE_SCOPE_PREFIX = "opentelemetry.instrumentation."
+MAX_BUFFERED_SPANS = 1_000
 
 server_span_var: ContextVar[Span | None] = ContextVar("apitally_server_span", default=None)
 server_span_kept_var: ContextVar[bool] = ContextVar("apitally_server_span_kept", default=False)
@@ -71,6 +72,9 @@ class ApitallySpanProcessor(SpanProcessor):
         # Settable so fork re-activation can swap in a fresh batch processor (design.md section 7)
         self.downstream = downstream
         self.spans: dict[int, tuple[bool, int | None]] = {}
+        self.pending: dict[int, list[ReadableSpan]] = {}
+        # Assigned by the log processor so both buffers flush or discard on the same decision
+        self.on_request_finished: Callable[[int, bool], None] | None = None
         self.config = get_config() or ApitallyConfig()
         self.sample_rate_bound = TraceIdRatioBased.get_bound_for_rate(self.config.sample_rate)
         self.exclude_path_patterns = compile_patterns(DEFAULT_EXCLUDE_PATH_PATTERNS + self.config.exclude_paths)
@@ -90,6 +94,8 @@ class ApitallySpanProcessor(SpanProcessor):
                     keep = not self.exclude_request(span) and self.sample_request(span, span.context.trace_id)
                     server_span_kept_var.set(keep)
                     self.spans[span.context.span_id] = (keep, span.context.span_id if keep else None)
+                    if keep:
+                        self.pending[span.context.span_id] = []
                 else:
                     self.spans[span.context.span_id] = (False, None)
             else:
@@ -102,10 +108,31 @@ class ApitallySpanProcessor(SpanProcessor):
             context = span.get_span_context()
             if context is None:
                 return
-            keep, _ = self.spans.pop(context.span_id, (False, None))
+            keep, server_span_id = self.spans.pop(context.span_id, (False, None))
             if not keep:
                 return
-            if span.kind == SpanKind.SERVER and not self.sample_response(span, context.trace_id):
+            buffer = self.pending.pop(context.span_id, None)
+            if buffer is not None:
+                # Pending SERVER root: the response-stage decision flushes or discards the whole request
+                kept = self.sample_response(span, context.trace_id)
+                if kept:
+                    for buffered_span in buffer:
+                        self.downstream.on_end(self.redact_span(buffered_span))
+                    self.downstream.on_end(self.redact_span(span))
+                else:
+                    # Flip in-flight entries so the request's late telemetry drops locally (design.md section 3)
+                    for span_id, entry in list(self.spans.items()):
+                        if entry[1] == context.span_id:
+                            self.spans[span_id] = (False, None)
+                if self.on_request_finished is not None:
+                    self.on_request_finished(context.span_id, kept)
+                return
+            pending = self.pending.get(server_span_id) if server_span_id is not None else None
+            if pending is not None:
+                if len(pending) < MAX_BUFFERED_SPANS:
+                    pending.append(span)
+                else:
+                    logger.debug("Apitally span buffer cap reached for request, dropping span")
                 return
             self.downstream.on_end(self.redact_span(span))
         except Exception:
@@ -117,6 +144,8 @@ class ApitallySpanProcessor(SpanProcessor):
         return entry[1] if entry else None
 
     def shutdown(self) -> None:
+        # Pending requests' SERVER spans can never export after shutdown, so their telemetry is unreachable
+        self.pending.clear()
         self.downstream.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
