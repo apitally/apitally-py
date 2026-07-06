@@ -58,10 +58,10 @@ def is_server_span_kept() -> bool:
     return server_span_kept_var.get()
 
 
-def sampled_in(trace_id: int, rate: float) -> bool:
+def sampled_in(trace_id: int, bound: int) -> bool:
     # TraceIdRatioBased convention: the low 64 bits of the trace ID tested against round(rate * 2**64),
     # deterministic per trace so services sampling at the same rate capture the same traces
-    return trace_id & TraceIdRatioBased.TRACE_ID_LIMIT < TraceIdRatioBased.get_bound_for_rate(rate)
+    return trace_id & TraceIdRatioBased.TRACE_ID_LIMIT < bound
 
 
 class ApitallySpanProcessor(SpanProcessor):
@@ -72,6 +72,7 @@ class ApitallySpanProcessor(SpanProcessor):
         self.downstream = downstream
         self.spans: dict[int, tuple[bool, int | None]] = {}
         self.config = get_config() or ApitallyConfig()
+        self.sample_rate_bound = TraceIdRatioBased.get_bound_for_rate(self.config.sample_rate)
         self.exclude_path_patterns = compile_patterns(DEFAULT_EXCLUDE_PATH_PATTERNS + self.config.exclude_paths)
         self.redaction = Redaction(
             self.config.mask_query_params, self.config.mask_headers, self.config.mask_body_fields
@@ -136,12 +137,14 @@ class ApitallySpanProcessor(SpanProcessor):
 
     def sample_request(self, span: Span, trace_id: int) -> bool:
         rate = self.resolve_sample_rate(self.config.sample_on_request, span, "sample_on_request")
-        return sampled_in(trace_id, self.config.sample_rate if rate is None else rate)
+        if rate is None:
+            return sampled_in(trace_id, self.sample_rate_bound)
+        return sampled_in(trace_id, TraceIdRatioBased.get_bound_for_rate(rate))
 
     def sample_response(self, span: ReadableSpan, trace_id: int) -> bool:
         # An unconfigured callback or an abstaining None leaves the request-stage decision standing
         rate = self.resolve_sample_rate(self.config.sample_on_response, span, "sample_on_response")
-        return rate is None or sampled_in(trace_id, rate)
+        return rate is None or sampled_in(trace_id, TraceIdRatioBased.get_bound_for_rate(rate))
 
     def resolve_sample_rate(
         self, callback: Callable[[ReadableSpan], float | bool | None] | None, span: ReadableSpan, name: str

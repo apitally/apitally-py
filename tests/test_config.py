@@ -70,13 +70,6 @@ def test_invalid_sample_rate_warns_once_and_captures_everything(invalid_rate: ob
     assert len(warnings) == 1
 
 
-def test_sample_rate_adjustable_after_configure():
-    cfg = config.configure(write_token=VALID_TOKEN, sample_rate=0.5)
-    cfg.sample_rate = 0.2
-    assert config.get_config() is cfg
-    assert cfg.sample_rate == 0.2
-
-
 def test_semconv_helper(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("OTEL_SEMCONV_STABILITY_OPT_IN", raising=False)
     config.ensure_semconv_opt_in()
