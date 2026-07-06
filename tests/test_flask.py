@@ -198,6 +198,39 @@ def test_consumer_set_in_route_reaches_span_and_histogram(
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
 
 
+def test_sampled_out_request_skips_capture(
+    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
+    mask_calls: list[bytes] = []
+
+    def mask(span: ReadableSpan, body: bytes) -> bytes:
+        mask_calls.append(body)
+        return body
+
+    init(
+        app,
+        monkeypatch,
+        sample_rate=0.0,
+        log_request_body=True,
+        log_response_body=True,
+        mask_request_body=mask,
+        mask_response_body=mask,
+    )
+    reader = activate_with_metric_reader()
+
+    response = app.test_client().post("/items", json={"a": 1})
+
+    # Consume the body; the transport records metrics when the response iterable completes
+    assert response.get_json() == {"id": 1, "token": "abc123"}
+    assert not mask_calls
+    assert exported_spans(memory_exporters) == []
+    duration_metric = collect_metric(reader, "http.server.request.duration")
+    assert duration_metric is not None
+    assert isinstance(duration_metric.data, ExponentialHistogram)
+    (point,) = duration_metric.data.data_points
+    assert point.count == 1
+
+
 def test_init_apitally_swallows_instrumentation_errors(app: Flask, monkeypatch: pytest.MonkeyPatch):
     def raise_error(*args: Any, **kwargs: Any) -> NoReturn:
         raise RuntimeError("instrumentation failed")

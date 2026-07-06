@@ -11,7 +11,7 @@ from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin,
 from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier
 from apitally.shared.redaction import REDACTED
-from apitally.shared.span_processor import get_server_span
+from apitally.shared.span_processor import get_server_span, is_server_span_kept
 
 
 if TYPE_CHECKING:
@@ -60,7 +60,12 @@ class ApitallyWSGIMiddleware(CaptureMixin):
     def capture_request_body(
         self, environ: WSGIEnvironment, config: ApitallyConfig, content_length: int | None
     ) -> bytes | str | None:
-        if not config.log_request_body or not is_allowed_content_type(environ.get("CONTENT_TYPE")):
+        # Excluded and sampled-out requests skip all capture work; metrics are still recorded
+        if (
+            not is_server_span_kept()
+            or not config.log_request_body
+            or not is_allowed_content_type(environ.get("CONTENT_TYPE"))
+        ):
             return None
         if content_length is None:
             # Chunked/absent-length bodies are never read: raw-socket servers block on
@@ -84,8 +89,10 @@ class ApitallyWSGIMiddleware(CaptureMixin):
         headers = group_headers(response_headers)
         content_length = parse_content_length(next(iter(headers.get("content-length", [])), None))
         state.response_size = content_length
+        kept = is_server_span_kept()
         if (
-            self.capture_response_body
+            kept
+            and self.capture_response_body
             and config.log_response_body
             and is_allowed_content_type(next(iter(headers.get("content-type", [])), None))
         ):
@@ -93,7 +100,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
             state.response_body = BODY_TOO_LARGE if over_cap else bytearray()
 
         span = get_server_span()
-        if span is None or not span.is_recording():
+        if not kept or span is None or not span.is_recording():
             return
         if not state.request_attributes_written:
             state.request_attributes_written = True
@@ -117,11 +124,12 @@ class ApitallyWSGIMiddleware(CaptureMixin):
         try:
             duration = time.perf_counter() - state.start_time
             span = get_server_span()
+            kept = is_server_span_kept()
             if state.response_size is None and state.completed:
                 state.response_size = state.bytes_sent
-                if span is not None and span.is_recording():
+                if kept and span is not None and span.is_recording():
                     span.set_attribute("http.response.body.size", state.response_size)
-            if span is not None and span.is_recording() and state.response_body is not None:
+            if kept and span is not None and span.is_recording() and state.response_body is not None:
                 body = state.response_body
                 if isinstance(body, bytearray):
                     # An abandoned iterable leaves a partial buffer; never export a truncated body

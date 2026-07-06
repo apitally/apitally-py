@@ -62,7 +62,7 @@ All options move to keyword arguments of `init_apitally(...)` (or `ApitallyPlugi
 | `mask_request_body_callback` | `mask_request_body`, new signature (see below) |
 | `mask_response_body_callback` | `mask_response_body`, new signature (see below) |
 | `exclude_paths` | `exclude_paths` (unchanged) |
-| `exclude_callback` | Removed. Replaced by `exclude_on_request` / `exclude_on_response` (see below). |
+| `exclude_callback` | Removed. Replaced by the sampling API: `sample_rate`, `sample_on_request` / `sample_on_response` (see below). |
 | `apitally.client.*` imports | Removed. The Hub transport is replaced by OTLP export; there is no public API under `apitally.client`. |
 | Validation and server error capture | No SDK-side API anymore. Apitally derives these server-side from standard OpenTelemetry exception events on traces. |
 
@@ -79,24 +79,36 @@ def get_current_user(...):
     return user
 ```
 
-## Excluding requests
+## Sampling and excluding requests
 
-The `exclude_callback(request, response)` callback is replaced by two callbacks that operate on the OpenTelemetry attributes of the request's SERVER span. `exclude_on_request` is evaluated at span start (nothing about an excluded request is ever transmitted), `exclude_on_response` at span end (so it can see the response status and any attributes you set via `set_request_attribute(...)`).
+The `exclude_callback(request, response)` callback is replaced by request sampling. **Note the polarity flip**: the old callback returned `True` to exclude a request, the new callbacks return what to *keep* — `True` / `1.0` means always capture, `False` / `0.0` means never, a float in between is the fraction of matching requests to capture, and `None` means no opinion. Metrics always count every request, regardless of sampling.
+
+- `sample_rate` sets the static fraction of requests captured as traces with their logs (default `1.0`).
+- `sample_on_request` refines it per request at span start. Nothing about a sampled-out request is ever transmitted, making this (and `sample_rate`) the lever for volume and quota. Returning `None` falls back to `sample_rate`.
+- `sample_on_response` decides at span end, so it can see the response status and any attributes you set via `set_request_attribute(...)`. It cannot retroactively unsend telemetry the request already emitted — child spans and logs of a request dropped here still count toward your quota — so use it to keep the interesting requests, not to control volume. Returning `None` leaves the request-stage decision standing. It also cannot rescue a request already dropped at the request stage: the overall capture probability is the minimum of the two stages, so a response-stage boost like the example below only applies to requests that survived `sample_rate` / `sample_on_request`.
+
+Both callbacks operate on the OpenTelemetry attributes of the request's SERVER span:
 
 ```python
-def exclude_on_request(span):
-    return str(span.attributes.get("url.path", "")).startswith("/internal/")
+def sample_on_request(span):
+    if str(span.attributes.get("url.path", "")).startswith("/internal/"):
+        return False  # never capture, like exclude_callback returning True
+    return None  # follow sample_rate
 
-def exclude_on_response(span):
-    return span.attributes.get("http.response.status_code") == 404
+def sample_on_response(span):
+    if (span.attributes.get("http.response.status_code") or 0) >= 500:
+        return True  # always capture server errors
+    return 0.05  # capture 5% of healthy responses
 
 init_apitally(
     app,
     write_token="your-write-token",
-    exclude_on_request=exclude_on_request,
-    exclude_on_response=exclude_on_response,
+    sample_on_request=sample_on_request,
+    sample_on_response=sample_on_response,
 )
 ```
+
+Sampling decisions are deterministic per trace ID, so services sampling at the same rate capture the same traces.
 
 ## Masking request and response bodies
 
@@ -114,7 +126,7 @@ def mask_request_body(span, body):
 If your application already has an OpenTelemetry `TracerProvider` configured (e.g. for Datadog, Honeycomb, or your own collector), Apitally attaches to it instead of replacing it. Your existing pipeline is unaffected. A few things to be aware of in this mode:
 
 - The order of `init_apitally(...)` and your other OpenTelemetry setup does not matter, as long as your `TracerProvider` is registered before the application starts serving requests. A provider registered after startup is not picked up.
-- Your sampler applies. If it drops requests (e.g. `TraceIdRatioBased`), request logs in Apitally follow your sampling rate. Metrics are recorded independently of sampling and stay complete.
+- Your sampler applies. If it drops requests (e.g. `TraceIdRatioBased`), request logs in Apitally follow your sampling rate; Apitally's own `sample_rate` applies on top, to the requests your sampler keeps. Metrics are recorded independently of sampling and stay complete.
 - Your span attribute limits apply. A limit below 65,536 (e.g. via `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT`) can truncate captured request/response bodies. The SDK logs a warning when it detects this.
 
 ## Version floors

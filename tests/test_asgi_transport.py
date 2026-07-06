@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 from collections.abc import Iterator
@@ -329,6 +330,66 @@ async def test_sampled_out_request_still_records_metrics(metric_reader: InMemory
     configure(write_token=TOKEN)
     tracer, exporter = create_trace_pipeline(sampler=TraceIdRatioBased(0.0))
     app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
+    await send_request(tracer, app, method="GET")
+
+    assert exporter.get_finished_spans() == ()
+    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
+    assert isinstance(duration_metric.data, ExponentialHistogram)
+    (point,) = duration_metric.data.data_points
+    assert (point.attributes or {})["apitally.consumer.identifier"] == "tenant-1"
+
+
+async def test_apitally_sampled_out_request_still_records_metrics(metric_reader: InMemoryMetricReader):
+    # Apitally-sampling twin of the cooperative-sampler test above (R9, R12)
+    configure(write_token=TOKEN, sample_rate=0.0)
+    tracer, exporter = create_trace_pipeline()
+    app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
+    await send_request(tracer, app, method="GET")
+
+    assert exporter.get_finished_spans() == ()
+    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
+    assert isinstance(duration_metric.data, ExponentialHistogram)
+    (point,) = duration_metric.data.data_points
+    assert (point.attributes or {})["apitally.consumer.identifier"] == "tenant-1"
+
+
+async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricReader):
+    mask_calls: list[bytes] = []
+
+    def mask(span: ReadableSpan, body: bytes) -> bytes:
+        mask_calls.append(body)
+        return body
+
+    configure(write_token=TOKEN, sample_rate=0.0, log_request_body=True, mask_request_body=mask)
+    tracer, exporter = create_trace_pipeline()
+    app = EchoApp()
+    middleware = ApitallyASGIMiddleware(app)
+    scope = make_scope(headers=JSON_HEADERS)
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": b'{"a": 1}', "more_body": False}
+
+    async def send(message: dict[str, Any]) -> None:
+        pass
+
+    with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER):
+        await middleware(scope, receive, send)
+
+    assert app.received_receive is receive  # no wrapping, zero buffering
+    assert not mask_calls
+    assert exporter.get_finished_spans() == ()
+    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
+    assert isinstance(duration_metric.data, ExponentialHistogram)
+    (point,) = duration_metric.data.data_points
+    assert point.count == 1
+
+
+async def test_sampled_out_sync_endpoint_consumer_reaches_metrics(metric_reader: InMemoryMetricReader):
+    # Sync endpoints run in a copied context where set_consumer's ContextVar write is lost;
+    # the span-attribute fallback must carry the consumer even for a sampled-out request (R11)
+    configure(write_token=TOKEN, sample_rate=0.0)
+    tracer, exporter = create_trace_pipeline()
+    app = EchoApp(on_request=lambda: contextvars.copy_context().run(set_consumer, "tenant-1"))
     await send_request(tracer, app, method="GET")
 
     assert exporter.get_finished_spans() == ()

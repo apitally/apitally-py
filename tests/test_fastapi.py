@@ -251,6 +251,20 @@ def test_consumer_set_in_sync_endpoint_reaches_metrics(
     assert unwrap(point.attributes)["apitally.consumer.identifier"] == "tester"
 
 
+def test_sample_rate_zero_drops_spans_keeps_metrics(
+    app: FastAPI, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+):
+    # Pins the adapter-to-config plumbing for the sampling kwargs through a real framework
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    init_apitally(app, write_token=TOKEN, sample_rate=0.0)
+    with TestClient(app) as client:
+        reader = attach_metric_reader()
+        client.get("/items/42")
+    assert get_finished_spans(memory_exporters) == []
+    (point,) = duration_points(reader)
+    assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
+
+
 def test_init_apitally_swallows_instrumentation_errors(app: FastAPI, monkeypatch: pytest.MonkeyPatch):
     def raise_error(*args: Any, **kwargs: Any) -> NoReturn:
         raise RuntimeError("instrumentation failed")

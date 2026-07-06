@@ -11,7 +11,7 @@ from apitally.shared import metrics
 from apitally.shared.capture import ALLOWED_CONTENT_TYPES, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
 from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier
 from apitally.shared.redaction import REDACTED
-from apitally.shared.span_processor import get_server_span
+from apitally.shared.span_processor import get_server_span, is_server_span_kept
 
 
 logger = logging.getLogger(__name__)
@@ -53,17 +53,22 @@ class ApitallyASGIMiddleware(CaptureMixin):
         response_too_large = False
         capture_response = False
         completed = False
+        kept = False
 
         try:
             reset_consumer_identifier()
             request_headers = scope.get("headers") or []
             request_size = parse_int(get_header(request_headers, b"content-length"))
-            capture_request = config.log_request_body and is_supported_content_type(
-                get_header(request_headers, b"content-type")
+            # Excluded and sampled-out requests skip all capture work; metrics are still recorded
+            kept = is_server_span_kept()
+            capture_request = (
+                kept
+                and config.log_request_body
+                and is_supported_content_type(get_header(request_headers, b"content-type"))
             )
             request_too_large = capture_request and request_size is not None and request_size > MAX_BODY_SIZE
             span = get_server_span()
-            if config.log_request_headers and span is not None and span.is_recording():
+            if kept and config.log_request_headers and span is not None and span.is_recording():
                 self.set_header_attributes(span, "http.request.header.", request_headers)
         except Exception:
             logger.exception("Error in Apitally ASGI middleware")
@@ -99,7 +104,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
             if final_response_size is None and response_started:
                 final_response_size = response_size_counter
             span = get_server_span()
-            if span is not None and span.is_recording():
+            if kept and span is not None and span.is_recording():
                 if final_request_size is not None:
                     span.set_attribute("http.request.body.size", final_request_size)
                 if final_response_size is not None:
@@ -152,14 +157,16 @@ class ApitallyASGIMiddleware(CaptureMixin):
                     content_length = parse_int(get_header(response_headers, b"content-length"))
                     if content_length is not None and get_header(response_headers, b"transfer-encoding") != b"chunked":
                         response_size = content_length
-                    capture_response = config.log_response_body and is_supported_content_type(
-                        get_header(response_headers, b"content-type")
+                    capture_response = (
+                        kept
+                        and config.log_response_body
+                        and is_supported_content_type(get_header(response_headers, b"content-type"))
                     )
                     response_too_large = (
                         capture_response and response_size is not None and response_size > MAX_BODY_SIZE
                     )
                     span = get_server_span()
-                    if config.log_response_headers and span is not None and span.is_recording():
+                    if kept and config.log_response_headers and span is not None and span.is_recording():
                         self.set_header_attributes(span, "http.response.header.", response_headers)
                 elif message["type"] == "http.response.body":
                     body = message.get("body", b"")

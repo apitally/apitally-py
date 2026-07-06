@@ -5,6 +5,7 @@ from importlib.util import find_spec
 from typing import Any, TypeVar
 
 import pytest
+from opentelemetry.instrumentation._semconv import _OpenTelemetrySemanticConventionStability
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
 from opentelemetry.sdk.metrics.export import MetricExporter, MetricExportResult, MetricsData
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -57,6 +58,10 @@ def reset_apitally_config() -> Iterator[None]:
         os.environ.pop("OTEL_SEMCONV_STABILITY_OPT_IN", None)
     else:
         os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = semconv_before
+    # The instrumentation layer reads the env var once into a process-global latch on the
+    # first instrument() call; reset it so each test re-reads the current env var
+    _OpenTelemetrySemanticConventionStability._initialized = False
+    _OpenTelemetrySemanticConventionStability._OTEL_SEMCONV_STABILITY_SIGNAL_MAPPING = {}
 
 
 @pytest.fixture(autouse=True)

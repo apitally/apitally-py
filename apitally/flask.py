@@ -9,7 +9,7 @@ from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
 from apitally.shared import activation, config, startup
 from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, is_allowed_content_type
-from apitally.shared.span_processor import get_server_span
+from apitally.shared.span_processor import get_server_span, is_server_span_kept
 from apitally.shared.wsgi import ApitallyWSGIMiddleware
 
 
@@ -41,8 +41,9 @@ def init_apitally(
     mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
     mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
     exclude_paths: list[str] | None = None,
-    exclude_on_request: Callable[[ReadableSpan], bool] | None = None,
-    exclude_on_response: Callable[[ReadableSpan], bool] | None = None,
+    sample_rate: float | None = None,
+    sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
+    sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
 ) -> None:
     """Set up Apitally for a Flask app; activation happens on the first request."""
     try:
@@ -76,7 +77,8 @@ def _create_response_body_hook(transport: ApitallyWSGIMiddleware) -> Callable[[R
         try:
             config = transport.config
             if (
-                config.log_response_body
+                is_server_span_kept()
+                and config.log_response_body
                 and not response.direct_passthrough
                 and not response.is_streamed
                 and is_allowed_content_type(response.content_type)
