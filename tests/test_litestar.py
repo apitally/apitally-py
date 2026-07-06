@@ -20,15 +20,13 @@ from apitally.litestar import ApitallyPlugin
 from apitally.shared import activation, config
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
+    WRITE_TOKEN,
     InMemoryExporters,
     attach_metric_reader,
     duration_data_points,
     exported_spans,
     startup_payload,
 )
-
-
-TOKEN = "apt_" + "a" * 24
 
 
 @get("/users/{user_id:int}")
@@ -54,17 +52,22 @@ async def error_route() -> None:
 ROUTE_HANDLERS = [get_user, create_user, healthz]
 
 
-def make_app(plugins: list[Any] | None = None, middleware: list[Any] | None = None, **plugin_kwargs: Any) -> Litestar:
+def make_app(
+    monkeypatch: pytest.MonkeyPatch,
+    plugins: list[Any] | None = None,
+    middleware: list[Any] | None = None,
+    **plugin_kwargs: Any,
+) -> Litestar:
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     return Litestar(
         route_handlers=ROUTE_HANDLERS,
-        plugins=[*(plugins or []), ApitallyPlugin(write_token=TOKEN, **plugin_kwargs)],
+        plugins=[*(plugins or []), ApitallyPlugin(write_token=WRITE_TOKEN, **plugin_kwargs)],
         middleware=middleware or [],
     )
 
 
 def test_route_repair_metrics_and_no_noise_spans(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    with TestClient(app=make_app()) as client:
+    with TestClient(app=make_app(monkeypatch)) as client:
         reader = attach_metric_reader()
         assert client.get("/users/123").status_code == 200
 
@@ -79,8 +82,7 @@ def test_route_repair_metrics_and_no_noise_spans(exporters: InMemoryExporters, m
 
 
 def test_user_otel_plugin_detected_and_repaired(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    app = make_app(plugins=[OpenTelemetryPlugin(OpenTelemetryConfig())])
+    app = make_app(monkeypatch, plugins=[OpenTelemetryPlugin(OpenTelemetryConfig())])
     assert sum(isinstance(plugin, OpenTelemetryPlugin) for plugin in app.plugins.init) == 1
     with TestClient(app=app) as client:
         assert client.get("/users/123").status_code == 200
@@ -93,9 +95,8 @@ def test_user_otel_plugin_detected_and_repaired(exporters: InMemoryExporters, mo
 
 
 def test_legacy_otel_middleware_detected_and_repaired(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     legacy = DefineMiddleware(OpenTelemetryInstrumentationMiddleware, config=OpenTelemetryConfig())
-    app = make_app(middleware=[legacy])
+    app = make_app(monkeypatch, middleware=[legacy])
     assert sum(isinstance(plugin, OpenTelemetryPlugin) for plugin in app.plugins.init) == 1
     with TestClient(app=app) as client:
         assert client.get("/users/123").status_code == 200
@@ -106,16 +107,14 @@ def test_legacy_otel_middleware_detected_and_repaired(exporters: InMemoryExporte
 
 
 def test_excluded_request_exports_nothing(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    with TestClient(app=make_app()) as client:
+    with TestClient(app=make_app(monkeypatch)) as client:
         assert client.get("/healthz").status_code == 200
 
     assert exported_spans(exporters) == []
 
 
 def test_body_capture_on_server_span(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    with TestClient(app=make_app(log_request_body=True, log_response_body=True)) as client:
+    with TestClient(app=make_app(monkeypatch, log_request_body=True, log_response_body=True)) as client:
         response = client.post("/users", json={"user": "u", "password": "secret"})
         assert response.status_code == 201
 
@@ -127,7 +126,7 @@ def test_body_capture_on_server_span(exporters: InMemoryExporters, monkeypatch: 
 
 def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    app = Litestar(route_handlers=[error_route], plugins=[ApitallyPlugin(write_token=TOKEN)])
+    app = Litestar(route_handlers=[error_route], plugins=[ApitallyPlugin(write_token=WRITE_TOKEN)])
     with TestClient(app=app) as client:
         assert client.get("/error").status_code == 500
 
@@ -141,8 +140,7 @@ def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporter
 
 
 def test_on_startup_activates_and_emits_startup_event(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    app = make_app(app_version="1.2.3")
+    app = make_app(monkeypatch, app_version="1.2.3")
     assert not activation.is_activated()
     with TestClient(app=app):
         # Activation completed during lifespan startup, before any request
@@ -164,10 +162,9 @@ def test_on_startup_activates_and_emits_startup_event(exporters: InMemoryExporte
 
 
 def test_plugin_reconstruction_same_kwargs_is_noop(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    make_app(env="dev")
+    make_app(monkeypatch, env="dev")
     first_config = config.get_config()
-    app = make_app(env="dev")
+    app = make_app(monkeypatch, env="dev")
     assert config.get_config() is first_config
 
     with TestClient(app=app) as client:

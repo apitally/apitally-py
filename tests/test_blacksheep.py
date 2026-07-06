@@ -16,15 +16,13 @@ from apitally.blacksheep import init_apitally
 from apitally.shared import activation
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
+    WRITE_TOKEN,
     InMemoryExporters,
     attach_metric_reader,
     duration_data_points,
     exported_spans,
     startup_payload,
 )
-
-
-TOKEN = "apt_" + "a" * 24
 
 
 def allow_activation(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -35,7 +33,7 @@ def allow_activation(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def create_app(**kwargs: Any) -> Application:
     app = Application(router=Router())
-    init_apitally(app, write_token=TOKEN, app_version="1.2.3", **kwargs)
+    init_apitally(app, write_token=WRITE_TOKEN, app_version="1.2.3", **kwargs)
 
     @app.router.get("/items/{id}")
     def get_item(id: str) -> Response:
@@ -135,7 +133,7 @@ async def test_preinstrumented_app_adapted_without_duplicate_server_spans(
     allow_activation(monkeypatch)
     app = Application(router=Router())
     wrapped = OpenTelemetryMiddleware(app)
-    init_apitally(wrapped, write_token=TOKEN)
+    init_apitally(wrapped, write_token=WRITE_TOKEN)
 
     @app.router.get("/items/{id}")
     def get_item(id: str) -> Response:

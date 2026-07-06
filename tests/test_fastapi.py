@@ -14,6 +14,7 @@ from apitally.fastapi import init_apitally
 from apitally.shared import activation, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from tests.conftest import (
+    WRITE_TOKEN,
     InMemoryExporters,
     attach_metric_reader,
     duration_data_points,
@@ -22,9 +23,6 @@ from tests.conftest import (
     startup_payload,
     unwrap,
 )
-
-
-TOKEN = "apt_" + "a" * 24
 
 
 def create_app() -> FastAPI:
@@ -69,11 +67,15 @@ def app() -> Iterator[FastAPI]:
     FastAPIInstrumentor.uninstrument_app(app)
 
 
+def init(app: FastAPI, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    init_apitally(app, write_token=WRITE_TOKEN, **kwargs)
+
+
 def test_request_exports_single_server_span_with_stable_semconv(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=TOKEN)
+    init(app, monkeypatch)
     with TestClient(app) as client:
         client.get("/items/42")
     (span,) = exported_spans(exporters)  # exactly one: no receive/send spans
@@ -86,8 +88,7 @@ def test_request_exports_single_server_span_with_stable_semconv(
 def test_histogram_attributes_and_log_correlation(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=TOKEN)
+    init(app, monkeypatch)
     with TestClient(app) as client:
         reader = attach_metric_reader()
         client.get("/items/42")
@@ -112,8 +113,7 @@ def test_histogram_attributes_and_log_correlation(
 def test_lifespan_activates_before_first_request_and_startup_event_first(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=TOKEN)
+    init(app, monkeypatch)
     assert not activation.is_activated()
     with TestClient(app) as client:
         assert activation.is_activated()
@@ -126,8 +126,7 @@ def test_lifespan_activates_before_first_request_and_startup_event_first(
 def test_healthz_excluded_from_spans_counted_in_metrics_options_in_neither(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=TOKEN)
+    init(app, monkeypatch)
     with TestClient(app) as client:
         reader = attach_metric_reader()
         client.get("/healthz")
@@ -140,8 +139,7 @@ def test_healthz_excluded_from_spans_counted_in_metrics_options_in_neither(
 def test_request_body_captured_and_redacted(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=TOKEN, log_request_body=True)
+    init(app, monkeypatch, log_request_body=True)
     with TestClient(app) as client:
         client.post("/items", json={"name": "widget", "password": "hunter2"})
     (span,) = exported_spans(exporters)
@@ -155,9 +153,8 @@ def test_request_body_captured_and_redacted(
 def test_pre_instrumented_app_adapts_without_duplicate_spans(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     FastAPIInstrumentor.instrument_app(app)
-    init_apitally(app, write_token=TOKEN)
+    init(app, monkeypatch)
     with TestClient(app) as client:
         reader = attach_metric_reader()
         client.get("/items/42")
@@ -174,8 +171,7 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
 def test_unhandled_exception_recorded_as_event_on_500_span(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=TOKEN)
+    init(app, monkeypatch)
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get("/error")
     assert response.status_code == 500
@@ -189,8 +185,7 @@ def test_unhandled_exception_recorded_as_event_on_500_span(
 def test_startup_event_paths_match_routes_and_openapi_parses(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=TOKEN, app_version="1.2.3")
+    init(app, monkeypatch, app_version="1.2.3")
     with TestClient(app):
         pass
     payload = startup_payload(exporters)
@@ -212,8 +207,7 @@ def test_consumer_set_in_sync_endpoint_reaches_metrics(
 ):
     # def endpoints run in a copied context (threadpool), so the ContextVar write is lost
     # and the span attribute fallback must carry the consumer into the histogram
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=TOKEN)
+    init(app, monkeypatch)
     with TestClient(app) as client:
         reader = attach_metric_reader()
         client.get("/consumer")
@@ -225,8 +219,7 @@ def test_sample_rate_zero_drops_spans_keeps_metrics(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     # Pins the adapter-to-config plumbing for the sampling kwargs through a real framework
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=TOKEN, sample_rate=0.0)
+    init(app, monkeypatch, sample_rate=0.0)
     with TestClient(app) as client:
         reader = attach_metric_reader()
         client.get("/items/42")
@@ -240,7 +233,7 @@ def test_init_apitally_swallows_instrumentation_errors(app: FastAPI, monkeypatch
         raise RuntimeError("instrumentation failed")
 
     monkeypatch.setattr(FastAPIInstrumentor, "instrument_app", raise_error)
-    init_apitally(app, write_token=TOKEN)
+    init_apitally(app, write_token=WRITE_TOKEN)
     with TestClient(app) as client:
         response = client.get("/items/1")
     assert response.status_code == 200
@@ -249,9 +242,8 @@ def test_init_apitally_swallows_instrumentation_errors(app: FastAPI, monkeypatch
 def test_init_twice_does_not_stack_middleware(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=TOKEN)
-    init_apitally(app, write_token=TOKEN)
+    init(app, monkeypatch)
+    init(app, monkeypatch)
     assert sum(1 for m in app.user_middleware if m.cls is ApitallyASGIMiddleware) == 1
     with TestClient(app) as client:
         client.get("/items/1")

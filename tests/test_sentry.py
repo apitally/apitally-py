@@ -11,6 +11,7 @@ from opentelemetry.util.types import AttributeValue
 
 from apitally.shared import activation, sentry
 from apitally.shared.span_processor import ApitallySpanProcessor, server_span_var
+from tests.conftest import WRITE_TOKEN
 
 
 if TYPE_CHECKING:
@@ -20,8 +21,6 @@ if TYPE_CHECKING:
 sentry_sdk = pytest.importorskip("sentry_sdk")
 sentry_scope = pytest.importorskip("sentry_sdk.scope")
 sentry_transport = pytest.importorskip("sentry_sdk.transport")
-
-TOKEN = "apt_" + "a" * 24
 
 
 class DiscardTransport(sentry_transport.Transport):
@@ -73,8 +72,8 @@ def capture_exception_in_server_span(tracer: Tracer) -> str | None:
 def test_sentry_event_id_written_to_server_span(
     sentry_initialized: None, tracer: Tracer, exporter: InMemorySpanExporter
 ):
-    activation.configure(write_token=TOKEN)
-    activation.configure(write_token=TOKEN)
+    activation.configure(write_token=WRITE_TOKEN)
+    activation.configure(write_token=WRITE_TOKEN)
     assert sentry_scope.global_event_processors.count(sentry.sentry_event_processor) == 1
 
     event_id = capture_exception_in_server_span(tracer)
@@ -91,7 +90,7 @@ def test_configure_without_sentry_sdk_installs_nothing(monkeypatch: pytest.Monke
     monkeypatch.setitem(sys.modules, "sentry_sdk", None)
     monkeypatch.setitem(sys.modules, "sentry_sdk.scope", None)
 
-    activation.configure(write_token=TOKEN)
+    activation.configure(write_token=WRITE_TOKEN)
 
     assert not sentry.installed
     assert sentry_scope.global_event_processors == processors_before
@@ -100,7 +99,7 @@ def test_configure_without_sentry_sdk_installs_nothing(monkeypatch: pytest.Monke
 def test_raising_hook_is_swallowed(
     sentry_initialized: None, tracer: Tracer, exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
 ):
-    activation.configure(write_token=TOKEN)
+    activation.configure(write_token=WRITE_TOKEN)
 
     # Break the span at the OTel boundary so the event processor fails without patching
     # any Apitally internals

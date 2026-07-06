@@ -13,14 +13,12 @@ from apitally.shared import activation
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
+    WRITE_TOKEN,
     InMemoryExporters,
     attach_metric_reader,
     duration_data_points,
     exported_spans,
 )
-
-
-TOKEN = "apt_" + "a" * 24
 
 
 @pytest.fixture()
@@ -55,7 +53,7 @@ def app() -> Iterator[Flask]:
 
 def init(app: Flask, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=TOKEN, **kwargs)
+    init_apitally(app, write_token=WRITE_TOKEN, **kwargs)
 
 
 def activate_with_metric_reader() -> InMemoryMetricReader:
@@ -209,7 +207,7 @@ def test_init_apitally_swallows_instrumentation_errors(app: Flask, monkeypatch: 
         raise RuntimeError("instrumentation failed")
 
     monkeypatch.setattr(FlaskInstrumentor, "instrument_app", raise_error)
-    init_apitally(app, write_token=TOKEN)
+    init_apitally(app, write_token=WRITE_TOKEN)
 
     response = app.test_client().get("/items/1")
 

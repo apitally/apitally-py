@@ -16,6 +16,7 @@ from apitally.shared import activation, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.starlette import init_apitally
 from tests.conftest import (
+    WRITE_TOKEN,
     InMemoryExporters,
     attach_metric_reader,
     duration_data_points,
@@ -23,9 +24,6 @@ from tests.conftest import (
     exported_spans,
     unwrap,
 )
-
-
-TOKEN = "apt_" + "a" * 24
 
 
 def create_app() -> Starlette:
@@ -43,11 +41,15 @@ def app() -> Iterator[Starlette]:
     StarletteInstrumentor.uninstrument_app(app)
 
 
+def init(app: Starlette, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    init_apitally(app, write_token=WRITE_TOKEN, **kwargs)
+
+
 def test_request_flow_span_histogram_and_startup_event(
     app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=TOKEN)
+    init(app, monkeypatch)
     assert not activation.is_activated()
     with TestClient(app) as client:
         assert activation.is_activated()
@@ -82,7 +84,7 @@ def test_init_apitally_swallows_instrumentation_errors(app: Starlette, monkeypat
         raise RuntimeError("instrumentation failed")
 
     monkeypatch.setattr(StarletteInstrumentor, "instrument_app", raise_error)
-    init_apitally(app, write_token=TOKEN)
+    init_apitally(app, write_token=WRITE_TOKEN)
     with TestClient(app) as client:
         response = client.get("/items/1")
     assert response.status_code == 200
@@ -91,9 +93,8 @@ def test_init_apitally_swallows_instrumentation_errors(app: Starlette, monkeypat
 def test_pre_instrumented_app_inserts_transport_inside_otel_middleware(
     app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     StarletteInstrumentor.instrument_app(app)
-    init_apitally(app, write_token=TOKEN)
+    init(app, monkeypatch)
 
     classes = [cast(type, m.cls) for m in app.user_middleware]
     assert classes.index(activation.ASGIActivationShim) == 0

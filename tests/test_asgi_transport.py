@@ -8,10 +8,8 @@ from typing import Any
 import pytest
 from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler, TraceIdRatioBased
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import config, metrics
@@ -20,11 +18,9 @@ from apitally.shared.capture import BODY_TOO_LARGE
 from apitally.shared.config import configure
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
-from apitally.shared.span_processor import ApitallySpanProcessor
-from tests.conftest import attach_metric_reader, collect_metrics
+from tests.conftest import WRITE_TOKEN, attach_metric_reader, collect_metrics, create_trace_pipeline
 
 
-TOKEN = "apt_" + "a" * 24
 JSON_HEADERS = [("content-type", "application/json")]
 
 
@@ -41,13 +37,6 @@ def metric_reader() -> Iterator[InMemoryMetricReader]:
     metrics.reset()
 
 
-def create_trace_pipeline(sampler: Sampler = ALWAYS_ON) -> tuple[Tracer, InMemorySpanExporter]:
-    exporter = InMemorySpanExporter()
-    provider = TracerProvider(sampler=sampler)
-    provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
-    return provider.get_tracer("opentelemetry.instrumentation.test"), exporter
-
-
 def header_values(span: ReadableSpan, key: str) -> tuple[str, ...]:
     value = (span.attributes or {})[key]
     assert isinstance(value, (list, tuple))
@@ -55,8 +44,6 @@ def header_values(span: ReadableSpan, key: str) -> tuple[str, ...]:
 
 
 class EchoApp:
-    """A minimal raw-ASGI app that reads the full request body, then sends a configurable response."""
-
     def __init__(
         self,
         status: int = 200,
@@ -126,7 +113,7 @@ async def send_request(
 
 
 async def test_json_bodies_captured_and_redacted():
-    configure(write_token=TOKEN, log_request_body=True, log_response_body=True)
+    configure(write_token=WRITE_TOKEN, log_request_body=True, log_response_body=True)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(response_headers=JSON_HEADERS, response_chunks=[b'{"token": "t", "ok": true}'])
     await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"password": "x", "user": "u"}'])
@@ -138,7 +125,7 @@ async def test_json_bodies_captured_and_redacted():
 
 
 async def test_capture_off_passthrough_and_size_from_content_length():
-    configure(write_token=TOKEN)
+    configure(write_token=WRITE_TOKEN)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     middleware = ApitallyASGIMiddleware(app)
@@ -167,7 +154,7 @@ async def test_capture_off_passthrough_and_size_from_content_length():
     [("image/png", False), ("text/plain; charset=utf-8", True)],
 )
 async def test_content_type_allowlist(content_type: str, captured: bool):
-    configure(write_token=TOKEN, log_request_body=True)
+    configure(write_token=WRITE_TOKEN, log_request_body=True)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     await send_request(tracer, app, request_headers=[("content-type", content_type)], request_chunks=[b"hello"])
@@ -183,7 +170,7 @@ async def test_content_type_allowlist(content_type: str, captured: bool):
 
 
 async def test_body_over_cap_sentinel_with_passthrough():
-    configure(write_token=TOKEN, log_request_body=True)
+    configure(write_token=WRITE_TOKEN, log_request_body=True)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     chunks = [b"a" * 30_000, b"b" * 30_000]
@@ -202,7 +189,7 @@ async def test_mask_callback_none_or_raise_yields_masked():
             raise ValueError("boom")
         return None
 
-    configure(write_token=TOKEN, log_request_body=True, mask_request_body=mask)
+    configure(write_token=WRITE_TOKEN, log_request_body=True, mask_request_body=mask)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a": 1}'])
@@ -216,7 +203,7 @@ async def test_mask_callback_none_or_raise_yields_masked():
 
 
 async def test_mask_callback_output_over_cap_yields_too_large():
-    configure(write_token=TOKEN, log_request_body=True, mask_request_body=lambda span, body: b"x" * 50_001)
+    configure(write_token=WRITE_TOKEN, log_request_body=True, mask_request_body=lambda span, body: b"x" * 50_001)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a": 1}'])
@@ -227,7 +214,7 @@ async def test_mask_callback_output_over_cap_yields_too_large():
 
 
 async def test_aborted_response_body_not_exported():
-    configure(write_token=TOKEN, log_response_body=True)
+    configure(write_token=WRITE_TOKEN, log_response_body=True)
     tracer, exporter = create_trace_pipeline()
 
     async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
@@ -253,7 +240,7 @@ async def test_aborted_response_body_not_exported():
 
 
 async def test_invalid_user_pattern_dropped_and_request_succeeds():
-    configure(write_token=TOKEN, log_request_headers=True, mask_headers=["("])
+    configure(write_token=WRITE_TOKEN, log_request_headers=True, mask_headers=["("])
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     await send_request(tracer, app, request_headers=[("Authorization", "Bearer x")])
@@ -263,7 +250,7 @@ async def test_invalid_user_pattern_dropped_and_request_succeeds():
 
 
 async def test_headers_redacted_and_repeated_as_list():
-    configure(write_token=TOKEN, log_request_headers=True, log_response_headers=True)
+    configure(write_token=WRITE_TOKEN, log_request_headers=True, log_response_headers=True)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(response_headers=[("x-item", "a"), ("x-item", "b"), ("x-secret-key", "s")])
     await send_request(tracer, app, request_headers=[("Authorization", "Bearer x"), ("user-agent", "test")])
@@ -277,7 +264,7 @@ async def test_headers_redacted_and_repeated_as_list():
 
 
 async def test_size_backfill_and_chunked_response_counter():
-    configure(write_token=TOKEN, log_request_body=True)
+    configure(write_token=WRITE_TOKEN, log_request_body=True)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(response_chunks=[b"aa", b"bbb"])  # no Content-Length
     await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a"', b": 1}"])
@@ -290,7 +277,7 @@ async def test_size_backfill_and_chunked_response_counter():
 
 
 async def test_histogram_records_once_with_consumer(metric_reader: InMemoryMetricReader):
-    configure(write_token=TOKEN)
+    configure(write_token=WRITE_TOKEN)
     tracer, _ = create_trace_pipeline()
     app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
     await send_request(tracer, app, method="GET", route="/items/{id}")
@@ -309,7 +296,7 @@ async def test_histogram_records_once_with_consumer(metric_reader: InMemoryMetri
 
 
 async def test_sampled_out_request_still_records_metrics(metric_reader: InMemoryMetricReader):
-    configure(write_token=TOKEN)
+    configure(write_token=WRITE_TOKEN)
     tracer, exporter = create_trace_pipeline(sampler=TraceIdRatioBased(0.0))
     app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
     await send_request(tracer, app, method="GET")
@@ -323,7 +310,7 @@ async def test_sampled_out_request_still_records_metrics(metric_reader: InMemory
 
 async def test_apitally_sampled_out_request_still_records_metrics(metric_reader: InMemoryMetricReader):
     # Apitally-sampling twin of the cooperative-sampler test above (R9, R12)
-    configure(write_token=TOKEN, sample_rate=0.0)
+    configure(write_token=WRITE_TOKEN, sample_rate=0.0)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
     await send_request(tracer, app, method="GET")
@@ -337,7 +324,7 @@ async def test_apitally_sampled_out_request_still_records_metrics(metric_reader:
 
 async def test_response_stage_dropped_request_still_records_metrics(metric_reader: InMemoryMetricReader):
     # Response-stage twin: buffered spans discard at SERVER end while metrics record regardless
-    configure(write_token=TOKEN, sample_on_response=lambda span: False)
+    configure(write_token=WRITE_TOKEN, sample_on_response=lambda span: False)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
     await send_request(tracer, app, method="GET")
@@ -356,7 +343,7 @@ async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricRe
         mask_calls.append(body)
         return body
 
-    configure(write_token=TOKEN, sample_rate=0.0, log_request_body=True, mask_request_body=mask)
+    configure(write_token=WRITE_TOKEN, sample_rate=0.0, log_request_body=True, mask_request_body=mask)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     middleware = ApitallyASGIMiddleware(app)
@@ -383,7 +370,7 @@ async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricRe
 async def test_sampled_out_sync_endpoint_consumer_reaches_metrics(metric_reader: InMemoryMetricReader):
     # Sync endpoints run in a copied context where set_consumer's ContextVar write is lost;
     # the span-attribute fallback must carry the consumer even for a sampled-out request (R11)
-    configure(write_token=TOKEN, sample_rate=0.0)
+    configure(write_token=WRITE_TOKEN, sample_rate=0.0)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(on_request=lambda: contextvars.copy_context().run(set_consumer, "tenant-1"))
     await send_request(tracer, app, method="GET")

@@ -19,12 +19,19 @@ from opentelemetry.sdk.metrics.export import (
     MetricExportResult,
     MetricsData,
 )
-from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler
 from opentelemetry.test.globals_test import reset_trace_globals
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import activation, config, metrics, providers, startup
+from apitally.shared.span_processor import ApitallySpanProcessor
+
+
+WRITE_TOKEN = "apt_" + "a" * 24
+CONTRIB_SCOPE = "opentelemetry.instrumentation.test"
 
 
 def installed(*modules: str) -> bool:
@@ -188,3 +195,17 @@ def startup_payload(exporters: InMemoryExporters) -> dict[str, Any]:
     (record,) = [r for r in exported_log_records(exporters) if r.event_name == startup.EVENT_NAME]
     assert isinstance(record.body, str)
     return json.loads(record.body)
+
+
+def create_tracer(exporter: SpanExporter, sampler: Sampler = ALWAYS_ON, scope: str = CONTRIB_SCOPE) -> Tracer:
+    # The Apitally span processor binds config at construction, so build after configure()
+    provider = TracerProvider(sampler=sampler)
+    provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
+    return provider.get_tracer(scope)
+
+
+def create_trace_pipeline(
+    sampler: Sampler = ALWAYS_ON, scope: str = CONTRIB_SCOPE
+) -> tuple[Tracer, InMemorySpanExporter]:
+    exporter = InMemorySpanExporter()
+    return create_tracer(exporter, sampler=sampler, scope=scope), exporter
