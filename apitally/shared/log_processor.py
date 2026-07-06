@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 SERVER_SPAN_ID_ATTRIBUTE = "apitally.request.server_span_id"
 SELF_LOGGER_NAMESPACES = ("apitally", "opentelemetry")
+MAX_BUFFERED_LOGS = 1_000
 
 installed_handler: LoggingHandler | None = None
 
@@ -52,6 +53,8 @@ class ApitallyLogRecordProcessor(LogRecordProcessor):
         # Settable so fork re-activation can swap in a fresh batch processor (design.md section 7)
         self.downstream = downstream
         self.span_processor = span_processor
+        self.pending: dict[int, list[ReadWriteLogRecord]] = {}
+        span_processor.on_request_finished = self.finish_request
 
     def on_emit(self, log_record: ReadWriteLogRecord) -> None:
         try:
@@ -65,11 +68,26 @@ class ApitallyLogRecordProcessor(LogRecordProcessor):
                 # ReadWriteLogRecord.__post_init__ replaces attributes with mutable BoundedAttributes
                 attributes = cast("MutableMapping[str, Any]", record.attributes)
                 attributes[SERVER_SPAN_ID_ATTRIBUTE] = format(server_span_id, "016x")
+            if server_span_id is not None and server_span_id in self.span_processor.pending:
+                buffer = self.pending.setdefault(server_span_id, [])
+                if len(buffer) < MAX_BUFFERED_LOGS:
+                    buffer.append(log_record)
+                else:
+                    logger.debug("Apitally log buffer cap reached for request, dropping log record")
+                return
             self.downstream.on_emit(log_record)
         except Exception:
             logger.exception("Error in Apitally log record processor")
 
+    def finish_request(self, server_span_id: int, keep: bool) -> None:
+        buffer = self.pending.pop(server_span_id, None)
+        if keep and buffer is not None:
+            for log_record in buffer:
+                self.downstream.on_emit(log_record)
+
     def shutdown(self) -> None:
+        # Pending requests' SERVER spans can never export after shutdown, so their records are unreachable
+        self.pending.clear()
         self.downstream.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:

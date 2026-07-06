@@ -12,6 +12,7 @@ from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared.config import configure
 from apitally.shared.log_processor import (
+    MAX_BUFFERED_LOGS,
     ApitallyLogRecordProcessor,
     install_root_handler,
     uninstall_root_handler,
@@ -68,6 +69,8 @@ def test_log_in_nested_span_carries_server_span_id(
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as server:
         with tracer.start_as_current_span("child") as child:
             logging.getLogger("myapp").warning("inside child")
+        # Buffered until the SERVER span's response-stage decision (buffering.md R1)
+        assert log_exporter.get_finished_logs() == ()
     (exported,) = log_exporter.get_finished_logs()
     record = exported.log_record
     assert record.trace_id == server.get_span_context().trace_id != 0
@@ -75,6 +78,30 @@ def test_log_in_nested_span_carries_server_span_id(
     assert unwrap(record.attributes)["apitally.request.server_span_id"] == format(
         server.get_span_context().span_id, "016x"
     )
+
+
+def test_response_stage_dropped_request_logs_discarded(log_exporter: InMemoryLogRecordExporter):
+    configure(write_token=TOKEN, sample_on_response=lambda span: False)
+    span_processor = ApitallySpanProcessor(SpanProcessor())
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(span_processor)
+    logger_provider = LoggerProvider()
+    logger_provider.add_log_record_processor(
+        ApitallyLogRecordProcessor(SimpleLogRecordProcessor(log_exporter), span_processor)
+    )
+    install_root_handler(logger_provider)
+    with tracer_provider.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        logging.getLogger("myapp").warning("inside request")
+    assert log_exporter.get_finished_logs() == ()
+
+
+def test_log_buffer_cap_drops_excess(
+    tracer: Tracer, log_exporter: InMemoryLogRecordExporter, root_handler: LoggingHandler | None
+):
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        for i in range(MAX_BUFFERED_LOGS + 1):
+            logging.getLogger("myapp").warning("log %d", i)
+    assert len(log_exporter.get_finished_logs()) == MAX_BUFFERED_LOGS
 
 
 def test_log_without_active_request_dropped(
