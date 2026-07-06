@@ -14,6 +14,8 @@ from apitally.shared.asgi import ApitallyASGIMiddleware
 
 if TYPE_CHECKING:
     from opentelemetry.sdk.trace import ReadableSpan
+    from starlette.routing import BaseRoute
+    from starlette.types import Scope
 
 
 __all__ = ["init_apitally"]
@@ -69,13 +71,13 @@ def _instrument_app(app: FastAPI) -> None:
     # (add_middleware cannot reach outside the instrumentor's wrap)
     build_inner = app.build_middleware_stack
 
-    def build_with_shim() -> Any:
+    def build_with_shim() -> activation.ASGIActivationShim:
         return activation.ASGIActivationShim(build_inner())
 
     app.build_middleware_stack = build_with_shim  # ty: ignore[invalid-assignment]
 
 
-def _resolve_route(scope: dict[str, Any]) -> str | None:
+def _resolve_route(scope: Scope) -> str | None:
     # FastAPI 0.138+ keeps included-router routes unflattened; only the effective route
     # context carries the full templated path, scope["route"].path lacks the prefix (0.x parity)
     context = scope.get("fastapi", {}).get("effective_route_context")
@@ -101,7 +103,7 @@ def _get_paths(app: FastAPI) -> list[dict[str, str]]:
     return paths
 
 
-def _iter_routes(routes: list[Any]) -> Iterator[Any]:
+def _iter_routes(routes: list[BaseRoute]) -> Iterator[Any]:
     # Expand FastAPI 0.138+ included-router nodes into their effective route contexts,
     # which expose path, methods, summary, and description with the full templated path
     for route in routes:

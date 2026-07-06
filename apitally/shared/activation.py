@@ -5,7 +5,7 @@ import os
 import sys
 import threading
 from collections.abc import Awaitable, Callable, Iterable, MutableMapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
@@ -17,6 +17,10 @@ from apitally.shared import config, metrics, providers, sentry
 from apitally.shared.config import TRUE_VALUES, ApitallyConfig
 from apitally.shared.log_processor import ApitallyLogRecordProcessor, install_root_handler, uninstall_root_handler
 from apitally.shared.span_processor import ApitallySpanProcessor
+
+
+if TYPE_CHECKING:
+    from _typeshed.wsgi import StartResponse, WSGIApplication, WSGIEnvironment
 
 
 logger = logging.getLogger(__name__)
@@ -115,10 +119,10 @@ class ASGIActivationShim:
 class WSGIActivationShim:
     """Outermost WSGI layer. Activates on the first request."""
 
-    def __init__(self, wsgi_app: Callable[..., Iterable[bytes]]) -> None:
+    def __init__(self, wsgi_app: WSGIApplication) -> None:
         self.wsgi_app = wsgi_app
 
-    def __call__(self, environ: dict[str, Any], start_response: Callable[..., Any]) -> Iterable[bytes]:
+    def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
         if not activation_attempted:
             activate()
         return self.wsgi_app(environ, start_response)

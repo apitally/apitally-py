@@ -1,10 +1,11 @@
 import re
 from collections.abc import Mapping
-from typing import Any
 from urllib.parse import parse_qsl, urlencode
 
 
 REDACTED = "[REDACTED]"
+
+JSONValue = None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
 
 DEFAULT_QUERY_PARAM_PATTERNS = [
     r"auth",
@@ -57,15 +58,15 @@ class Redaction:
         redacted = urlencode([(k, REDACTED if matches_any(self.query_param_patterns, k) else v) for k, v in pairs])
         return f"{base}?{redacted}" if sep else redacted
 
-    def redact_headers(self, headers: Mapping[str, Any]) -> dict[str, Any]:
-        result: dict[str, Any] = {}
+    def redact_headers(self, headers: Mapping[str, str | list[str]]) -> dict[str, str | list[str]]:
+        result: dict[str, str | list[str]] = {}
         for name, value in headers.items():
             if self.should_redact_header(name):
                 value = REDACTED if isinstance(value, str) else [REDACTED]
             result[name] = value
         return result
 
-    def redact_body(self, data: Any) -> Any:
+    def redact_body(self, data: JSONValue) -> JSONValue:
         if isinstance(data, dict):
             return {
                 k: REDACTED if isinstance(v, str) and matches_any(self.body_field_patterns, k) else self.redact_body(v)

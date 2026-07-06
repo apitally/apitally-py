@@ -68,7 +68,10 @@ def test_route_repair_metrics_and_no_noise_spans(exporters: InMemoryExporters, m
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     with TestClient(app=make_app()) as client:
         assert metrics.meter_provider is not None
-        reader = InMemoryMetricReader(**metrics.HISTOGRAM_OVERRIDES)
+        reader = InMemoryMetricReader(
+            preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
+            preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
+        )
         metrics.meter_provider.add_metric_reader(reader)
         assert client.get("/users/123").status_code == 200
 

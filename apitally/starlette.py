@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.starlette import StarletteInstrumentor
@@ -17,6 +17,8 @@ from apitally.shared.asgi import ApitallyASGIMiddleware
 
 if TYPE_CHECKING:
     from opentelemetry.sdk.trace import ReadableSpan
+    from starlette.routing import BaseRoute
+    from starlette.types import Scope
 
 
 __all__ = ["init_apitally"]
@@ -77,21 +79,22 @@ def _instrument_app(app: Starlette) -> None:
     app.add_middleware(activation.ASGIActivationShim)
 
 
-def _resolve_route(scope: dict[str, Any], routes: list[Any] | None = None) -> str | None:
+def _resolve_route(scope: Scope, routes: list[BaseRoute] | None = None) -> str | None:
     # Ported from the 0.x route matcher; returns the route template without root_path,
     # matching the http.route the instrumentor sets on the SERVER span
     if routes is None:
         app = scope.get("app")
         routes = getattr(app, "routes", None) or []
     for route in routes:
-        if hasattr(route, "routes"):
-            path = _resolve_route(scope, routes=route.routes)
+        sub_routes = getattr(route, "routes", None)
+        if sub_routes is not None:
+            path = _resolve_route(scope, routes=sub_routes)
             if path is not None:
                 return path
-        elif hasattr(route, "path"):
+        elif (path := getattr(route, "path", None)) is not None:
             match, _ = route.matches(scope)
             if match == Match.FULL:
-                return route.path
+                return path
     return None
 
 

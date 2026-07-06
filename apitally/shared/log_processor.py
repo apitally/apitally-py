@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import MutableMapping
-from typing import Any, cast
+from typing import cast
 
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
 from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor, ReadWriteLogRecord
+from opentelemetry.util.types import AnyValue
 
 from apitally.shared.config import ApitallyConfig, get_config
 from apitally.shared.span_processor import ApitallySpanProcessor
@@ -66,7 +67,7 @@ class ApitallyLogRecordProcessor(LogRecordProcessor):
                     return
             elif record.attributes is not None:
                 # ReadWriteLogRecord.__post_init__ replaces attributes with mutable BoundedAttributes
-                attributes = cast("MutableMapping[str, Any]", record.attributes)
+                attributes = cast("MutableMapping[str, AnyValue]", record.attributes)
                 attributes[SERVER_SPAN_ID_ATTRIBUTE] = format(server_span_id, "016x")
             if server_span_id is not None and server_span_id in self.span_processor.pending:
                 buffer = self.pending.setdefault(server_span_id, [])

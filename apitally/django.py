@@ -5,7 +5,7 @@ import logging
 import re
 import sys
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
@@ -110,7 +110,7 @@ def _insert_middleware(caller_globals: dict[str, Any]) -> None:
         middleware.insert(position, APITALLY_MIDDLEWARE)
 
 
-def _handle_request_started(sender: Any, **kwargs: Any) -> None:
+def _handle_request_started(sender: object, **kwargs: Any) -> None:
     if not activation.activation_attempted:
         activation.activate()
 
@@ -287,7 +287,20 @@ def _get_openapi() -> str | None:
     return None
 
 
-def _convert_proxy_objects(data: Any) -> Any:
+ProxyValue = (
+    str
+    | int
+    | float
+    | bool
+    | None
+    | Promise
+    | Mapping[str, "ProxyValue"]
+    | list["ProxyValue"]
+    | tuple["ProxyValue", ...]
+)
+
+
+def _convert_proxy_objects(data: ProxyValue) -> ProxyValue:
     """Recursively convert Django lazy proxy objects to strings to make them JSON serializable."""
     if isinstance(data, Promise):
         return force_str(data)

@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterable
-from typing import Any
 
 from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
 from opentelemetry.metrics import CallbackOptions, Histogram, Observation
 from opentelemetry.sdk.metrics import Histogram as SDKHistogram
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import AggregationTemporality, PeriodicExportingMetricReader
-from opentelemetry.sdk.metrics.view import ExponentialBucketHistogramAggregation
+from opentelemetry.sdk.metrics.view import Aggregation, ExponentialBucketHistogramAggregation
 from opentelemetry.sdk.resources import Resource
 
 from apitally.shared.providers import create_meter_provider, create_metric_exporter
@@ -19,9 +18,9 @@ EXPORT_INTERVAL_MILLIS = 60_000
 
 # Keyed on the SDK instrument class (the API class raises at reader construction), so the
 # process gauges keep their default aggregation and temporality
-HISTOGRAM_OVERRIDES: dict[str, Any] = {
-    "preferred_temporality": {SDKHistogram: AggregationTemporality.DELTA},
-    "preferred_aggregation": {SDKHistogram: ExponentialBucketHistogramAggregation(max_scale=3)},
+HISTOGRAM_PREFERRED_TEMPORALITY: dict[type, AggregationTemporality] = {SDKHistogram: AggregationTemporality.DELTA}
+HISTOGRAM_PREFERRED_AGGREGATION: dict[type, Aggregation] = {
+    SDKHistogram: ExponentialBucketHistogramAggregation(max_scale=3)
 }
 
 # None values: these two instruments emit a single unlabeled observation each
@@ -98,7 +97,11 @@ def attach_reader(env: str) -> None:
     detach_reader()
     # Interval passed explicitly so OTEL_METRIC_EXPORT_INTERVAL never applies; the 60 s
     # cadence is the liveness heartbeat
-    exporter = create_metric_exporter(env, **HISTOGRAM_OVERRIDES)
+    exporter = create_metric_exporter(
+        env,
+        preferred_temporality=HISTOGRAM_PREFERRED_TEMPORALITY,
+        preferred_aggregation=HISTOGRAM_PREFERRED_AGGREGATION,
+    )
     reader = ApitallyMetricReader(exporter, export_interval_millis=EXPORT_INTERVAL_MILLIS)
     meter_provider.add_metric_reader(reader)
 

@@ -56,7 +56,10 @@ def init(app: Flask, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
 def activate_with_metric_reader() -> InMemoryMetricReader:
     activation.activate()
     assert metrics.meter_provider is not None
-    reader = InMemoryMetricReader(**metrics.HISTOGRAM_OVERRIDES)
+    reader = InMemoryMetricReader(
+        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
+        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
+    )
     metrics.meter_provider.add_metric_reader(reader)
     return reader
 

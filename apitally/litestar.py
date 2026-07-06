@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from litestar.exceptions import HTTPException
 from litestar.middleware.base import DefineMiddleware
@@ -126,7 +126,7 @@ def _after_exception(exception: Exception, scope: Scope) -> None:
         logger.exception("Error in Apitally after_exception hook")
 
 
-def _resolve_route(scope: dict[str, Any]) -> str | None:
+def _resolve_route(scope: Scope) -> str | None:
     path_template = scope.get("path_template")
     return str(path_template) if path_template else None
 

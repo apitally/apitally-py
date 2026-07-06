@@ -78,7 +78,10 @@ def get_log_records(exporters: InMemoryExporters) -> list[LogRecord]:
 
 def attach_metric_reader() -> InMemoryMetricReader:
     assert metrics.meter_provider is not None
-    reader = InMemoryMetricReader(**metrics.HISTOGRAM_OVERRIDES)
+    reader = InMemoryMetricReader(
+        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
+        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
+    )
     metrics.meter_provider.add_metric_reader(reader)
     return reader
 

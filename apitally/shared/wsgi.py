@@ -4,7 +4,7 @@ import io
 import logging
 import time
 from collections.abc import Callable, Iterable, Iterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from apitally.shared import metrics
 from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
@@ -15,6 +15,7 @@ from apitally.shared.span_processor import get_server_span, is_server_span_kept
 
 
 if TYPE_CHECKING:
+    from _typeshed import OptExcInfo
     from _typeshed.wsgi import StartResponse, WSGIApplication, WSGIEnvironment
     from opentelemetry.sdk.trace import Span
 
@@ -47,7 +48,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
             logger.exception("Error in Apitally WSGI middleware")
 
         def wrapped_start_response(
-            status: str, response_headers: list[tuple[str, str]], exc_info: Any = None
+            status: str, response_headers: list[tuple[str, str]], exc_info: OptExcInfo | None = None
         ) -> Callable[[bytes], object]:
             try:
                 self.handle_response_start(config, state, status, response_headers, environ)
