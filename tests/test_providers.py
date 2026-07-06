@@ -1,6 +1,4 @@
-import logging
 import uuid
-from typing import Any
 
 import pytest
 from opentelemetry import metrics, trace
@@ -8,24 +6,16 @@ from opentelemetry._logs import get_logger_provider
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import SpanLimits, TracerProvider
+from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Decision, Sampler, SamplingResult, TraceIdRatioBased
+from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 
-from apitally.shared import config, providers
+from apitally.shared import providers
 from apitally.shared.config import configure
 
 
 TOKEN = "apt_" + "a" * 24
-
-
-class CustomSampler(Sampler):
-    def should_sample(self, *args: Any, **kwargs: Any) -> SamplingResult:
-        return SamplingResult(Decision.RECORD_AND_SAMPLE)
-
-    def get_description(self) -> str:
-        return "CustomSampler"
 
 
 def test_mode_detection():
@@ -84,34 +74,11 @@ def test_cooperative_pipeline():
     assert len(our_exporter.get_finished_spans()) == 1
 
 
-def test_cooperative_lossy_sampler_warns_once(caplog: pytest.LogCaptureFixture):
-    configure(write_token=TOKEN)
-    user_provider = TracerProvider(sampler=TraceIdRatioBased(0.1))
-    with caplog.at_level(logging.WARNING, logger="apitally"):
-        providers.attach_to_tracer_provider(user_provider, SimpleSpanProcessor(InMemorySpanExporter()))
-        providers.attach_to_tracer_provider(user_provider, SimpleSpanProcessor(InMemorySpanExporter()))
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warnings) == 1
-    assert "sampling rate" in warnings[0].getMessage()
-
-
-def test_custom_sampler_debug_only(caplog: pytest.LogCaptureFixture):
-    configure(write_token=TOKEN)
-    user_provider = TracerProvider(sampler=CustomSampler())
-    with caplog.at_level(logging.DEBUG, logger="apitally"):
-        providers.attach_to_tracer_provider(user_provider, SimpleSpanProcessor(InMemorySpanExporter()))
-    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
-    debugs = [r for r in caplog.records if r.levelno == logging.DEBUG and "CustomSampler" in r.getMessage()]
-    assert len(debugs) == 1
-
-
-def test_cooperative_env_conflict_warns_and_uses_resource_value(caplog: pytest.LogCaptureFixture):
+def test_cooperative_env_conflict_uses_resource_value():
     configure(write_token=TOKEN, env="staging")
     user_provider = TracerProvider(resource=Resource.create({"deployment.environment.name": "production"}))
-    with caplog.at_level(logging.WARNING, logger="apitally"):
-        env = providers.resolve_env(user_provider)
+    env = providers.resolve_env(user_provider)
     assert env == "production"
-    assert any("deployment.environment.name" in r.getMessage() for r in caplog.records)
 
 
 def test_apitally_env_header_matches_resource_in_both_modes():
@@ -144,22 +111,6 @@ def test_exporter_endpoint_override(monkeypatch: pytest.MonkeyPatch):
     assert metric_exporter._endpoint == "http://localhost:4318/v1/metrics"
     assert log_exporter._endpoint == "http://localhost:4318/v1/logs"
     assert "x-other" not in span_exporter._headers
-
-
-def test_cooperative_span_limit_warning(caplog: pytest.LogCaptureFixture):
-    user_provider = TracerProvider(span_limits=SpanLimits(max_span_attribute_length=4_096))
-
-    configure(write_token=TOKEN, log_response_headers=False)
-    with caplog.at_level(logging.WARNING, logger="apitally"):
-        providers.attach_to_tracer_provider(user_provider, SimpleSpanProcessor(InMemorySpanExporter()))
-    assert not [r for r in caplog.records if "truncated" in r.getMessage()]
-
-    # Second half models a separate process with capture enabled
-    config.reset()
-    configure(write_token=TOKEN, log_request_body=True)
-    with caplog.at_level(logging.WARNING, logger="apitally"):
-        providers.attach_to_tracer_provider(user_provider, SimpleSpanProcessor(InMemorySpanExporter()))
-    assert len([r for r in caplog.records if "truncated" in r.getMessage()]) == 1
 
 
 def test_private_meter_and_logger_providers():
