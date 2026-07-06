@@ -24,7 +24,7 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 
 class ApitallyASGIMiddleware(CaptureMixin):
-    """Transport middleware running inside the instrumentor's SERVER span (design.md section 6)."""
+    """Transport middleware running inside the instrumentor's SERVER span."""
 
     def __init__(self, app: ASGIApp, resolve_route: Callable[[Scope], str | None] | None = None) -> None:
         self.app = app

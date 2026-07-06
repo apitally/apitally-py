@@ -76,7 +76,7 @@ def create_resource(env: str) -> Resource:
 
 def setup_tracer_provider(resource: Resource, span_processor: SpanProcessor) -> TracerProvider:
     # Sampler and limits are passed explicitly so OTEL_TRACES_SAMPLER and the attribute
-    # length limit env vars never apply (design.md section 2)
+    # length limit env vars never apply
     provider = TracerProvider(
         sampler=ALWAYS_ON,
         resource=resource,
@@ -97,12 +97,12 @@ def attach_to_tracer_provider(user_provider: TracerProvider, span_processor: Spa
 
 
 def create_meter_provider(resource: Resource, metric_readers: Sequence[MetricReader]) -> MeterProvider:
-    # Private instance, never registered via set_meter_provider (design.md section 2)
+    # Private instance, never registered via set_meter_provider
     return MeterProvider(metric_readers=metric_readers, resource=resource)
 
 
 def create_logger_provider(resource: Resource, processors: Sequence[LogRecordProcessor] = ()) -> LoggerProvider:
-    # Private instance, never registered via set_logger_provider (design.md section 2)
+    # Private instance, never registered via set_logger_provider
     provider = LoggerProvider(resource=resource)
     for processor in processors:
         provider.add_log_record_processor(processor)
@@ -172,6 +172,6 @@ def endpoint_url(path: str) -> str:
 
 def export_headers(env: str) -> dict[str, str]:
     # Endpoint and headers are always passed explicitly to the exporters, so the
-    # OTEL_EXPORTER_OTLP_* env vars are never consulted (design.md section 14)
+    # OTEL_EXPORTER_OTLP_* env vars are never consulted
     config = get_config() or ApitallyConfig()
     return {"Authorization": f"Bearer {config.write_token}", "Apitally-Env": env}

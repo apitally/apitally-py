@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class ApitallyWSGIMiddleware(CaptureMixin):
-    """Transport-level capture middleware; must run inside the instrumentor's middleware (design.md section 6)."""
+    """Transport-level capture middleware; must run inside the instrumentor's middleware."""
 
     def __init__(
         self,
@@ -69,7 +69,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
             return None
         if content_length is None:
             # Chunked/absent-length bodies are never read: raw-socket servers block on
-            # reads past Content-Length (wsgi.md)
+            # reads past Content-Length
             return None
         if content_length > MAX_BODY_SIZE:
             return BODY_TOO_LARGE

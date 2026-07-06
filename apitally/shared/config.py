@@ -109,7 +109,7 @@ def resolve_config(kwargs: dict[str, Any]) -> tuple[ApitallyConfig, str | None]:
     global sample_rate_warned
     config = ApitallyConfig(**{k: v for k, v in kwargs.items() if k in CONFIG_FIELDS})
     drop_invalid_patterns(config)
-    # Type check before range check: comparing a non-numeric sample_rate would raise (design.md section 9)
+    # Type check before range check: comparing a non-numeric sample_rate would raise
     if not isinstance(config.sample_rate, (int, float)) or not 0 <= config.sample_rate <= 1:
         if not sample_rate_warned:
             sample_rate_warned = True

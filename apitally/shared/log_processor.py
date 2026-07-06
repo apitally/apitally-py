@@ -21,7 +21,7 @@ installed_handler: LoggingHandler | None = None
 
 
 def install_root_handler(logger_provider: LoggerProvider) -> LoggingHandler | None:
-    """Bridge stdlib logging into the private LoggerProvider (design.md section 10)."""
+    """Bridge stdlib logging into the private LoggerProvider."""
     global installed_handler
     config = get_config() or ApitallyConfig()
     if not config.capture_logs:
@@ -47,10 +47,10 @@ def exclude_self_logs(record: logging.LogRecord) -> bool:
 
 
 class ApitallyLogRecordProcessor(LogRecordProcessor):
-    """Stamps the SERVER span id on request-scoped records and drops the rest (design.md section 10)."""
+    """Stamps the SERVER span id on request-scoped records and drops the rest."""
 
     def __init__(self, downstream: LogRecordProcessor, span_processor: ApitallySpanProcessor) -> None:
-        # Settable so fork re-activation can swap in a fresh batch processor (design.md section 7)
+        # Settable so fork re-activation can swap in a fresh batch processor
         self.downstream = downstream
         self.span_processor = span_processor
         self.pending: dict[int, list[ReadWriteLogRecord]] = {}

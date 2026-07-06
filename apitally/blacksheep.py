@@ -58,7 +58,7 @@ def init_apitally(
         instrumented_by_user = isinstance(app, OpenTelemetryMiddleware)
         if instrumented_by_user:
             # The user wrapped the app in their own generic ASGI instrumentor; reuse their
-            # SERVER spans instead of nesting a second one (design.md section 4)
+            # SERVER spans instead of nesting a second one
             logger.debug("Existing OpenTelemetryMiddleware detected, skipping Apitally instrumentor layer")
             app = app.app
 
@@ -69,7 +69,7 @@ def init_apitally(
         _wrap_error_handler(app)
 
         # Per-instance __call__ assignment is ignored by Python's type-based dunder lookup,
-        # so _handle_http is the interposition point (design.md section 4)
+        # so _handle_http is the interposition point
         chain: Any = ApitallyASGIMiddleware(app._handle_http)
         if not instrumented_by_user:
             chain = OpenTelemetryMiddleware(chain, exclude_spans=["receive", "send"])

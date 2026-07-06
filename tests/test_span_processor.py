@@ -39,7 +39,7 @@ def remote_parent_context(trace_id: int) -> Context:
 
 @pytest.fixture(autouse=True)
 def reset_server_span_var() -> Iterator[None]:
-    # The vars intentionally persist after a request ends (design.md section 5), so tests
+    # The vars intentionally persist after a request ends, so tests
     # sharing one context must clear them between runs
     yield
     server_span_var.set(None)
@@ -88,7 +88,7 @@ def test_server_root_and_child_kept(tracer: Tracer, processor: ApitallySpanProce
 
 
 def test_nothing_exported_before_server_span_ends(tracer: Tracer, exporter: InMemorySpanExporter):
-    # A request's telemetry is exported when the request completes, buffered descendants first (buffering.md R1, R4)
+    # A request's telemetry is exported when the request completes, buffered descendants first
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
         with tracer.start_as_current_span("child"):
             pass
@@ -240,7 +240,7 @@ def test_sample_on_response_keeps_errors_drops_healthy(exporter: InMemorySpanExp
         with tracer.start_as_current_span("child"):
             pass
         span.set_attribute("http.response.status_code", 200)
-    # The buffered child is discarded with its dropped request: zero items exported (buffering.md R2)
+    # The buffered child is discarded with its dropped request: zero items exported
     assert exporter.get_finished_spans() == ()
 
     with tracer.start_as_current_span("GET /b", kind=SpanKind.SERVER, context=remote_parent_context(bound)) as span:

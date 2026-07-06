@@ -34,16 +34,16 @@ log_processor: ApitallyLogRecordProcessor | None = None
 logger_provider: LoggerProvider | None = None
 
 # OTel's own fork handlers hold weak references to batch processors; keep quiesced
-# instances alive so a later fork never calls a dead reference (design.md section 7)
+# instances alive so a later fork never calls a dead reference
 retired_processors: list[SpanProcessor | LogRecordProcessor] = []
 
 # The forked child inherits the tracer provider with this processor already attached;
-# re-activation reuses it instead of attaching a second one (design.md section 7)
+# re-activation reuses it instead of attaching a second one
 inherited_span_processor: ApitallySpanProcessor | None = None
 
 
 def configure(**kwargs: Any) -> ApitallyConfig:
-    """Configure phase: record config only, no threads, no network (design.md section 7)."""
+    """Configure phase: record config only, no threads, no network."""
     global fork_handlers_registered
     cfg = config.configure(**kwargs)
     config.ensure_semconv_opt_in()
@@ -57,7 +57,7 @@ def configure(**kwargs: Any) -> ApitallyConfig:
 
 
 def activate() -> None:
-    """Activate the telemetry pipelines exactly once; errors never propagate (design.md sections 7 and 9)."""
+    """Activate the telemetry pipelines exactly once; errors never propagate."""
     global activation_attempted, activated
     with activation_lock:
         if activation_attempted:
@@ -88,7 +88,7 @@ def register_on_activate_hook(hook: Callable[[], None]) -> None:
 
 
 class ASGIActivationShim:
-    """Outermost ASGI layer: activates on lifespan startup completion or the first request (design.md section 7)."""
+    """Outermost ASGI layer: activates on lifespan startup completion or the first request."""
 
     def __init__(self, app: Callable[..., Awaitable[Any]]) -> None:
         self.app = app
@@ -114,7 +114,7 @@ class ASGIActivationShim:
 
 
 class WSGIActivationShim:
-    """Outermost WSGI layer: activates on the first request (design.md section 7)."""
+    """Outermost WSGI layer: activates on the first request."""
 
     def __init__(self, wsgi_app: Callable[..., Iterable[bytes]]) -> None:
         self.wsgi_app = wsgi_app
@@ -126,7 +126,7 @@ class WSGIActivationShim:
 
 
 def skip_activation() -> bool:
-    # Test-environment detection at the activation boundary (design.md section 7)
+    # Test-environment detection at the activation boundary
     cfg = config.get_config()
     return (
         cfg is None
@@ -168,7 +168,7 @@ def start_pipelines() -> None:
 
 
 def before_fork() -> None:
-    """Quiesce so the process owns no threads at the instant of fork (design.md section 7)."""
+    """Quiesce so the process owns no threads at the instant of fork."""
     # Held across the fork so an in-flight activate completes first; released in both after
     # handlers (the child gets a fresh lock, since an inherited locked mutex would deadlock)
     activation_lock.acquire()
@@ -190,7 +190,7 @@ def before_fork() -> None:
 
 
 def after_fork_in_parent() -> None:
-    """Re-activate by swapping fresh batch processors into the registered wrappers (design.md section 7)."""
+    """Re-activate by swapping fresh batch processors into the registered wrappers."""
     try:
         if not activated or env is None:
             return
@@ -206,7 +206,7 @@ def after_fork_in_parent() -> None:
 
 
 def after_fork_in_child() -> None:
-    """Reset to configured state; the child activates itself if it ever serves (design.md section 7)."""
+    """Reset to configured state; the child activates itself if it ever serves."""
     global activation_lock, activation_attempted, activated, env, resource
     global span_processor, log_processor, logger_provider, inherited_span_processor
     activation_lock = threading.Lock()
@@ -228,7 +228,7 @@ def after_fork_in_child() -> None:
 
 
 def reset() -> None:
-    """Full teardown for tests; retired processors stay referenced (design.md section 7)."""
+    """Full teardown for tests; retired processors stay referenced."""
     global activation_lock, activation_attempted, activated, env, resource
     global span_processor, log_processor, logger_provider, inherited_span_processor
     activation_lock = threading.Lock()

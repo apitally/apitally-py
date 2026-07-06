@@ -354,7 +354,7 @@ async def test_apitally_sampled_out_request_still_records_metrics(metric_reader:
 
 
 async def test_response_stage_dropped_request_still_records_metrics(metric_reader: InMemoryMetricReader):
-    # Response-stage twin: buffered spans discard at SERVER end while metrics record regardless (buffering.md AE6)
+    # Response-stage twin: buffered spans discard at SERVER end while metrics record regardless
     configure(write_token=TOKEN, sample_on_response=lambda span: False)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(on_request=lambda: set_consumer("tenant-1"))

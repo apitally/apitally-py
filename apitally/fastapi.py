@@ -44,7 +44,7 @@ def init_apitally(
     sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
     sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
 ) -> None:
-    """Set up Apitally for a FastAPI application. Errors never propagate (design.md section 9)."""
+    """Set up Apitally for a FastAPI application. Errors never propagate."""
     try:
         activation.configure(**config.explicit_kwargs(locals()))
         _instrument_app(app)
@@ -66,7 +66,7 @@ def _instrument_app(app: FastAPI) -> None:
     # Lands inside the SERVER span regardless of order: the instrumentor wraps the whole built stack lazily
     app.add_middleware(ApitallyASGIMiddleware, resolve_route=_resolve_route)
     # Chain-patch after the instrumentor's patch so the shim wraps the built stack outermost
-    # (add_middleware cannot reach outside the instrumentor's wrap; design.md section 7)
+    # (add_middleware cannot reach outside the instrumentor's wrap)
     build_inner = app.build_middleware_stack
 
     def build_with_shim() -> Any:

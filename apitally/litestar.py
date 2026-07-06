@@ -65,7 +65,7 @@ class ApitallyPlugin(InitPluginProtocol):
             activation.configure(**self.configure_kwargs)
             if not _has_otel_instrumentation(app_config):
                 # Install via the plugin registry, never the middleware list: the hoist path
-                # is last-one-wins and silently discards a coexisting config (litestar.md)
+                # is last-one-wins and silently discards a coexisting config
                 otel_plugin = OpenTelemetryPlugin(OpenTelemetryConfig(exclude_spans=["receive", "send"]))
                 app_config.plugins = [*app_config.plugins, otel_plugin]
             app_config.middleware.append(
@@ -92,7 +92,7 @@ class ApitallyPlugin(InitPluginProtocol):
 
 
 def _has_otel_instrumentation(app_config: AppConfig) -> bool:
-    # Either a stock plugin or the legacy raw-middleware pattern (design.md section 4)
+    # Either a stock plugin or the legacy raw-middleware pattern
     return any(isinstance(plugin, OpenTelemetryPlugin) for plugin in app_config.plugins) or any(
         isinstance(middleware, DefineMiddleware)
         and isinstance(middleware.middleware, type)
@@ -102,7 +102,7 @@ def _has_otel_instrumentation(app_config: AppConfig) -> bool:
 
 
 async def _before_send(message: Message, scope: Scope) -> None:
-    """Repair http.route and the span name from the routed template (litestar.md)."""
+    """Repair http.route and the span name from the routed template."""
     try:
         if message.get("type") != "http.response.start":
             return
