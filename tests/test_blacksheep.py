@@ -10,17 +10,19 @@ import pytest
 from blacksheep import Application, Request, Response, text
 from blacksheep.server.routing import Router
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
-from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader
-from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import SpanKind, StatusCode
 
 from apitally.blacksheep import init_apitally
-from apitally.shared import activation, metrics, startup
+from apitally.shared import activation
 from apitally.shared.redaction import REDACTED
-from tests.conftest import InMemoryExporters
-
-
-TOKEN = "apt_" + "a" * 24
+from tests.conftest import (
+    WRITE_TOKEN,
+    InMemoryExporters,
+    attach_metric_reader,
+    duration_data_points,
+    exported_spans,
+    startup_payload,
+)
 
 
 def allow_activation(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -31,7 +33,7 @@ def allow_activation(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def create_app(**kwargs: Any) -> Application:
     app = Application(router=Router())
-    init_apitally(app, write_token=TOKEN, app_version="1.2.3", **kwargs)
+    init_apitally(app, write_token=WRITE_TOKEN, app_version="1.2.3", **kwargs)
 
     @app.router.get("/items/{id}")
     def get_item(id: str) -> Response:
@@ -51,36 +53,6 @@ def create_client(asgi_app: Any) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=asgi_app), base_url="http://testserver")
 
 
-def exported_spans(exporters: InMemoryExporters) -> list[ReadableSpan]:
-    assert activation.span_processor is not None
-    activation.span_processor.force_flush()
-    return [span for exporter in exporters.span for span in exporter.get_finished_spans()]
-
-
-def attach_metric_reader() -> InMemoryMetricReader:
-    assert metrics.meter_provider is not None
-    reader = InMemoryMetricReader(
-        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
-        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
-    )
-    metrics.meter_provider.add_metric_reader(reader)
-    return reader
-
-
-def duration_data_points(reader: InMemoryMetricReader) -> list[Any]:
-    metrics_data = reader.get_metrics_data()
-    if metrics_data is None:
-        return []
-    return [
-        point
-        for resource_metrics in metrics_data.resource_metrics
-        for scope_metrics in resource_metrics.scope_metrics
-        for metric in scope_metrics.metrics
-        if metric.name == "http.server.request.duration" and isinstance(metric.data, ExponentialHistogram)
-        for point in metric.data.data_points
-    ]
-
-
 async def test_request_exports_span_with_route_and_records_metrics(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
@@ -94,7 +66,7 @@ async def test_request_exports_span_with_route_and_records_metrics(
         response = await client.get("/items/123")
     assert response.status_code == 200
 
-    (span,) = [s for s in exported_spans(exporters) if s.kind == SpanKind.SERVER]
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.name == "GET /items/{id}"
     assert span.attributes is not None
     assert span.attributes["http.route"] == "/items/{id}"
@@ -105,16 +77,7 @@ async def test_request_exports_span_with_route_and_records_metrics(
     assert attributes["http.request.method"] == "GET"
     assert attributes["http.response.status_code"] == 200
 
-    assert activation.log_processor is not None
-    activation.log_processor.force_flush()
-    (record,) = [
-        exported.log_record
-        for exporter in exporters.log
-        for exported in exporter.get_finished_logs()
-        if exported.log_record.event_name == startup.EVENT_NAME
-    ]
-    assert isinstance(record.body, str)
-    payload = json.loads(record.body)
+    payload = startup_payload(exporters)
     assert payload["framework"] == "blacksheep"
     assert payload["versions"]["blacksheep"] == version("blacksheep")
     assert payload["versions"]["app"] == "1.2.3"
@@ -135,7 +98,7 @@ async def test_unmatched_request_has_no_route_and_no_histogram_point(
         response = await client.get("/nope")
     assert response.status_code == 404
 
-    (span,) = [s for s in exported_spans(exporters) if s.kind == SpanKind.SERVER]
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
     assert "http.route" not in span.attributes
     assert duration_data_points(reader) == []
@@ -160,7 +123,7 @@ async def test_first_request_activates_and_records_without_lifespan(
     assert response.status_code == 200
     assert activation.is_activated()
 
-    (span,) = [s for s in exported_spans(exporters) if s.kind == SpanKind.SERVER]
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.name == "GET /items/{id}"
 
 
@@ -170,7 +133,7 @@ async def test_preinstrumented_app_adapted_without_duplicate_server_spans(
     allow_activation(monkeypatch)
     app = Application(router=Router())
     wrapped = OpenTelemetryMiddleware(app)
-    init_apitally(wrapped, write_token=TOKEN)
+    init_apitally(wrapped, write_token=WRITE_TOKEN)
 
     @app.router.get("/items/{id}")
     def get_item(id: str) -> Response:
@@ -207,7 +170,7 @@ async def test_unhandled_exception_recorded_on_server_span(
         response = await client.get("/error")
     assert response.status_code == 500
 
-    (span,) = [s for s in exported_spans(exporters) if s.kind == SpanKind.SERVER]
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.status.status_code == StatusCode.ERROR
     assert span.attributes is not None
     assert span.attributes["http.response.status_code"] == 500
@@ -225,6 +188,6 @@ async def test_request_body_captured_and_redacted(exporters: InMemoryExporters, 
         response = await client.post("/items", json={"password": "secret", "name": "widget"})
     assert response.status_code == 200
 
-    (span,) = [s for s in exported_spans(exporters) if s.kind == SpanKind.SERVER]
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
     assert json.loads(str(span.attributes["apitally.request.body"])) == {"password": REDACTED, "name": "widget"}

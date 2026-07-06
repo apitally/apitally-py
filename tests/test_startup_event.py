@@ -5,16 +5,15 @@ import pytest
 from opentelemetry.sdk._logs import ReadableLogRecord
 
 from apitally.shared import activation, startup
-from tests.conftest import InMemoryExporters
+from tests.conftest import WRITE_TOKEN, InMemoryExporters
 
 
-TOKEN = "apt_" + "a" * 24
 PATHS = [{"method": "GET", "path": "/users"}, {"method": "POST", "path": "/users"}]
 
 
 def activate(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    activation.configure(write_token=TOKEN)
+    activation.configure(write_token=WRITE_TOKEN)
     activation.activate()
     assert activation.is_activated()
 
@@ -72,7 +71,7 @@ def test_emitted_once_across_activation_lifecycle(exporters: InMemoryExporters, 
     activate(monkeypatch)
 
     # Ignored re-call (adapter re-init) and simulated after-fork-in-parent re-activation
-    activation.configure(write_token=TOKEN, env="dev")
+    activation.configure(write_token=WRITE_TOKEN, env="dev")
     startup.set_app_info(framework="flask", paths=PATHS)
     activation.activate()
     activation.before_fork()

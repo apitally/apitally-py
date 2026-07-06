@@ -4,15 +4,18 @@ from collections.abc import Iterator
 
 import pytest
 from django.test import Client
+from opentelemetry.trace import SpanKind
 
-from tests.conftest import InMemoryExporters
+from tests.conftest import (
+    InMemoryExporters,
+    attach_metric_reader,
+    duration_data_points,
+    exported_spans,
+    startup_payload,
+)
 from tests.django_utils import (
     activate_via_signal,
-    attach_metric_reader,
     configure_django_settings,
-    get_histogram_points,
-    get_server_spans,
-    get_startup_payload,
     init,
     reset_django_settings,
     teardown_django_instrumentation,
@@ -36,7 +39,7 @@ def test_startup_paths_include_viewset_route_templates(exporters: InMemoryExport
     init(monkeypatch)
     activate_via_signal()
 
-    payload = get_startup_payload(exporters)
+    payload = startup_payload(exporters)
     assert payload["versions"]["djangorestframework"]
     assert {"method": "GET", "path": "/items/"} in payload["paths"]
     assert {"method": "GET", "path": "/items/{pk}/"} in payload["paths"]
@@ -50,9 +53,9 @@ def test_request_flow(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPa
     response = Client().get("/items/42/")
     assert response.status_code == 200
 
-    (span,) = get_server_spans(exporters)
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
     assert span.attributes["http.route"] == "/items/{pk}/"
     assert span.attributes["http.response.status_code"] == 200
-    (point,) = get_histogram_points(reader, "http.server.request.duration")
-    assert point.attributes["http.route"] == "/items/{pk}/"
+    (point,) = duration_data_points(reader)
+    assert (point.attributes or {})["http.route"] == "/items/{pk}/"

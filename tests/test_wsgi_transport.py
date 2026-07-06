@@ -17,13 +17,11 @@ from apitally.shared.config import configure
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import ApitallySpanProcessor, server_span_kept_var, server_span_var
 from apitally.shared.wsgi import ApitallyWSGIMiddleware
+from tests.conftest import WRITE_TOKEN, create_tracer
 
 
 if TYPE_CHECKING:
     from _typeshed.wsgi import StartResponse, WSGIEnvironment
-
-
-TOKEN = "apt_" + "a" * 24
 
 
 class SpyInput:
@@ -62,9 +60,7 @@ def exporter() -> InMemorySpanExporter:
 
 @pytest.fixture()
 def tracer(exporter: InMemorySpanExporter) -> Tracer:
-    provider = TracerProvider(sampler=ALWAYS_ON)
-    provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
-    return provider.get_tracer("test")
+    return create_tracer(exporter, scope="test")
 
 
 def make_environ(
@@ -117,7 +113,7 @@ def run_request(
 
 
 def test_over_cap_body_sentinel_without_reading(tracer: Tracer, exporter: InMemorySpanExporter):
-    configure(write_token=TOKEN, log_request_body=True)
+    configure(write_token=WRITE_TOKEN, log_request_body=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
         start_response("200 OK", [("Content-Type", "text/plain")])
@@ -137,7 +133,7 @@ def test_over_cap_body_sentinel_without_reading(tracer: Tracer, exporter: InMemo
 def test_absent_or_unparseable_content_length_means_no_capture(
     tracer: Tracer, exporter: InMemorySpanExporter, content_length: str | None
 ):
-    configure(write_token=TOKEN, log_request_body=True)
+    configure(write_token=WRITE_TOKEN, log_request_body=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
         start_response("200 OK", [("Content-Type", "text/plain")])
@@ -155,7 +151,7 @@ def test_absent_or_unparseable_content_length_means_no_capture(
 
 
 def test_captured_body_reemitted_and_redacted(tracer: Tracer, exporter: InMemorySpanExporter):
-    configure(write_token=TOKEN, log_request_body=True)
+    configure(write_token=WRITE_TOKEN, log_request_body=True)
     body = b'{"password": "secret123", "item": "x"}'
     received: dict[str, bytes] = {}
 
@@ -174,7 +170,7 @@ def test_captured_body_reemitted_and_redacted(tracer: Tracer, exporter: InMemory
 def test_redaction_failure_after_parse_fails_closed(
     tracer: Tracer, exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
 ):
-    configure(write_token=TOKEN, log_request_body=True)
+    configure(write_token=WRITE_TOKEN, log_request_body=True)
     body = b'{"a": 1}'
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
@@ -192,7 +188,7 @@ def test_redaction_failure_after_parse_fails_closed(
 
 
 def test_non_allowlisted_mime_never_touches_input(tracer: Tracer, exporter: InMemorySpanExporter):
-    configure(write_token=TOKEN, log_request_body=True)
+    configure(write_token=WRITE_TOKEN, log_request_body=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
         start_response("200 OK", [("Content-Type", "text/plain")])
@@ -208,7 +204,7 @@ def test_non_allowlisted_mime_never_touches_input(tracer: Tracer, exporter: InMe
 
 
 def test_response_body_accumulated_redacted_and_close_propagated(tracer: Tracer, exporter: InMemorySpanExporter):
-    configure(write_token=TOKEN, log_response_body=True)
+    configure(write_token=WRITE_TOKEN, log_response_body=True)
     iterable = ClosingIterable([b'{"token": "abc", ', b'"id": 1}'])
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> ClosingIterable:
@@ -223,7 +219,7 @@ def test_response_body_accumulated_redacted_and_close_propagated(tracer: Tracer,
 
 
 def test_request_headers_redacted(tracer: Tracer, exporter: InMemorySpanExporter):
-    configure(write_token=TOKEN, log_request_headers=True)
+    configure(write_token=WRITE_TOKEN, log_request_headers=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
         start_response("200 OK", [("Content-Type", "text/plain")])
@@ -237,7 +233,7 @@ def test_request_headers_redacted(tracer: Tracer, exporter: InMemorySpanExporter
 
 
 def test_sampled_out_request_skips_capture(exporter: InMemorySpanExporter):
-    configure(write_token=TOKEN, sample_rate=0.0, log_request_body=True, log_response_body=True)
+    configure(write_token=WRITE_TOKEN, sample_rate=0.0, log_request_body=True, log_response_body=True)
     provider = TracerProvider(sampler=ALWAYS_ON)
     provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
     tracer = provider.get_tracer("test")
@@ -264,7 +260,7 @@ def test_sampled_out_request_skips_capture(exporter: InMemorySpanExporter):
 
 
 def test_abandoned_streaming_response_leaves_size_unset(tracer: Tracer, exporter: InMemorySpanExporter):
-    configure(write_token=TOKEN)
+    configure(write_token=WRITE_TOKEN)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> Iterator[bytes]:
         start_response("200 OK", [("Content-Type", "text/plain")])

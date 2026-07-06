@@ -13,17 +13,15 @@ from opentelemetry.trace import SpanKind
 
 from apitally.shared import activation, metrics
 from apitally.shared.span_processor import ApitallySpanProcessor
-from tests.conftest import InMemoryExporters
+from tests.conftest import WRITE_TOKEN, InMemoryExporters
 
-
-TOKEN = "apt_" + "a" * 24
 
 linux_only = pytest.mark.skipif(sys.platform != "linux", reason="real-fork tests run on Linux CI only")
 
 
 def configure_and_activate(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    activation.configure(write_token=TOKEN)
+    activation.configure(write_token=WRITE_TOKEN)
     activation.activate()
     assert activation.is_activated()
 

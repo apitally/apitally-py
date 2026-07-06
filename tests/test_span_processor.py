@@ -7,7 +7,7 @@ from opentelemetry import trace
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace import Span as SDKSpan
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, TraceIdRatioBased
 from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, TraceFlags, Tracer
@@ -23,11 +23,9 @@ from apitally.shared.span_processor import (
     server_span_kept_var,
     server_span_var,
 )
-from tests.conftest import unwrap
+from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, create_tracer, unwrap
 
 
-TOKEN = "apt_" + "a" * 24
-CONTRIB_SCOPE = "opentelemetry.instrumentation.starlette"
 BOUND_HALF = TraceIdRatioBased.get_bound_for_rate(0.5)
 
 
@@ -65,14 +63,6 @@ def tracer_provider(processor: ApitallySpanProcessor) -> TracerProvider:
 @pytest.fixture()
 def tracer(tracer_provider: TracerProvider) -> Tracer:
     return tracer_provider.get_tracer(CONTRIB_SCOPE)
-
-
-def create_tracer(exporter: SpanExporter) -> Tracer:
-    # For tests that configure() in the body: the processor binds config at construction,
-    # so it must be built after configure, not in a fixture
-    provider = TracerProvider(sampler=ALWAYS_ON)
-    provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
-    return provider.get_tracer(CONTRIB_SCOPE)
 
 
 def test_server_root_and_child_kept(tracer: Tracer, processor: ApitallySpanProcessor, exporter: InMemorySpanExporter):
@@ -133,7 +123,7 @@ def test_default_excluded_requests_dropped(tracer: Tracer, exporter: InMemorySpa
 
 
 def test_user_exclude_paths_add_to_defaults(exporter: InMemorySpanExporter):
-    configure(write_token=TOKEN, exclude_paths=[r"^/internal/"])
+    configure(write_token=WRITE_TOKEN, exclude_paths=[r"^/internal/"])
     tracer = create_tracer(exporter)
     for path in ["/internal/jobs", "/healthz", "/items"]:
         with tracer.start_as_current_span(f"GET {path}", kind=SpanKind.SERVER, attributes={"url.path": path}):
@@ -142,7 +132,7 @@ def test_user_exclude_paths_add_to_defaults(exporter: InMemorySpanExporter):
 
 
 def test_sample_rate_deterministic_by_trace_id(exporter: InMemorySpanExporter):
-    configure(write_token=TOKEN, sample_rate=0.5)
+    configure(write_token=WRITE_TOKEN, sample_rate=0.5)
     tracer = create_tracer(exporter)
     for trace_id in (BOUND_HALF - 1, BOUND_HALF):
         with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER, context=remote_parent_context(trace_id)):
@@ -154,7 +144,7 @@ def test_sample_rate_deterministic_by_trace_id(exporter: InMemorySpanExporter):
 
 def test_sample_on_request_bool_overrides_sample_rate(exporter: InMemorySpanExporter):
     configure(
-        write_token=TOKEN,
+        write_token=WRITE_TOKEN,
         sample_rate=0.0,
         sample_on_request=lambda span: span.attributes.get("url.path") != "/bots",
     )
@@ -170,7 +160,7 @@ def test_sample_on_request_bool_overrides_sample_rate(exporter: InMemorySpanExpo
 def test_sample_on_request_float_with_none_fallback(exporter: InMemorySpanExporter):
     bound_low = TraceIdRatioBased.get_bound_for_rate(0.01)
     configure(
-        write_token=TOKEN,
+        write_token=WRITE_TOKEN,
         sample_rate=0.5,
         sample_on_request=lambda span: 0.01 if span.attributes.get("url.path") == "/noisy" else None,
     )
@@ -195,7 +185,7 @@ def test_excluded_request_never_invokes_sample_callback(exporter: InMemorySpanEx
     def callback(span: ReadableSpan) -> None:
         calls.append(span)
 
-    configure(write_token=TOKEN, sample_on_request=callback)
+    configure(write_token=WRITE_TOKEN, sample_on_request=callback)
     tracer = create_tracer(exporter)
     with tracer.start_as_current_span("GET /healthz", kind=SpanKind.SERVER, attributes={"url.path": "/healthz"}):
         pass
@@ -207,7 +197,7 @@ def test_raising_sample_on_request_keeps_span(exporter: InMemorySpanExporter):
     def callback(span: ReadableSpan) -> float:
         raise ValueError("boom")
 
-    configure(write_token=TOKEN, sample_on_request=callback)
+    configure(write_token=WRITE_TOKEN, sample_on_request=callback)
     tracer = create_tracer(exporter)
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
         pass
@@ -215,7 +205,7 @@ def test_raising_sample_on_request_keeps_span(exporter: InMemorySpanExporter):
 
 
 def test_invalid_sample_callback_return_keeps_span(exporter: InMemorySpanExporter):
-    configure(write_token=TOKEN, sample_rate=0.0, sample_on_request=lambda span: "yes")
+    configure(write_token=WRITE_TOKEN, sample_rate=0.0, sample_on_request=lambda span: "yes")
     tracer = create_tracer(exporter)
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
         pass
@@ -225,7 +215,7 @@ def test_invalid_sample_callback_return_keeps_span(exporter: InMemorySpanExporte
 def test_sample_on_response_keeps_errors_drops_healthy(exporter: InMemorySpanExporter):
     bound = TraceIdRatioBased.get_bound_for_rate(0.05)
     configure(
-        write_token=TOKEN,
+        write_token=WRITE_TOKEN,
         sample_on_response=lambda span: True if span.attributes.get("http.response.status_code") == 500 else 0.05,
     )
     tracer = create_tracer(exporter)
@@ -245,7 +235,7 @@ def test_sample_on_response_keeps_errors_drops_healthy(exporter: InMemorySpanExp
 
 def test_span_buffer_cap_bounds_kept_and_dropped_requests(exporter: InMemorySpanExporter):
     configure(
-        write_token=TOKEN,
+        write_token=WRITE_TOKEN,
         sample_on_response=lambda span: span.attributes.get("http.response.status_code") == 500,
     )
     tracer = create_tracer(exporter)
@@ -261,7 +251,7 @@ def test_span_buffer_cap_bounds_kept_and_dropped_requests(exporter: InMemorySpan
 
 def test_late_descendant_follows_request_decision(exporter: InMemorySpanExporter):
     configure(
-        write_token=TOKEN,
+        write_token=WRITE_TOKEN,
         sample_on_response=lambda span: span.attributes.get("http.response.status_code") == 500,
     )
     tracer = create_tracer(exporter)
@@ -287,7 +277,7 @@ def test_shutdown_discards_pending_buffers(
 
 
 def test_same_trace_id_verdict_at_both_stages(exporter: InMemorySpanExporter):
-    configure(write_token=TOKEN, sample_rate=0.5, sample_on_response=lambda span: 0.5)
+    configure(write_token=WRITE_TOKEN, sample_rate=0.5, sample_on_response=lambda span: 0.5)
     tracer = create_tracer(exporter)
     with tracer.start_as_current_span(
         "GET /items", kind=SpanKind.SERVER, context=remote_parent_context(BOUND_HALF - 1)
@@ -300,7 +290,7 @@ def test_same_trace_id_verdict_at_both_stages(exporter: InMemorySpanExporter):
 def test_response_abstention_leaves_boosted_request_kept(exporter: InMemorySpanExporter):
     bound_tenth = TraceIdRatioBased.get_bound_for_rate(0.1)
     configure(
-        write_token=TOKEN,
+        write_token=WRITE_TOKEN,
         sample_rate=0.1,
         sample_on_request=lambda span: True,
         sample_on_response=lambda span: None,
@@ -313,7 +303,7 @@ def test_response_abstention_leaves_boosted_request_kept(exporter: InMemorySpanE
 
 
 def test_kept_flag_and_span_resolution(exporter: InMemorySpanExporter):
-    configure(write_token=TOKEN, sample_rate=0.5)
+    configure(write_token=WRITE_TOKEN, sample_rate=0.5)
     processor = ApitallySpanProcessor(SimpleSpanProcessor(exporter))
     provider = TracerProvider(sampler=ALWAYS_ON)
     provider.add_span_processor(processor)

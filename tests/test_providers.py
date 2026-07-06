@@ -13,9 +13,7 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 
 from apitally.shared import providers
 from apitally.shared.config import configure
-
-
-TOKEN = "apt_" + "a" * 24
+from tests.conftest import WRITE_TOKEN
 
 
 def test_mode_detection():
@@ -30,7 +28,7 @@ def test_own_it_all_tracer_provider(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT", "100")
     monkeypatch.setenv("OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT", "100")
     monkeypatch.setenv("OTEL_SERVICE_NAME", "test-service")
-    configure(write_token=TOKEN, env="staging")
+    configure(write_token=WRITE_TOKEN, env="staging")
 
     env = providers.resolve_env(None)
     resource = providers.create_resource(env)
@@ -56,7 +54,7 @@ def test_own_it_all_tracer_provider(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_cooperative_pipeline():
-    configure(write_token=TOKEN)
+    configure(write_token=WRITE_TOKEN)
     user_exporter = InMemorySpanExporter()
     user_provider = TracerProvider()
     user_provider.add_span_processor(SimpleSpanProcessor(user_exporter))
@@ -75,20 +73,20 @@ def test_cooperative_pipeline():
 
 
 def test_cooperative_env_conflict_uses_resource_value():
-    configure(write_token=TOKEN, env="staging")
+    configure(write_token=WRITE_TOKEN, env="staging")
     user_provider = TracerProvider(resource=Resource.create({"deployment.environment.name": "production"}))
     env = providers.resolve_env(user_provider)
     assert env == "production"
 
 
 def test_apitally_env_header_matches_resource_in_both_modes():
-    configure(write_token=TOKEN, env="staging")
+    configure(write_token=WRITE_TOKEN, env="staging")
 
     env = providers.resolve_env(None)
     resource = providers.create_resource(env)
     exporter = providers.create_span_exporter(env)
     assert exporter._headers["Apitally-Env"] == resource.attributes["deployment.environment.name"] == "staging"
-    assert exporter._headers["Authorization"] == f"Bearer {TOKEN}"
+    assert exporter._headers["Authorization"] == f"Bearer {WRITE_TOKEN}"
     assert exporter._endpoint == "https://otlp.apitally.io/v1/traces"
 
     user_provider = TracerProvider(resource=Resource.create({"deployment.environment.name": "production"}))
@@ -102,7 +100,7 @@ def test_exporter_endpoint_override(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.example.com")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "https://collector.example.com/v1/traces")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "x-other=1")
-    configure(write_token=TOKEN)
+    configure(write_token=WRITE_TOKEN)
 
     span_exporter = providers.create_span_exporter("prod")
     metric_exporter = providers.create_metric_exporter("prod")
@@ -114,7 +112,7 @@ def test_exporter_endpoint_override(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_private_meter_and_logger_providers():
-    configure(write_token=TOKEN)
+    configure(write_token=WRITE_TOKEN)
     resource = providers.create_resource("prod")
 
     reader = InMemoryMetricReader()
