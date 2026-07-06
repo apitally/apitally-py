@@ -114,8 +114,8 @@ class ApitallySpanProcessor(SpanProcessor):
             buffer = self.pending.pop(context.span_id, None)
             if buffer is not None:
                 # Pending SERVER root: the response-stage decision flushes or discards the whole request
-                kept = self.sample_response(span, context.trace_id)
-                if kept:
+                response_kept = self.sample_response(span, context.trace_id)
+                if response_kept:
                     for buffered_span in buffer:
                         self.downstream.on_end(self.redact_span(buffered_span))
                     self.downstream.on_end(self.redact_span(span))
@@ -125,7 +125,7 @@ class ApitallySpanProcessor(SpanProcessor):
                         if entry[1] == context.span_id:
                             self.spans[span_id] = (False, None)
                 if self.on_request_finished is not None:
-                    self.on_request_finished(context.span_id, kept)
+                    self.on_request_finished(context.span_id, response_kept)
                 return
             pending = self.pending.get(server_span_id) if server_span_id is not None else None
             if pending is not None:
