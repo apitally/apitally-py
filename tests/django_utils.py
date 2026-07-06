@@ -3,7 +3,12 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+import django
 import pytest
+from django.conf import settings
+from django.core.signals import request_started
+from django.utils.functional import empty
+from opentelemetry.instrumentation.django import DjangoInstrumentor
 
 from apitally.django import init_apitally
 from apitally.shared import activation
@@ -13,10 +18,6 @@ TOKEN = "apt_" + "a" * 24
 
 
 def configure_django_settings(**settings_kwargs: Any) -> None:
-    import django
-    from django.conf import settings
-    from django.utils.functional import empty
-
     settings._wrapped = empty
     settings.configure(
         ALLOWED_HOSTS=["testserver"],
@@ -31,9 +32,6 @@ def configure_django_settings(**settings_kwargs: Any) -> None:
 
 
 def reset_django_settings() -> None:
-    from django.conf import settings
-    from django.utils.functional import empty
-
     settings._wrapped = empty
 
 
@@ -44,16 +42,11 @@ def init(monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
 
 
 def activate_via_signal() -> None:
-    from django.core.signals import request_started
-
     request_started.send(sender=None)
     assert activation.is_activated()
 
 
 def teardown_django_instrumentation() -> None:
-    from django.core.signals import request_started
-    from opentelemetry.instrumentation.django import DjangoInstrumentor
-
     instrumentor = DjangoInstrumentor()
     if instrumentor.is_instrumented_by_opentelemetry:
         instrumentor.uninstrument()

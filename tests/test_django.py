@@ -5,10 +5,12 @@ import sys
 from collections.abc import Iterator
 
 import pytest
+from django.conf import settings
 from django.test import Client
+from django.utils.functional import empty
 from opentelemetry.trace import SpanKind
 
-from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE
+from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, init_apitally
 from apitally.shared import activation, config
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
@@ -64,8 +66,6 @@ def test_management_command_configures_but_never_activates(
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(sys, "argv", ["manage.py", "migrate"])
-    from apitally.django import init_apitally
-
     init_apitally(write_token="apt_" + "a" * 24)
     assert config.get_config() is not None
     assert not activation.is_activated()
@@ -168,9 +168,6 @@ def test_unhandled_exception_recorded(exporters: InMemoryExporters, monkeypatch:
 
 
 def test_init_from_settings_module(monkeypatch: pytest.MonkeyPatch):
-    from django.conf import settings
-    from django.utils.functional import empty
-
     saved = settings._wrapped
     settings._wrapped = empty
     monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "tests.django_settings")
