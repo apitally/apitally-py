@@ -61,23 +61,20 @@ def attach_metric_reader() -> InMemoryMetricReader:
     return reader
 
 
-def get_server_spans(memory_exporters: Any) -> list[ReadableSpan]:
+def get_server_spans(exporters: Any) -> list[ReadableSpan]:
     assert activation.span_processor is not None
     activation.span_processor.force_flush()
     return [
-        span
-        for exporter in memory_exporters.span
-        for span in exporter.get_finished_spans()
-        if span.kind == SpanKind.SERVER
+        span for exporter in exporters.span for span in exporter.get_finished_spans() if span.kind == SpanKind.SERVER
     ]
 
 
-def get_startup_payload(memory_exporters: Any) -> dict[str, Any]:
+def get_startup_payload(exporters: Any) -> dict[str, Any]:
     assert activation.log_processor is not None
     activation.log_processor.force_flush()
     (record,) = [
         exported.log_record
-        for exporter in memory_exporters.log
+        for exporter in exporters.log
         for exported in exporter.get_finished_logs()
         if exported.log_record.event_name == startup.EVENT_NAME
     ]

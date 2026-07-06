@@ -18,7 +18,7 @@ from starlette.testclient import TestClient
 from apitally.shared import activation, metrics, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.starlette import init_apitally
-from tests.conftest import CreatedExporters, unwrap
+from tests.conftest import InMemoryExporters, unwrap
 
 
 TOKEN = "apt_" + "a" * 24
@@ -39,16 +39,16 @@ def app() -> Iterator[Starlette]:
     StarletteInstrumentor.uninstrument_app(app)
 
 
-def get_finished_spans(memory_exporters: CreatedExporters) -> list[ReadableSpan]:
+def get_finished_spans(exporters: InMemoryExporters) -> list[ReadableSpan]:
     assert activation.span_processor is not None
     activation.span_processor.force_flush()
-    return [span for exporter in memory_exporters.span for span in exporter.get_finished_spans()]
+    return [span for exporter in exporters.span for span in exporter.get_finished_spans()]
 
 
-def get_log_records(memory_exporters: CreatedExporters) -> list[LogRecord]:
+def get_log_records(exporters: InMemoryExporters) -> list[LogRecord]:
     assert activation.log_processor is not None
     activation.log_processor.force_flush()
-    return [exported.log_record for exporter in memory_exporters.log for exported in exporter.get_finished_logs()]
+    return [exported.log_record for exporter in exporters.log for exported in exporter.get_finished_logs()]
 
 
 def attach_metric_reader() -> InMemoryMetricReader:
@@ -73,7 +73,7 @@ def duration_points(reader: InMemoryMetricReader) -> list[Any]:
 
 
 def test_request_flow_span_histogram_and_startup_event(
-    app: Starlette, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     init_apitally(app, write_token=TOKEN)
@@ -85,7 +85,7 @@ def test_request_flow_span_histogram_and_startup_event(
 
     # Exactly one exported span: the Starlette instrumentor emits receive/send spans
     # (no exclude_spans support) and the span processor backstop drops them
-    (span,) = get_finished_spans(memory_exporters)
+    (span,) = get_finished_spans(exporters)
     assert span.kind == SpanKind.SERVER
     assert unwrap(span.attributes)["http.request.method"] == "GET"
     assert unwrap(span.attributes)["http.route"] == "/items/{item_id}"
@@ -95,7 +95,7 @@ def test_request_flow_span_histogram_and_startup_event(
     assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
     assert unwrap(point.attributes)["http.request.method"] == "GET"
 
-    records = get_log_records(memory_exporters)
+    records = get_log_records(exporters)
     assert records[0].event_name == startup.EVENT_NAME
     assert isinstance(records[0].body, str)
     payload = json.loads(records[0].body)
@@ -118,7 +118,7 @@ def test_init_apitally_swallows_instrumentation_errors(app: Starlette, monkeypat
 
 
 def test_pre_instrumented_app_inserts_transport_inside_otel_middleware(
-    app: Starlette, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     StarletteInstrumentor.instrument_app(app)
@@ -131,7 +131,7 @@ def test_pre_instrumented_app_inserts_transport_inside_otel_middleware(
     with TestClient(app) as client:
         reader = attach_metric_reader()
         client.get("/items/42")
-    (span,) = get_finished_spans(memory_exporters)
+    (span,) = get_finished_spans(exporters)
     assert span.kind == SpanKind.SERVER
     response_body_size = unwrap(span.attributes)["http.response.body.size"]
     assert isinstance(response_body_size, int) and response_body_size > 0

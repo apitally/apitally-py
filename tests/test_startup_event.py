@@ -5,7 +5,7 @@ import pytest
 from opentelemetry.sdk._logs import ReadableLogRecord
 
 from apitally.shared import activation, startup
-from tests.conftest import CreatedExporters
+from tests.conftest import InMemoryExporters
 
 
 TOKEN = "apt_" + "a" * 24
@@ -19,18 +19,18 @@ def activate(monkeypatch: pytest.MonkeyPatch) -> None:
     assert activation.is_activated()
 
 
-def startup_records(memory_exporters: CreatedExporters) -> list[ReadableLogRecord]:
+def startup_records(exporters: InMemoryExporters) -> list[ReadableLogRecord]:
     if activation.log_processor is not None:
         activation.log_processor.force_flush()
     return [
         exported
-        for exporter in memory_exporters.log
+        for exporter in exporters.log
         for exported in exporter.get_finished_logs()
         if exported.log_record.event_name == startup.EVENT_NAME
     ]
 
 
-def test_startup_event_record_and_payload(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+def test_startup_event_record_and_payload(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     startup.set_app_info(
         framework="fastapi",
         paths=lambda: PATHS,
@@ -39,7 +39,7 @@ def test_startup_event_record_and_payload(memory_exporters: CreatedExporters, mo
     )
     activate(monkeypatch)
 
-    (exported,) = startup_records(memory_exporters)
+    (exported,) = startup_records(exporters)
     record = exported.log_record
     assert exported.instrumentation_scope is not None
     assert exported.instrumentation_scope.name == "apitally"
@@ -55,19 +55,19 @@ def test_startup_event_record_and_payload(memory_exporters: CreatedExporters, mo
     }
 
 
-def test_openapi_over_4mb_omitted_paths_remain(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+def test_openapi_over_4mb_omitted_paths_remain(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     openapi = '{"openapi": "3.1.0", "padding": "' + "x" * 4_000_000 + '"}'
     startup.set_app_info(framework="fastapi", paths=PATHS, openapi=openapi)
     activate(monkeypatch)
 
-    (exported,) = startup_records(memory_exporters)
+    (exported,) = startup_records(exporters)
     assert isinstance(exported.log_record.body, str)
     payload = json.loads(exported.log_record.body)
     assert "openapi" not in payload
     assert payload["paths"] == PATHS
 
 
-def test_emitted_once_across_activation_lifecycle(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+def test_emitted_once_across_activation_lifecycle(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     startup.set_app_info(framework="flask", paths=PATHS)
     activate(monkeypatch)
 
@@ -78,4 +78,4 @@ def test_emitted_once_across_activation_lifecycle(memory_exporters: CreatedExpor
     activation.before_fork()
     activation.after_fork_in_parent()
 
-    assert len(startup_records(memory_exporters)) == 1
+    assert len(startup_records(exporters)) == 1

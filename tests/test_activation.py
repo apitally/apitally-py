@@ -9,7 +9,7 @@ import pytest
 
 from apitally.shared import activation, log_processor, metrics, providers
 from apitally.shared.asgi import Message, Receive, Scope, Send
-from tests.conftest import CreatedExporters
+from tests.conftest import InMemoryExporters
 
 
 if TYPE_CHECKING:
@@ -37,7 +37,7 @@ def test_configure_starts_no_threads():
 
 
 async def test_asgi_shim_activates_once_on_lifespan_startup_complete(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     activation.configure(write_token=TOKEN)
@@ -57,7 +57,7 @@ async def test_asgi_shim_activates_once_on_lifespan_startup_complete(
 
 
 async def test_asgi_shim_startup_failed_defers_to_first_request(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     activation.configure(write_token=TOKEN)
@@ -85,7 +85,7 @@ async def test_asgi_shim_startup_failed_defers_to_first_request(
 
 
 def test_wsgi_shim_activates_before_first_request_proceeds(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     activation.configure(write_token=TOKEN)
@@ -121,7 +121,7 @@ def test_test_environment_guard_skips_activation(monkeypatch: pytest.MonkeyPatch
     assert exporter_calls == []
 
 
-def test_on_activate_hooks_run_last(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+def test_on_activate_hooks_run_last(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     observed = []
     activation.register_on_activate_hook(

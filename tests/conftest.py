@@ -90,16 +90,16 @@ class InMemoryMetricExporter(MetricExporter):
 
 
 @dataclass
-class CreatedExporters:
+class InMemoryExporters:
     span: list[InMemorySpanExporter] = field(default_factory=list)
     log: list[InMemoryLogRecordExporter] = field(default_factory=list)
     metric: list[InMemoryMetricExporter] = field(default_factory=list)
 
 
 @pytest.fixture
-def memory_exporters(monkeypatch: pytest.MonkeyPatch) -> CreatedExporters:
+def exporters(monkeypatch: pytest.MonkeyPatch) -> InMemoryExporters:
     """Replace the OTLP exporter factories so activation never constructs network exporters."""
-    created = CreatedExporters()
+    created = InMemoryExporters()
 
     def span_exporter(env: str) -> InMemorySpanExporter:
         exporter = InMemorySpanExporter()
