@@ -42,8 +42,14 @@ dependencies = [
 dynamic = ["version"]
 
 [project.optional-dependencies]
-blacksheep = ["blacksheep>=2.6.1", "opentelemetry-instrumentation-asgi>=0.64b0"]
-django = ["django>=3.2", "opentelemetry-instrumentation-django>=0.64b0"]
+blacksheep = [
+    "blacksheep>=2.6.1",
+    "opentelemetry-instrumentation-asgi>=0.64b0",
+]
+django = [
+    "django>=3.2",
+    "opentelemetry-instrumentation-django>=0.64b0",
+]
 django_ninja = [
     "django>=3.2",
     "django-ninja>=1.0.0",
@@ -61,8 +67,14 @@ fastapi = [
     "starlette>=0.26.1,<2.0.0",
     "opentelemetry-instrumentation-fastapi>=0.64b0",
 ]
-flask = ["flask>=2.0.0", "opentelemetry-instrumentation-flask>=0.64b0"]
-litestar = ["litestar>=2.24.0", "opentelemetry-instrumentation-asgi>=0.64b0"]
+flask = [
+    "flask>=2.0.0",
+    "opentelemetry-instrumentation-flask>=0.64b0",
+]
+litestar = [
+    "litestar>=2.24.0",
+    "opentelemetry-instrumentation-asgi>=0.64b0",
+]
 starlette = [
     "starlette>=0.26.1,<2.0.0",
     "opentelemetry-instrumentation-starlette>=0.64b0",
@@ -88,7 +100,7 @@ test-base = [
 ]
 test = [
     { include-group = "test-base" },
-    "blacksheep>=2.6.1",
+    "blacksheep",
     "django",
     "django-ninja",
     "djangorestframework",
