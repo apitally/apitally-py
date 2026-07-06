@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 import threading
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -96,8 +96,13 @@ def test_wsgi_shim_activates_before_first_request_proceeds(
         start_response("200 OK", [])
         return [b"ok"]
 
+    def start_response(
+        status: str, headers: list[tuple[str, str]], exc_info: object = None
+    ) -> Callable[[bytes], object]:
+        return lambda data: None
+
     shim = activation.WSGIActivationShim(wsgi_app)
-    assert list(shim({}, lambda status, headers: None)) == [b"ok"]
+    assert list(shim({}, start_response)) == [b"ok"]
     assert activated_during_request == [True]
 
 

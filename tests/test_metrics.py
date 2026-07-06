@@ -24,7 +24,10 @@ def reset_metrics() -> Iterator[None]:
 
 def create_pipeline() -> InMemoryMetricReader:
     provider = metrics.setup(Resource.create({}))
-    reader = InMemoryMetricReader(**metrics.HISTOGRAM_OVERRIDES)
+    reader = InMemoryMetricReader(
+        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
+        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
+    )
     provider.add_metric_reader(reader)
     return reader
 

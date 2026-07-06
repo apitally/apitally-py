@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
 
 from apitally.shared.span_processor import get_server_span
+
+
+if TYPE_CHECKING:
+    from sentry_sdk.types import Event, Hint
 
 
 logger = logging.getLogger(__name__)
@@ -24,7 +28,7 @@ def install() -> None:
     installed = True
 
 
-def sentry_event_processor(event: Any, hint: Any) -> Any:
+def sentry_event_processor(event: Event, hint: Hint) -> Event:
     try:
         if "exception" in event and (event_id := event.get("event_id")):
             span = get_server_span()

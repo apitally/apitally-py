@@ -36,7 +36,10 @@ def reset_config() -> Iterator[None]:
 @pytest.fixture(autouse=True)
 def metric_reader() -> Iterator[InMemoryMetricReader]:
     provider = metrics.setup(Resource.create({}))
-    reader = InMemoryMetricReader(**metrics.HISTOGRAM_OVERRIDES)
+    reader = InMemoryMetricReader(
+        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
+        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
+    )
     provider.add_metric_reader(reader)
     yield reader
     metrics.reset()

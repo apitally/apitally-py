@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from blacksheep import Application
 from blacksheep.messages import Request, Response
@@ -69,7 +69,7 @@ def init_apitally(
 
         # Per-instance __call__ assignment is ignored by Python's type-based dunder lookup,
         # so _handle_http is the interposition point
-        chain: Any = ApitallyASGIMiddleware(app._handle_http)
+        chain: ApitallyASGIMiddleware | OpenTelemetryMiddleware = ApitallyASGIMiddleware(app._handle_http)
         if not instrumented_by_user:
             chain = OpenTelemetryMiddleware(chain, exclude_spans=["receive", "send"])
         app._handle_http = activation.ASGIActivationShim(chain)  # ty: ignore[invalid-assignment]

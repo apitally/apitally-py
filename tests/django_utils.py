@@ -55,7 +55,10 @@ def activate_via_signal() -> None:
 
 
 def attach_metric_reader() -> InMemoryMetricReader:
-    reader = InMemoryMetricReader(**metrics.HISTOGRAM_OVERRIDES)
+    reader = InMemoryMetricReader(
+        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
+        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
+    )
     assert metrics.meter_provider is not None
     metrics.meter_provider.add_metric_reader(reader)
     return reader

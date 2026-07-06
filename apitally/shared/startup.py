@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from opentelemetry.trace import INVALID_SPAN, set_span_in_context
 
@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 EVENT_NAME = "apitally.app.startup"
 MAX_OPENAPI_BYTES = 4_000_000
+
+T = TypeVar("T")
 
 app_info: dict[str, Any] = {}
 
@@ -67,11 +69,11 @@ def emit_startup_event() -> None:
     )
 
 
-def resolve(value: Any) -> Any:
+def resolve(value: T | Callable[[], T] | None) -> T | None:
     if not callable(value):
         return value
     try:
-        return value()
+        return cast("Callable[[], T]", value)()
     except Exception:
         logger.exception("Error resolving Apitally app info for the startup event")
         return None
