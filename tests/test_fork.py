@@ -90,6 +90,23 @@ def test_child_reactivation_reuses_inherited_span_processor(
     assert len(exporters.span[-1].get_finished_spans()) == 1
 
 
+def test_child_reactivation_clears_inherited_request_state(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    configure_and_activate(monkeypatch)
+    span = trace.get_tracer("test").start_span("GET /items", kind=SpanKind.SERVER)  # in flight at fork
+
+    activation.before_fork()
+    activation.after_fork_in_child()
+    activation.activate()
+
+    assert activation.span_processor is not None
+    assert not activation.span_processor.spans
+    assert not activation.span_processor.pending
+    span.end()
+    assert exporters.span[-1].get_finished_spans() == ()
+
+
 def child_probe(queue: multiprocessing.Queue[dict[str, Any]]) -> None:
     inert_after_fork = not activation.is_activated()
     activation.activate()
