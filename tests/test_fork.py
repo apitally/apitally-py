@@ -13,7 +13,7 @@ from opentelemetry.trace import SpanKind
 
 from apitally.shared import activation, metrics
 from apitally.shared.span_processor import ApitallySpanProcessor
-from tests.conftest import CreatedExporters
+from tests.conftest import InMemoryExporters
 
 
 TOKEN = "apt_" + "a" * 24
@@ -28,7 +28,7 @@ def configure_and_activate(monkeypatch: pytest.MonkeyPatch) -> None:
     assert activation.is_activated()
 
 
-def test_before_fork_quiesces_sdk_threads(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+def test_before_fork_quiesces_sdk_threads(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     threads_before = set(threading.enumerate())
     configure_and_activate(monkeypatch)
     started = [t for t in threading.enumerate() if t not in threads_before]
@@ -39,29 +39,27 @@ def test_before_fork_quiesces_sdk_threads(memory_exporters: CreatedExporters, mo
     assert metrics.reader is None
 
 
-def test_after_fork_in_parent_reactivates_pipelines(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
-):
+def test_after_fork_in_parent_reactivates_pipelines(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     configure_and_activate(monkeypatch)
-    assert len(memory_exporters.span) == 1
+    assert len(exporters.span) == 1
     old_reader = metrics.reader
 
     activation.before_fork()
     activation.after_fork_in_parent()
 
-    assert len(memory_exporters.span) == 2
+    assert len(exporters.span) == 2
     assert metrics.reader is not None and metrics.reader is not old_reader
 
     with trace.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
         pass
     assert activation.span_processor is not None
     assert activation.span_processor.downstream.force_flush()
-    assert len(memory_exporters.span[1].get_finished_spans()) == 1
-    assert memory_exporters.span[0].get_finished_spans() == ()
+    assert len(exporters.span[1].get_finished_spans()) == 1
+    assert exporters.span[0].get_finished_spans() == ()
 
 
 def test_after_fork_in_child_leaves_fresh_acquirable_lock(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     configure_and_activate(monkeypatch)
     activation.before_fork()  # holds the lock, as at the instant of fork
@@ -73,7 +71,7 @@ def test_after_fork_in_child_leaves_fresh_acquirable_lock(
 
 
 def test_child_reactivation_reuses_inherited_span_processor(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     configure_and_activate(monkeypatch)
     provider = trace.get_tracer_provider()
@@ -89,7 +87,7 @@ def test_child_reactivation_reuses_inherited_span_processor(
         pass
     assert activation.span_processor is not None
     assert activation.span_processor.downstream.force_flush()
-    assert len(memory_exporters.span[-1].get_finished_spans()) == 1
+    assert len(exporters.span[-1].get_finished_spans()) == 1
 
 
 def child_probe(queue: multiprocessing.Queue[dict[str, Any]]) -> None:
@@ -106,9 +104,7 @@ def child_probe(queue: multiprocessing.Queue[dict[str, Any]]) -> None:
 
 
 @linux_only
-def test_forked_child_stays_inert_until_activation_gate(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
-):
+def test_forked_child_stays_inert_until_activation_gate(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     configure_and_activate(monkeypatch)
     assert activation.resource is not None
     parent_instance_id = activation.resource.attributes["service.instance.id"]
@@ -128,9 +124,7 @@ def test_forked_child_stays_inert_until_activation_gate(
 
 
 @linux_only
-def test_os_fork_in_activated_process_does_not_deadlock(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
-):
+def test_os_fork_in_activated_process_does_not_deadlock(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     configure_and_activate(monkeypatch)
     pid = os.fork()
     if pid == 0:

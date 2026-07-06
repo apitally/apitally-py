@@ -17,7 +17,7 @@ from opentelemetry.trace import SpanKind, StatusCode
 from apitally.blacksheep import init_apitally
 from apitally.shared import activation, metrics, startup
 from apitally.shared.redaction import REDACTED
-from tests.conftest import CreatedExporters
+from tests.conftest import InMemoryExporters
 
 
 TOKEN = "apt_" + "a" * 24
@@ -51,10 +51,10 @@ def create_client(asgi_app: Any) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=asgi_app), base_url="http://testserver")
 
 
-def exported_spans(memory_exporters: CreatedExporters) -> list[ReadableSpan]:
+def exported_spans(exporters: InMemoryExporters) -> list[ReadableSpan]:
     assert activation.span_processor is not None
     activation.span_processor.force_flush()
-    return [span for exporter in memory_exporters.span for span in exporter.get_finished_spans()]
+    return [span for exporter in exporters.span for span in exporter.get_finished_spans()]
 
 
 def attach_metric_reader() -> InMemoryMetricReader:
@@ -79,7 +79,7 @@ def duration_data_points(reader: InMemoryMetricReader) -> list[Any]:
 
 
 async def test_request_exports_span_with_route_and_records_metrics(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     allow_activation(monkeypatch)
     app = create_app()
@@ -91,7 +91,7 @@ async def test_request_exports_span_with_route_and_records_metrics(
         response = await client.get("/items/123")
     assert response.status_code == 200
 
-    (span,) = [s for s in exported_spans(memory_exporters) if s.kind == SpanKind.SERVER]
+    (span,) = [s for s in exported_spans(exporters) if s.kind == SpanKind.SERVER]
     assert span.name == "GET /items/{id}"
     assert span.attributes is not None
     assert span.attributes["http.route"] == "/items/{id}"
@@ -106,7 +106,7 @@ async def test_request_exports_span_with_route_and_records_metrics(
     activation.log_processor.force_flush()
     (record,) = [
         exported.log_record
-        for exporter in memory_exporters.log
+        for exporter in exporters.log
         for exported in exporter.get_finished_logs()
         if exported.log_record.event_name == startup.EVENT_NAME
     ]
@@ -121,7 +121,7 @@ async def test_request_exports_span_with_route_and_records_metrics(
 
 
 async def test_unmatched_request_has_no_route_and_no_histogram_point(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     allow_activation(monkeypatch)
     app = create_app()
@@ -132,14 +132,14 @@ async def test_unmatched_request_has_no_route_and_no_histogram_point(
         response = await client.get("/nope")
     assert response.status_code == 404
 
-    (span,) = [s for s in exported_spans(memory_exporters) if s.kind == SpanKind.SERVER]
+    (span,) = [s for s in exported_spans(exporters) if s.kind == SpanKind.SERVER]
     assert span.attributes is not None
     assert "http.route" not in span.attributes
     assert duration_data_points(reader) == []
 
 
 async def test_first_request_activates_and_records_without_lifespan(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     # PRIVATE-API CANARY (design.md section 4): init_apitally wraps app._handle_http, the one
     # private-API dependency. This test drives the app without lifespan so the request flows
@@ -157,12 +157,12 @@ async def test_first_request_activates_and_records_without_lifespan(
     assert response.status_code == 200
     assert activation.is_activated()
 
-    (span,) = [s for s in exported_spans(memory_exporters) if s.kind == SpanKind.SERVER]
+    (span,) = [s for s in exported_spans(exporters) if s.kind == SpanKind.SERVER]
     assert span.name == "GET /items/{id}"
 
 
 async def test_preinstrumented_app_adapted_without_duplicate_server_spans(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     allow_activation(monkeypatch)
     app = Application(router=Router())
@@ -179,7 +179,7 @@ async def test_preinstrumented_app_adapted_without_duplicate_server_spans(
         response = await client.get("/items/1")
     assert response.status_code == 200
 
-    spans = exported_spans(memory_exporters)
+    spans = exported_spans(exporters)
     (server_span,) = [s for s in spans if s.kind == SpanKind.SERVER]
     assert server_span.name == "GET /items/{id}"
     assert server_span.attributes is not None
@@ -189,7 +189,7 @@ async def test_preinstrumented_app_adapted_without_duplicate_server_spans(
 
 
 async def test_unhandled_exception_recorded_on_server_span(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     allow_activation(monkeypatch)
     app = create_app()
@@ -204,7 +204,7 @@ async def test_unhandled_exception_recorded_on_server_span(
         response = await client.get("/error")
     assert response.status_code == 500
 
-    (span,) = [s for s in exported_spans(memory_exporters) if s.kind == SpanKind.SERVER]
+    (span,) = [s for s in exported_spans(exporters) if s.kind == SpanKind.SERVER]
     assert span.status.status_code == StatusCode.ERROR
     assert span.attributes is not None
     assert span.attributes["http.response.status_code"] == 500
@@ -213,7 +213,7 @@ async def test_unhandled_exception_recorded_on_server_span(
     assert (event.attributes or {})["exception.message"] == "boom"
 
 
-async def test_request_body_captured_and_redacted(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+async def test_request_body_captured_and_redacted(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     allow_activation(monkeypatch)
     app = create_app(log_request_body=True)
     await app.start()
@@ -222,6 +222,6 @@ async def test_request_body_captured_and_redacted(memory_exporters: CreatedExpor
         response = await client.post("/items", json={"password": "secret", "name": "widget"})
     assert response.status_code == 200
 
-    (span,) = [s for s in exported_spans(memory_exporters) if s.kind == SpanKind.SERVER]
+    (span,) = [s for s in exported_spans(exporters) if s.kind == SpanKind.SERVER]
     assert span.attributes is not None
     assert json.loads(str(span.attributes["apitally.request.body"])) == {"password": REDACTED, "name": "widget"}

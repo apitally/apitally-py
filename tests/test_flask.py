@@ -12,7 +12,7 @@ from apitally.flask import init_apitally
 from apitally.shared import activation, metrics
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
-from tests.conftest import CreatedExporters
+from tests.conftest import InMemoryExporters
 
 
 TOKEN = "apt_" + "a" * 24
@@ -61,10 +61,10 @@ def activate_with_metric_reader() -> InMemoryMetricReader:
     return reader
 
 
-def exported_spans(memory_exporters: CreatedExporters) -> list[ReadableSpan]:
+def exported_spans(exporters: InMemoryExporters) -> list[ReadableSpan]:
     assert activation.span_processor is not None
     activation.span_processor.force_flush()
-    return [span for exporter in memory_exporters.span for span in exporter.get_finished_spans()]
+    return [span for exporter in exporters.span for span in exporter.get_finished_spans()]
 
 
 def collect_metric(reader: InMemoryMetricReader, name: str) -> Metric | None:
@@ -80,7 +80,7 @@ def collect_metric(reader: InMemoryMetricReader, name: str) -> Metric | None:
 
 
 def test_first_request_activates_and_is_recorded(
-    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch)
     assert not activation.is_activated()
@@ -89,7 +89,7 @@ def test_first_request_activates_and_is_recorded(
 
     assert response.status_code == 200
     assert activation.is_activated()
-    (span,) = exported_spans(memory_exporters)
+    (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     attributes = dict(span.attributes or {})
     assert attributes["http.route"] == "/items/<int:item_id>"
@@ -97,14 +97,14 @@ def test_first_request_activates_and_is_recorded(
 
 
 def test_bodies_captured_while_span_recording(
-    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch, log_request_body=True, log_response_body=True)
 
     response = app.test_client().post("/items", json={"password": "secret123", "name": "x"})
 
     assert response.status_code == 200
-    (span,) = exported_spans(memory_exporters)
+    (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     # Presence on the exported span proves both writes landed before teardown ended the span
     assert json.loads(str(attributes["apitally.request.body"])) == {"password": REDACTED, "name": "x"}
@@ -112,7 +112,7 @@ def test_bodies_captured_while_span_recording(
 
 
 def test_streaming_response_uncaptured_but_recorded(
-    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch, log_response_body=True)
     reader = activate_with_metric_reader()
@@ -120,7 +120,7 @@ def test_streaming_response_uncaptured_but_recorded(
     response = app.test_client().get("/stream")
 
     assert response.data == b'{"a": 1}'
-    (span,) = exported_spans(memory_exporters)
+    (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     assert "apitally.response.body" not in attributes
     assert "http.response.body.size" not in attributes
@@ -132,7 +132,7 @@ def test_streaming_response_uncaptured_but_recorded(
 
 
 def test_generator_response_not_flattened_by_capture(
-    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     consumed = []
 
@@ -159,20 +159,20 @@ def test_generator_response_not_flattened_by_capture(
 
     assert response.data == b'{"a": 1}'
     assert streamed_after_capture["value"] is True
-    (span,) = exported_spans(memory_exporters)
+    (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     assert attributes["http.route"] == "/gen"
     assert "apitally.response.body" not in attributes
 
 
 def test_response_headers_captured_wire_final(
-    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch, log_response_headers=True)
 
     app.test_client().get("/headers")
 
-    (span,) = exported_spans(memory_exporters)
+    (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     assert attributes["http.response.header.x-custom"] == ("value",)
     # Content-Length is added by werkzeug after the view returns, proving wire-final capture
@@ -180,7 +180,7 @@ def test_response_headers_captured_wire_final(
 
 
 def test_consumer_set_in_route_reaches_span_and_histogram(
-    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch)
     reader = activate_with_metric_reader()
@@ -189,7 +189,7 @@ def test_consumer_set_in_route_reaches_span_and_histogram(
 
     # Consume the body; the transport records metrics when the response iterable completes
     assert response.get_json() == {"ok": True}
-    (span,) = exported_spans(memory_exporters)
+    (span,) = exported_spans(exporters)
     assert dict(span.attributes or {})["apitally.consumer.identifier"] == "tester"
     duration_metric = collect_metric(reader, "http.server.request.duration")
     assert duration_metric is not None
@@ -198,9 +198,7 @@ def test_consumer_set_in_route_reaches_span_and_histogram(
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
 
 
-def test_sampled_out_request_skips_capture(
-    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
-):
+def test_sampled_out_request_skips_capture(app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     mask_calls: list[bytes] = []
 
     def mask(span: ReadableSpan, body: bytes) -> bytes:
@@ -223,7 +221,7 @@ def test_sampled_out_request_skips_capture(
     # Consume the body; the transport records metrics when the response iterable completes
     assert response.get_json() == {"id": 1, "token": "abc123"}
     assert not mask_calls
-    assert exported_spans(memory_exporters) == []
+    assert exported_spans(exporters) == []
     duration_metric = collect_metric(reader, "http.server.request.duration")
     assert duration_metric is not None
     assert isinstance(duration_metric.data, ExponentialHistogram)
@@ -244,7 +242,7 @@ def test_init_apitally_swallows_instrumentation_errors(app: Flask, monkeypatch: 
 
 
 def test_pre_instrumented_app_adapts_without_double_spans(
-    app: Flask, memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     FlaskInstrumentor().instrument_app(app)
     init(app, monkeypatch, log_response_headers=True)
@@ -252,7 +250,7 @@ def test_pre_instrumented_app_adapts_without_double_spans(
     response = app.test_client().get("/items/7")
 
     assert response.status_code == 200
-    (span,) = exported_spans(memory_exporters)
+    (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     assert attributes["http.route"] == "/items/<int:item_id>"
     # Transport glue still lands on the user-instrumented span

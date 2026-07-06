@@ -6,7 +6,7 @@ from collections.abc import Iterator
 import pytest
 from django.test import Client
 
-from tests.conftest import CreatedExporters
+from tests.conftest import InMemoryExporters
 from tests.django_utils import (
     activate_via_signal,
     attach_metric_reader,
@@ -33,11 +33,11 @@ def django_teardown() -> Iterator[None]:
     teardown_django_instrumentation()
 
 
-def test_startup_paths_and_openapi(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+def test_startup_paths_and_openapi(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch, app_version="1.2.3")
     activate_via_signal()
 
-    payload = get_startup_payload(memory_exporters)
+    payload = get_startup_payload(exporters)
     assert payload["framework"] == "django"
     assert payload["versions"]["django-ninja"]
     assert payload["versions"]["app"] == "1.2.3"
@@ -47,7 +47,7 @@ def test_startup_paths_and_openapi(memory_exporters: CreatedExporters, monkeypat
     assert set(openapi["paths"]) == {"/api/foo", "/api/foo/{bar}"}
 
 
-def test_request_flow(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+def test_request_flow(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
     reader = attach_metric_reader()
@@ -55,7 +55,7 @@ def test_request_flow(memory_exporters: CreatedExporters, monkeypatch: pytest.Mo
     response = Client().get("/api/foo/123")
     assert response.status_code == 200
 
-    (span,) = get_server_spans(memory_exporters)
+    (span,) = get_server_spans(exporters)
     assert span.attributes is not None
     assert span.attributes["http.route"] == "/api/foo/{bar}"
     assert span.attributes["http.response.status_code"] == 200

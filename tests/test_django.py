@@ -10,7 +10,7 @@ from django.test import Client
 from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE
 from apitally.shared import activation, config
 from apitally.shared.redaction import REDACTED
-from tests.conftest import CreatedExporters
+from tests.conftest import InMemoryExporters
 from tests.django_utils import (
     activate_via_signal,
     attach_metric_reader,
@@ -37,7 +37,7 @@ def django_teardown() -> Iterator[None]:
     teardown_django_instrumentation()
 
 
-def test_request_span_and_activation_order(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+def test_request_span_and_activation_order(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     assert not activation.is_activated()
 
@@ -46,17 +46,17 @@ def test_request_span_and_activation_order(memory_exporters: CreatedExporters, m
     assert activation.is_activated()
 
     # request_started activated before the span started, so the very first request is exported
-    (span,) = get_server_spans(memory_exporters)
+    (span,) = get_server_spans(exporters)
     assert span.attributes is not None
     assert span.attributes["http.route"] == "/items/{pk}/"
     assert span.attributes["http.response.status_code"] == 200
-    payload = get_startup_payload(memory_exporters)
+    payload = get_startup_payload(exporters)
     assert payload["framework"] == "django"
     assert payload["versions"]["django"]
 
 
 def test_management_command_configures_but_never_activates(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(sys, "argv", ["manage.py", "migrate"])
@@ -65,10 +65,10 @@ def test_management_command_configures_but_never_activates(
     init_apitally(write_token="apt_" + "a" * 24)
     assert config.get_config() is not None
     assert not activation.is_activated()
-    assert memory_exporters.span == []
+    assert exporters.span == []
 
 
-def test_request_body_capture_redacts_fields(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+def test_request_body_capture_redacts_fields(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch, log_request_body=True, mask_body_fields=["custom_field"])
     response = Client().post(
         "/items/",
@@ -77,13 +77,13 @@ def test_request_body_capture_redacts_fields(memory_exporters: CreatedExporters,
     )
     assert response.status_code == 201
 
-    (span,) = get_server_spans(memory_exporters)
+    (span,) = get_server_spans(exporters)
     assert span.attributes is not None
     body = json.loads(str(span.attributes["apitally.request.body"]))
     assert body == {"name": "a", "password": REDACTED, "custom_field": REDACTED}
 
 
-def test_sampled_out_request_skips_capture(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+def test_sampled_out_request_skips_capture(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     mask_calls: list[bytes] = []
 
     def mask(span: object, body: bytes) -> bytes:
@@ -105,13 +105,13 @@ def test_sampled_out_request_skips_capture(memory_exporters: CreatedExporters, m
     assert response.status_code == 201
 
     assert not mask_calls
-    assert get_server_spans(memory_exporters) == []
+    assert get_server_spans(exporters) == []
     (point,) = get_histogram_points(reader, "http.server.request.duration")
     assert point.count == 1
 
 
 def test_streaming_response_recorded_without_body_and_size(
-    memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(monkeypatch, log_response_body=True)
     activate_via_signal()
@@ -120,7 +120,7 @@ def test_streaming_response_recorded_without_body_and_size(
     response = Client().get("/stream/")
     assert b"".join(response.streaming_content) == b"chunk1chunk2"  # ty: ignore[unresolved-attribute]
 
-    (span,) = get_server_spans(memory_exporters)
+    (span,) = get_server_spans(exporters)
     assert span.attributes is not None
     assert "apitally.response.body" not in span.attributes
     assert "http.response.body.size" not in span.attributes
@@ -129,14 +129,14 @@ def test_streaming_response_recorded_without_body_and_size(
     assert get_histogram_points(reader, "http.server.response.body.size") == []
 
 
-def test_consumer_reaches_span_and_histogram(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+def test_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
     reader = attach_metric_reader()
 
     assert Client().get("/whoami/").status_code == 200
 
-    (span,) = get_server_spans(memory_exporters)
+    (span,) = get_server_spans(exporters)
     assert span.attributes is not None
     assert span.attributes["apitally.consumer.identifier"] == "tester"
     assert span.attributes["apitally.consumer.name"] == "Tester"
@@ -144,7 +144,7 @@ def test_consumer_reaches_span_and_histogram(memory_exporters: CreatedExporters,
     assert point.attributes["apitally.consumer.identifier"] == "tester"
 
 
-def test_unhandled_exception_recorded(memory_exporters: CreatedExporters, monkeypatch: pytest.MonkeyPatch):
+def test_unhandled_exception_recorded(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
     reader = attach_metric_reader()
@@ -152,7 +152,7 @@ def test_unhandled_exception_recorded(memory_exporters: CreatedExporters, monkey
     response = Client(raise_request_exception=False).get("/error/")
     assert response.status_code == 500
 
-    (span,) = get_server_spans(memory_exporters)
+    (span,) = get_server_spans(exporters)
     assert span.attributes is not None
     assert span.attributes["http.response.status_code"] == 500
     (event,) = [e for e in span.events if e.name == "exception"]
