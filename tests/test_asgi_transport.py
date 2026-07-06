@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
-from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader, Metric
+from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -21,6 +21,7 @@ from apitally.shared.config import configure
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor
+from tests.conftest import attach_metric_reader, collect_metrics
 
 
 TOKEN = "apt_" + "a" * 24
@@ -35,12 +36,7 @@ def reset_config() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def metric_reader() -> Iterator[InMemoryMetricReader]:
-    provider = metrics.setup(Resource.create({}))
-    reader = InMemoryMetricReader(
-        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
-        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
-    )
-    provider.add_metric_reader(reader)
+    reader = attach_metric_reader(metrics.setup(Resource.create({})))
     yield reader
     metrics.reset()
 
@@ -50,18 +46,6 @@ def create_trace_pipeline(sampler: Sampler = ALWAYS_ON) -> tuple[Tracer, InMemor
     provider = TracerProvider(sampler=sampler)
     provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
     return provider.get_tracer("opentelemetry.instrumentation.test"), exporter
-
-
-def collect_metrics(reader: InMemoryMetricReader) -> dict[str, Metric]:
-    metrics_data = reader.get_metrics_data()
-    if metrics_data is None:
-        return {}
-    return {
-        metric.name: metric
-        for resource_metrics in metrics_data.resource_metrics
-        for scope_metrics in resource_metrics.scope_metrics
-        for metric in scope_metrics.metrics
-    }
 
 
 def header_values(span: ReadableSpan, key: str) -> tuple[str, ...]:

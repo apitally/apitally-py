@@ -14,14 +14,18 @@ from litestar.plugins.opentelemetry import (
     OpenTelemetryPlugin,
 )
 from litestar.testing import TestClient
-from opentelemetry.sdk.metrics.export import InMemoryMetricReader
-from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import SpanKind, StatusCode
 
 from apitally.litestar import ApitallyPlugin
-from apitally.shared import activation, config, metrics, startup
+from apitally.shared import activation, config
 from apitally.shared.redaction import REDACTED
-from tests.conftest import InMemoryExporters
+from tests.conftest import (
+    InMemoryExporters,
+    attach_metric_reader,
+    duration_data_points,
+    exported_spans,
+    startup_payload,
+)
 
 
 TOKEN = "apt_" + "a" * 24
@@ -58,38 +62,18 @@ def make_app(plugins: list[Any] | None = None, middleware: list[Any] | None = No
     )
 
 
-def flush_spans(exporters: InMemoryExporters) -> list[ReadableSpan]:
-    assert activation.span_processor is not None
-    activation.span_processor.force_flush()
-    return [span for exporter in exporters.span for span in exporter.get_finished_spans()]
-
-
 def test_route_repair_metrics_and_no_noise_spans(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     with TestClient(app=make_app()) as client:
-        assert metrics.meter_provider is not None
-        reader = InMemoryMetricReader(
-            preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
-            preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
-        )
-        metrics.meter_provider.add_metric_reader(reader)
+        reader = attach_metric_reader()
         assert client.get("/users/123").status_code == 200
 
-    (span,) = flush_spans(exporters)
+    (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     assert span.name == "GET /users/{user_id}"
     assert (span.attributes or {})["http.route"] == "/users/{user_id}"
 
-    metrics_data = reader.get_metrics_data()
-    assert metrics_data is not None
-    points = [
-        dict(point.attributes or {})
-        for resource_metrics in metrics_data.resource_metrics
-        for scope_metrics in resource_metrics.scope_metrics
-        for metric in scope_metrics.metrics
-        if metric.name == "http.server.request.duration"
-        for point in metric.data.data_points
-    ]
+    points = [dict(point.attributes or {}) for point in duration_data_points(reader)]
     assert len(points) == 1
     assert points[0]["http.route"] == "/users/{user_id}"
 
@@ -102,7 +86,7 @@ def test_user_otel_plugin_detected_and_repaired(exporters: InMemoryExporters, mo
         assert client.get("/users/123").status_code == 200
 
     # The user's config has no exclude_spans; the backstop drops the receive/send spans
-    (span,) = flush_spans(exporters)
+    (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     assert span.name == "GET /users/{user_id}"
     assert (span.attributes or {})["http.route"] == "/users/{user_id}"
@@ -116,7 +100,7 @@ def test_legacy_otel_middleware_detected_and_repaired(exporters: InMemoryExporte
     with TestClient(app=app) as client:
         assert client.get("/users/123").status_code == 200
 
-    (span,) = flush_spans(exporters)
+    (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     assert span.name == "GET /users/{user_id}"
 
@@ -126,7 +110,7 @@ def test_excluded_request_exports_nothing(exporters: InMemoryExporters, monkeypa
     with TestClient(app=make_app()) as client:
         assert client.get("/healthz").status_code == 200
 
-    assert flush_spans(exporters) == []
+    assert exported_spans(exporters) == []
 
 
 def test_body_capture_on_server_span(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
@@ -135,7 +119,7 @@ def test_body_capture_on_server_span(exporters: InMemoryExporters, monkeypatch: 
         response = client.post("/users", json={"user": "u", "password": "secret"})
         assert response.status_code == 201
 
-    (span,) = flush_spans(exporters)
+    (span,) = exported_spans(exporters)
     attributes = span.attributes or {}
     assert json.loads(str(attributes["apitally.request.body"])) == {"user": "u", "password": REDACTED}
     assert json.loads(str(attributes["apitally.response.body"])) == {"user": "u", "password": REDACTED}
@@ -147,7 +131,7 @@ def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporter
     with TestClient(app=app) as client:
         assert client.get("/error").status_code == 500
 
-    (span,) = flush_spans(exporters)
+    (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     assert span.status.status_code == StatusCode.ERROR
     assert (span.attributes or {})["http.response.status_code"] == 500
@@ -164,16 +148,7 @@ def test_on_startup_activates_and_emits_startup_event(exporters: InMemoryExporte
         # Activation completed during lifespan startup, before any request
         assert activation.is_activated()
 
-    assert activation.log_processor is not None
-    activation.log_processor.force_flush()
-    (exported,) = [
-        record
-        for exporter in exporters.log
-        for record in exporter.get_finished_logs()
-        if record.log_record.event_name == startup.EVENT_NAME
-    ]
-    assert isinstance(exported.log_record.body, str)
-    payload = json.loads(exported.log_record.body)
+    payload = startup_payload(exporters)
     assert payload["framework"] == "litestar"
     assert payload["versions"] == {
         "python": platform.python_version(),
@@ -197,5 +172,5 @@ def test_plugin_reconstruction_same_kwargs_is_noop(exporters: InMemoryExporters,
 
     with TestClient(app=app) as client:
         assert client.get("/users/123").status_code == 200
-    (span,) = flush_spans(exporters)
+    (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER

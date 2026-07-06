@@ -7,13 +7,13 @@ from opentelemetry.sdk.metrics.export import (
     ExponentialHistogram,
     Gauge,
     InMemoryMetricReader,
-    Metric,
     Sum,
 )
 from opentelemetry.sdk.metrics.view import ExponentialBucketHistogramAggregation
 from opentelemetry.sdk.resources import Resource
 
 from apitally.shared import metrics
+from tests.conftest import attach_metric_reader, collect_metrics
 
 
 @pytest.fixture(autouse=True)
@@ -23,25 +23,7 @@ def reset_metrics() -> Iterator[None]:
 
 
 def create_pipeline() -> InMemoryMetricReader:
-    provider = metrics.setup(Resource.create({}))
-    reader = InMemoryMetricReader(
-        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
-        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
-    )
-    provider.add_metric_reader(reader)
-    return reader
-
-
-def collect_metrics(reader: InMemoryMetricReader) -> dict[str, Metric]:
-    metrics_data = reader.get_metrics_data()
-    if metrics_data is None:
-        return {}
-    return {
-        metric.name: metric
-        for resource_metrics in metrics_data.resource_metrics
-        for scope_metrics in resource_metrics.scope_metrics
-        for metric in scope_metrics.metrics
-    }
+    return attach_metric_reader(metrics.setup(Resource.create({})))
 
 
 def get_scope_names(reader: InMemoryMetricReader) -> dict[str, str]:

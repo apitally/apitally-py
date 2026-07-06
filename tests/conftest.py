@@ -1,3 +1,4 @@
+import json
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -5,11 +6,23 @@ from importlib.util import find_spec
 from typing import Any, TypeVar
 
 import pytest
+from opentelemetry._logs import LogRecord
 from opentelemetry.instrumentation._semconv import _OpenTelemetrySemanticConventionStability
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
-from opentelemetry.sdk.metrics.export import MetricExporter, MetricExportResult, MetricsData
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import (
+    DataPointT,
+    ExponentialHistogramDataPoint,
+    InMemoryMetricReader,
+    Metric,
+    MetricExporter,
+    MetricExportResult,
+    MetricsData,
+)
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.test.globals_test import reset_trace_globals
+from opentelemetry.trace import SpanKind
 
 from apitally.shared import activation, config, metrics, providers, startup
 
@@ -120,3 +133,58 @@ def exporters(monkeypatch: pytest.MonkeyPatch) -> InMemoryExporters:
     monkeypatch.setattr(providers, "create_log_exporter", log_exporter)
     monkeypatch.setattr(metrics, "create_metric_exporter", metric_exporter)
     return created
+
+
+def attach_metric_reader(provider: MeterProvider | None = None) -> InMemoryMetricReader:
+    """Attach an in-memory reader with the same histogram temporality and aggregation as production."""
+    if provider is None:
+        provider = unwrap(metrics.meter_provider)
+    reader = InMemoryMetricReader(
+        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
+        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
+    )
+    provider.add_metric_reader(reader)
+    return reader
+
+
+def collect_metrics(reader: InMemoryMetricReader) -> dict[str, Metric]:
+    metrics_data = reader.get_metrics_data()
+    if metrics_data is None:
+        return {}
+    return {
+        metric.name: metric
+        for resource_metrics in metrics_data.resource_metrics
+        for scope_metrics in resource_metrics.scope_metrics
+        for metric in scope_metrics.metrics
+    }
+
+
+def metric_data_points(reader: InMemoryMetricReader, name: str) -> list[DataPointT]:
+    metric = collect_metrics(reader).get(name)
+    return list(metric.data.data_points) if metric is not None else []
+
+
+def duration_data_points(reader: InMemoryMetricReader) -> list[ExponentialHistogramDataPoint]:
+    points = metric_data_points(reader, "http.server.request.duration")
+    return [point for point in points if isinstance(point, ExponentialHistogramDataPoint)]
+
+
+def exported_spans(exporters: InMemoryExporters, kind: SpanKind | None = None) -> list[ReadableSpan]:
+    unwrap(activation.span_processor).force_flush()
+    return [
+        span
+        for exporter in exporters.span
+        for span in exporter.get_finished_spans()
+        if kind is None or span.kind == kind
+    ]
+
+
+def exported_log_records(exporters: InMemoryExporters) -> list[LogRecord]:
+    unwrap(activation.log_processor).force_flush()
+    return [exported.log_record for exporter in exporters.log for exported in exporter.get_finished_logs()]
+
+
+def startup_payload(exporters: InMemoryExporters) -> dict[str, Any]:
+    (record,) = [r for r in exported_log_records(exporters) if r.event_name == startup.EVENT_NAME]
+    assert isinstance(record.body, str)
+    return json.loads(record.body)

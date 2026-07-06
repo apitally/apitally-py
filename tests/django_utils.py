@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-import json
 import sys
 from typing import Any
 
 import pytest
-from opentelemetry.sdk.metrics.export import InMemoryMetricReader
-from opentelemetry.sdk.trace import ReadableSpan
-from opentelemetry.trace import SpanKind
 
 from apitally.django import init_apitally
-from apitally.shared import activation, metrics, startup
+from apitally.shared import activation
 
 
 TOKEN = "apt_" + "a" * 24
@@ -52,51 +48,6 @@ def activate_via_signal() -> None:
 
     request_started.send(sender=None)
     assert activation.is_activated()
-
-
-def attach_metric_reader() -> InMemoryMetricReader:
-    reader = InMemoryMetricReader(
-        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
-        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
-    )
-    assert metrics.meter_provider is not None
-    metrics.meter_provider.add_metric_reader(reader)
-    return reader
-
-
-def get_server_spans(exporters: Any) -> list[ReadableSpan]:
-    assert activation.span_processor is not None
-    activation.span_processor.force_flush()
-    return [
-        span for exporter in exporters.span for span in exporter.get_finished_spans() if span.kind == SpanKind.SERVER
-    ]
-
-
-def get_startup_payload(exporters: Any) -> dict[str, Any]:
-    assert activation.log_processor is not None
-    activation.log_processor.force_flush()
-    (record,) = [
-        exported.log_record
-        for exporter in exporters.log
-        for exported in exporter.get_finished_logs()
-        if exported.log_record.event_name == startup.EVENT_NAME
-    ]
-    assert isinstance(record.body, str)
-    return json.loads(record.body)
-
-
-def get_histogram_points(reader: InMemoryMetricReader, name: str) -> list[Any]:
-    metrics_data = reader.get_metrics_data()
-    if metrics_data is None:
-        return []
-    return [
-        point
-        for resource_metrics in metrics_data.resource_metrics
-        for scope_metrics in resource_metrics.scope_metrics
-        for metric in scope_metrics.metrics
-        if metric.name == name
-        for point in metric.data.data_points
-    ]
 
 
 def teardown_django_instrumentation() -> None:

@@ -4,15 +4,20 @@ from typing import Any, Iterator, NoReturn
 import pytest
 from flask import Flask, Response, jsonify
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader, Metric
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import SpanKind
 
 from apitally.flask import init_apitally
-from apitally.shared import activation, metrics
+from apitally.shared import activation
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
-from tests.conftest import InMemoryExporters
+from tests.conftest import (
+    InMemoryExporters,
+    attach_metric_reader,
+    duration_data_points,
+    exported_spans,
+)
 
 
 TOKEN = "apt_" + "a" * 24
@@ -55,31 +60,7 @@ def init(app: Flask, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
 
 def activate_with_metric_reader() -> InMemoryMetricReader:
     activation.activate()
-    assert metrics.meter_provider is not None
-    reader = InMemoryMetricReader(
-        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
-        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
-    )
-    metrics.meter_provider.add_metric_reader(reader)
-    return reader
-
-
-def exported_spans(exporters: InMemoryExporters) -> list[ReadableSpan]:
-    assert activation.span_processor is not None
-    activation.span_processor.force_flush()
-    return [span for exporter in exporters.span for span in exporter.get_finished_spans()]
-
-
-def collect_metric(reader: InMemoryMetricReader, name: str) -> Metric | None:
-    metrics_data = reader.get_metrics_data()
-    if metrics_data is None:
-        return None
-    for resource_metrics in metrics_data.resource_metrics:
-        for scope_metrics in resource_metrics.scope_metrics:
-            for metric in scope_metrics.metrics:
-                if metric.name == name:
-                    return metric
-    return None
+    return attach_metric_reader()
 
 
 def test_first_request_activates_and_is_recorded(
@@ -127,10 +108,7 @@ def test_streaming_response_uncaptured_but_recorded(
     attributes = dict(span.attributes or {})
     assert "apitally.response.body" not in attributes
     assert "http.response.body.size" not in attributes
-    duration_metric = collect_metric(reader, "http.server.request.duration")
-    assert duration_metric is not None
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    (point,) = duration_metric.data.data_points
+    (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.route"] == "/stream"
 
 
@@ -194,10 +172,7 @@ def test_consumer_set_in_route_reaches_span_and_histogram(
     assert response.get_json() == {"ok": True}
     (span,) = exported_spans(exporters)
     assert dict(span.attributes or {})["apitally.consumer.identifier"] == "tester"
-    duration_metric = collect_metric(reader, "http.server.request.duration")
-    assert duration_metric is not None
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    (point,) = duration_metric.data.data_points
+    (point,) = duration_data_points(reader)
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
 
 
@@ -225,10 +200,7 @@ def test_sampled_out_request_skips_capture(app: Flask, exporters: InMemoryExport
     assert response.get_json() == {"id": 1, "token": "abc123"}
     assert not mask_calls
     assert exported_spans(exporters) == []
-    duration_metric = collect_metric(reader, "http.server.request.duration")
-    assert duration_metric is not None
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    (point,) = duration_metric.data.data_points
+    (point,) = duration_data_points(reader)
     assert point.count == 1
 
 
