@@ -44,7 +44,7 @@ def init_apitally(
     sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
     sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
 ) -> None:
-    """Set up Apitally for a FastAPI application. Errors never propagate."""
+    """Set up Apitally for a FastAPI application. Activation happens on lifespan startup or the first request."""
     try:
         activation.configure(**config.explicit_kwargs(locals()))
         _instrument_app(app)

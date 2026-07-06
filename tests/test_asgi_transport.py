@@ -69,7 +69,7 @@ def header_values(span: ReadableSpan, key: str) -> tuple[str, ...]:
 
 
 class EchoApp:
-    """Minimal raw-ASGI app: reads the full request body, then sends a configurable response."""
+    """A minimal raw-ASGI app that reads the full request body, then sends a configurable response."""
 
     def __init__(
         self,

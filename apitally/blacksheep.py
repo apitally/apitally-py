@@ -59,7 +59,6 @@ def init_apitally(
         if instrumented_by_user:
             # The user wrapped the app in their own generic ASGI instrumentor; reuse their
             # SERVER spans instead of nesting a second one
-            logger.debug("Existing OpenTelemetryMiddleware detected, skipping Apitally instrumentor layer")
             app = app.app
 
         if getattr(app, "_apitally_initialized", False):

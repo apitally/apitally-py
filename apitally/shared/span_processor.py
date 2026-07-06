@@ -66,7 +66,7 @@ def sampled_in(trace_id: int, bound: int) -> bool:
 
 
 class ApitallySpanProcessor(SpanProcessor):
-    """Single keep/drop mechanism in front of the wrapped export processor."""
+    """Acts as a single keep/drop mechanism in front of the wrapped export processor."""
 
     def __init__(self, downstream: SpanProcessor) -> None:
         # Settable so fork re-activation can swap in a fresh batch processor
@@ -178,7 +178,7 @@ class ApitallySpanProcessor(SpanProcessor):
     def resolve_sample_rate(
         self, callback: Callable[[ReadableSpan], float | bool | None] | None, span: ReadableSpan, name: str
     ) -> float | None:
-        """Map a sampling callback result to an effective rate; None means no callback or it abstained."""
+        """Map a sampling callback result to an effective rate. None means there was no callback, or it abstained."""
         if callback is None:
             return None
         try:
@@ -196,7 +196,7 @@ class ApitallySpanProcessor(SpanProcessor):
         return 1.0
 
     def redact_span(self, span: ReadableSpan) -> ReadableSpan:
-        """Return a copy with query params and headers redacted; the original span is never mutated."""
+        """Return a redacted copy when redaction is needed. The original span is never mutated."""
         if not any(
             key in QUERY_ATTRIBUTES or key.startswith(HEADER_ATTRIBUTE_PREFIXES) for key in span.attributes or {}
         ):

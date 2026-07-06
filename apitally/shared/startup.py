@@ -28,14 +28,14 @@ def set_app_info(
     versions: dict[str, str] | Callable[[], dict[str, str]] | None = None,
     openapi: str | Callable[[], str | None] | None = None,
 ) -> None:
-    """Called by framework adapters at configure time; values may be zero-arg callables resolved at emit time."""
+    """Framework adapters call this at configure time. Values may be zero-arg callables that get resolved at emit time."""
     app_info.update(framework=framework, paths=paths, versions=versions, openapi=openapi)
     if emit_startup_event not in activation.on_activate_hooks:
         activation.register_on_activate_hook(emit_startup_event)
 
 
 def resolve_versions(app_version: str | None, **packages: str) -> dict[str, str]:
-    """Resolve installed versions for the startup event; keys are payload names, values distribution names."""
+    """Resolve installed versions for the startup event. Keys are payload names, and values are distribution names."""
     versions = {}
     for name, package in packages.items():
         with suppress(PackageNotFoundError):
