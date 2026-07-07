@@ -5,10 +5,10 @@ from collections.abc import Iterator
 import pytest
 from django.conf import settings
 from django.test import Client
-from django.utils.functional import empty
+from django.utils.functional import empty, lazy
 from opentelemetry.trace import SpanKind
 
-from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, init_apitally
+from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, _convert_proxy_objects, init_apitally
 from apitally.shared import activation, config
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
@@ -70,19 +70,31 @@ def test_management_command_configures_but_never_activates(
     assert exporters.span == []
 
 
-def test_request_body_capture_redacts_fields(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    init(monkeypatch, log_request_body=True, mask_body_fields=["custom_field"])
+def test_bodies_and_request_headers_captured_and_redacted(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(
+        monkeypatch,
+        log_request_body=True,
+        log_response_body=True,
+        log_request_headers=True,
+        mask_body_fields=["custom_field"],
+    )
     response = Client().post(
         "/items/",
         data={"name": "a", "password": "hunter2", "custom_field": "x"},
         content_type="application/json",
+        HTTP_AUTHORIZATION="Bearer secret",
     )
     assert response.status_code == 201
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
-    body = json.loads(str(span.attributes["apitally.request.body"]))
-    assert body == {"name": "a", "password": REDACTED, "custom_field": REDACTED}
+    redacted = {"name": "a", "password": REDACTED, "custom_field": REDACTED}
+    assert json.loads(str(span.attributes["apitally.request.body"])) == redacted
+    assert json.loads(str(span.attributes["apitally.response.body"])) == redacted
+    assert span.attributes["http.request.header.authorization"] == [REDACTED]
+    assert span.attributes["http.request.header.content-type"] == ("application/json",)
 
 
 def test_sampled_out_request_skips_capture(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
@@ -163,6 +175,25 @@ def test_unhandled_exception_recorded(exporters: InMemoryExporters, monkeypatch:
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.response.status_code"] == 500
     assert (point.attributes or {})["error.type"] == "500"
+
+
+def test_include_django_views_adds_class_based_view_paths(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(monkeypatch, include_django_views=True)
+    activate_via_signal()
+
+    paths = startup_payload(exporters)["paths"]
+    assert {"method": "GET", "path": "/notes/"} in paths
+    assert {"method": "POST", "path": "/notes/"} in paths
+    # Function-based views carry no method information, so they stay out
+    assert not any(entry["path"] == "/whoami/" for entry in paths)
+
+
+def test_lazy_schema_strings_converted_for_json():
+    lazy_str = lazy(lambda: "Lazy", str)()
+    converted = _convert_proxy_objects({"title": lazy_str, "tags": [lazy_str]})
+    assert json.dumps(converted) == '{"title": "Lazy", "tags": ["Lazy"]}'
 
 
 def test_init_from_settings_module(monkeypatch: pytest.MonkeyPatch):

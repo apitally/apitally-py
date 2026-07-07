@@ -2,6 +2,7 @@ import json
 
 from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.urls import path
+from django.views import View
 
 from apitally import set_consumer
 
@@ -27,10 +28,19 @@ def error(request: HttpRequest) -> HttpResponse:
     raise ValueError("boom")
 
 
+class NotesView(View):
+    def get(self, request: HttpRequest) -> HttpResponse:
+        return HttpResponse("ok")
+
+    def post(self, request: HttpRequest) -> HttpResponse:
+        return HttpResponse(status=201)
+
+
 urlpatterns = [
     path("items/<int:pk>/", get_item),
     path("items/", create_item),
     path("stream/", stream),
     path("whoami/", whoami),
     path("error/", error),
+    path("notes/", NotesView.as_view()),
 ]
