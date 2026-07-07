@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from litestar import Litestar, get, post
 from litestar.middleware.base import DefineMiddleware
+from litestar.params import FromPath
 from litestar.plugins.opentelemetry import (
     OpenTelemetryConfig,
     OpenTelemetryInstrumentationMiddleware,
@@ -28,7 +29,7 @@ from tests.conftest import (
 
 
 @get("/users/{user_id:int}")
-async def get_user(user_id: int) -> dict[str, int]:
+async def get_user(user_id: FromPath[int]) -> dict[str, int]:
     return {"id": user_id}
 
 
