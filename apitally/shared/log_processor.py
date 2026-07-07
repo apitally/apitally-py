@@ -60,7 +60,7 @@ class ApitallyLogRecordProcessor(LogRecordProcessor):
             record = log_record.log_record
             server_span_id = self.span_processor.resolve_server_span_id(record.span_id) if record.span_id else None
             if server_span_id is None:
-                # Scope "apitally" passes without request context to preserve the startup event (spec section 9)
+                # Scope "apitally" passes without request context to preserve the startup event
                 if log_record.instrumentation_scope is None or log_record.instrumentation_scope.name != "apitally":
                     return
             elif record.attributes is not None:

@@ -143,7 +143,7 @@ async def test_capture_off_passthrough_and_size_from_content_length():
     assert span.attributes is not None
     assert "apitally.request.body" not in span.attributes
     assert "apitally.response.body" not in span.attributes
-    # Size attributes are independent of the capture toggles (R10)
+    # Size attributes are independent of the capture toggles
     assert span.attributes["http.request.body.size"] == 17
 
 
@@ -307,7 +307,7 @@ async def test_sampled_out_request_still_records_metrics(metric_reader: InMemory
 
 
 async def test_apitally_sampled_out_request_still_records_metrics(metric_reader: InMemoryMetricReader):
-    # Apitally-sampling twin of the cooperative-sampler test above (R9, R12)
+    # Same as above, but dropped by Apitally's sample_rate instead of the user's OTel sampler
     set_config(write_token=WRITE_TOKEN, sample_rate=0.0)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
@@ -367,7 +367,7 @@ async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricRe
 
 async def test_sampled_out_sync_endpoint_consumer_reaches_metrics(metric_reader: InMemoryMetricReader):
     # Sync endpoints run in a copied context where set_consumer's ContextVar write is lost;
-    # the span-attribute fallback must carry the consumer even for a sampled-out request (R11)
+    # the span-attribute fallback must carry the consumer even for a sampled-out request
     set_config(write_token=WRITE_TOKEN, sample_rate=0.0)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(on_request=lambda: contextvars.copy_context().run(set_consumer, "tenant-1"))

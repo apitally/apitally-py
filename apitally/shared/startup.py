@@ -46,7 +46,7 @@ def resolve_versions(app_version: str | None, **packages: str) -> dict[str, str]
 
 
 def emit_startup_event() -> None:
-    """Emit the spec section 9 startup event directly on the private LoggerProvider."""
+    """Emit the startup event directly on the private LoggerProvider."""
     if activation.logger_provider is None:
         return
     payload: dict[str, Any] = {
@@ -58,7 +58,7 @@ def emit_startup_event() -> None:
     openapi = resolve(app_info.get("openapi"))
     if openapi and len(openapi.encode()) <= MAX_OPENAPI_BYTES:
         payload["openapi"] = openapi
-    # The explicit invalid-span context keeps trace context off the record (spec section 9)
+    # The explicit invalid-span context keeps trace context off the record
     activation.logger_provider.get_logger("apitally").emit(
         timestamp=time.time_ns(),
         context=set_span_in_context(INVALID_SPAN),

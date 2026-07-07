@@ -145,7 +145,7 @@ def start_pipelines() -> None:
     user_provider = providers.get_user_tracer_provider()
     env = providers.resolve_env(user_provider)
     # The resource is created here, not at configure, so every activating process mints
-    # its own service.instance.id and carries the activation-resolved env (spec section 5)
+    # its own service.instance.id and carries the activation-resolved env
     resource = providers.create_resource(env)
     metrics.setup(resource)
     if inherited_span_processor is not None:

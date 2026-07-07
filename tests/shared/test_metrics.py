@@ -109,7 +109,7 @@ def test_options_and_unmatched_route_not_recorded():
 
 
 def test_excluded_request_still_recorded():
-    # Exclusion filters spans only; the transport calls the helper for excluded requests too (spec section 6.8)
+    # Exclusion filters spans only; the transport calls the helper for excluded requests too
     reader = create_pipeline()
     metrics.record_request("GET", "/healthz", 200, consumer=None, duration=0.005)
     duration_metric = collect_metrics(reader)["http.server.request.duration"]
