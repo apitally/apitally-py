@@ -49,7 +49,7 @@ inherited_span_processor: ApitallySpanProcessor | None = None
 def configure(**kwargs: Any) -> ApitallyConfig:
     """Records configuration only. Threads and network I/O are deferred to activate()."""
     global fork_handlers_registered
-    cfg = config.configure(**kwargs)
+    cfg = config.set_config(**kwargs)
     config.ensure_semconv_opt_in()
     sentry.install()
     if not fork_handlers_registered and hasattr(os, "register_at_fork"):

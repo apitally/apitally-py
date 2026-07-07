@@ -22,7 +22,7 @@ from opentelemetry.instrumentation.django import DjangoInstrumentor
 from apitally.shared import activation, config, metrics, startup
 from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
 from apitally.shared.config import ApitallyConfig
-from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier
+from apitally.shared.consumer import get_consumer_identifier, reset_consumer
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import get_server_span, is_server_span_kept
 from apitally.shared.wsgi import parse_content_length
@@ -128,7 +128,7 @@ class ApitallyDjangoMiddleware(CaptureMixin):
         request_size: int | None = None
         request_body: bytes | str | None = None
         try:
-            reset_consumer_identifier()
+            reset_consumer()
             request_size = parse_content_length(request.headers.get("Content-Length"))
             request_body = self.capture_request_body(request, config, request_size)
         except Exception:
@@ -207,7 +207,7 @@ class ApitallyDjangoMiddleware(CaptureMixin):
             method=request.method or "",
             route=route or "",
             status_code=response.status_code,
-            consumer=resolve_consumer_identifier(span),
+            consumer=get_consumer_identifier(),
             duration=duration,
             request_size=request_size,
             response_size=response_size,

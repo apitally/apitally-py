@@ -12,8 +12,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, TraceIdRatioBased
 from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, TraceFlags, Tracer
 
-from apitally.shared.config import configure
-from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier, set_consumer
+from apitally.shared.config import set_config
+from apitally.shared.consumer import get_consumer_identifier, reset_consumer, set_consumer
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import (
     MAX_BUFFERED_SPANS,
@@ -123,7 +123,7 @@ def test_default_excluded_requests_dropped(tracer: Tracer, exporter: InMemorySpa
 
 
 def test_user_exclude_paths_add_to_defaults(exporter: InMemorySpanExporter):
-    configure(write_token=WRITE_TOKEN, exclude_paths=[r"^/internal/"])
+    set_config(write_token=WRITE_TOKEN, exclude_paths=[r"^/internal/"])
     tracer = create_tracer(exporter)
     for path in ["/internal/jobs", "/healthz", "/items"]:
         with tracer.start_as_current_span(f"GET {path}", kind=SpanKind.SERVER, attributes={"url.path": path}):
@@ -132,7 +132,7 @@ def test_user_exclude_paths_add_to_defaults(exporter: InMemorySpanExporter):
 
 
 def test_sample_rate_deterministic_by_trace_id(exporter: InMemorySpanExporter):
-    configure(write_token=WRITE_TOKEN, sample_rate=0.5)
+    set_config(write_token=WRITE_TOKEN, sample_rate=0.5)
     tracer = create_tracer(exporter)
     for trace_id in (BOUND_HALF - 1, BOUND_HALF):
         with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER, context=remote_parent_context(trace_id)):
@@ -143,7 +143,7 @@ def test_sample_rate_deterministic_by_trace_id(exporter: InMemorySpanExporter):
 
 
 def test_sample_on_request_bool_overrides_sample_rate(exporter: InMemorySpanExporter):
-    configure(
+    set_config(
         write_token=WRITE_TOKEN,
         sample_rate=0.0,
         sample_on_request=lambda span: span.attributes.get("url.path") != "/bots",
@@ -159,7 +159,7 @@ def test_sample_on_request_bool_overrides_sample_rate(exporter: InMemorySpanExpo
 
 def test_sample_on_request_float_with_none_fallback(exporter: InMemorySpanExporter):
     bound_low = TraceIdRatioBased.get_bound_for_rate(0.01)
-    configure(
+    set_config(
         write_token=WRITE_TOKEN,
         sample_rate=0.5,
         sample_on_request=lambda span: 0.01 if span.attributes.get("url.path") == "/noisy" else None,
@@ -185,7 +185,7 @@ def test_excluded_request_never_invokes_sample_callback(exporter: InMemorySpanEx
     def callback(span: ReadableSpan) -> None:
         calls.append(span)
 
-    configure(write_token=WRITE_TOKEN, sample_on_request=callback)
+    set_config(write_token=WRITE_TOKEN, sample_on_request=callback)
     tracer = create_tracer(exporter)
     with tracer.start_as_current_span("GET /healthz", kind=SpanKind.SERVER, attributes={"url.path": "/healthz"}):
         pass
@@ -197,7 +197,7 @@ def test_raising_sample_on_request_keeps_span(exporter: InMemorySpanExporter):
     def callback(span: ReadableSpan) -> float:
         raise ValueError("boom")
 
-    configure(write_token=WRITE_TOKEN, sample_on_request=callback)
+    set_config(write_token=WRITE_TOKEN, sample_on_request=callback)
     tracer = create_tracer(exporter)
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
         pass
@@ -205,7 +205,7 @@ def test_raising_sample_on_request_keeps_span(exporter: InMemorySpanExporter):
 
 
 def test_invalid_sample_callback_return_keeps_span(exporter: InMemorySpanExporter):
-    configure(write_token=WRITE_TOKEN, sample_rate=0.0, sample_on_request=lambda span: "yes")
+    set_config(write_token=WRITE_TOKEN, sample_rate=0.0, sample_on_request=lambda span: "yes")
     tracer = create_tracer(exporter)
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
         pass
@@ -214,7 +214,7 @@ def test_invalid_sample_callback_return_keeps_span(exporter: InMemorySpanExporte
 
 def test_sample_on_response_keeps_errors_drops_healthy(exporter: InMemorySpanExporter):
     bound = TraceIdRatioBased.get_bound_for_rate(0.05)
-    configure(
+    set_config(
         write_token=WRITE_TOKEN,
         sample_on_response=lambda span: True if span.attributes.get("http.response.status_code") == 500 else 0.05,
     )
@@ -234,7 +234,7 @@ def test_sample_on_response_keeps_errors_drops_healthy(exporter: InMemorySpanExp
 
 
 def test_span_buffer_cap_bounds_kept_and_dropped_requests(exporter: InMemorySpanExporter):
-    configure(
+    set_config(
         write_token=WRITE_TOKEN,
         sample_on_response=lambda span: span.attributes.get("http.response.status_code") == 500,
     )
@@ -250,7 +250,7 @@ def test_span_buffer_cap_bounds_kept_and_dropped_requests(exporter: InMemorySpan
 
 
 def test_late_descendant_follows_request_decision(exporter: InMemorySpanExporter):
-    configure(
+    set_config(
         write_token=WRITE_TOKEN,
         sample_on_response=lambda span: span.attributes.get("http.response.status_code") == 500,
     )
@@ -277,7 +277,7 @@ def test_shutdown_discards_pending_buffers(
 
 
 def test_same_trace_id_verdict_at_both_stages(exporter: InMemorySpanExporter):
-    configure(write_token=WRITE_TOKEN, sample_rate=0.5, sample_on_response=lambda span: 0.5)
+    set_config(write_token=WRITE_TOKEN, sample_rate=0.5, sample_on_response=lambda span: 0.5)
     tracer = create_tracer(exporter)
     with tracer.start_as_current_span(
         "GET /items", kind=SpanKind.SERVER, context=remote_parent_context(BOUND_HALF - 1)
@@ -289,7 +289,7 @@ def test_same_trace_id_verdict_at_both_stages(exporter: InMemorySpanExporter):
 
 def test_response_abstention_leaves_boosted_request_kept(exporter: InMemorySpanExporter):
     bound_tenth = TraceIdRatioBased.get_bound_for_rate(0.1)
-    configure(
+    set_config(
         write_token=WRITE_TOKEN,
         sample_rate=0.1,
         sample_on_request=lambda span: True,
@@ -303,7 +303,7 @@ def test_response_abstention_leaves_boosted_request_kept(exporter: InMemorySpanE
 
 
 def test_kept_flag_and_span_resolution(exporter: InMemorySpanExporter):
-    configure(write_token=WRITE_TOKEN, sample_rate=0.5)
+    set_config(write_token=WRITE_TOKEN, sample_rate=0.5)
     processor = ApitallySpanProcessor(SimpleSpanProcessor(exporter))
     provider = TracerProvider(sampler=ALWAYS_ON)
     provider.add_span_processor(processor)
@@ -318,7 +318,7 @@ def test_kept_flag_and_span_resolution(exporter: InMemorySpanExporter):
         span_id = kept_span.get_span_context().span_id
         assert processor.resolve_server_span_id(span_id) == span_id
 
-    reset_consumer_identifier()  # the transport middleware does this at request entry
+    reset_consumer()  # the transport middleware does this at request entry
     with tracer.start_as_current_span(
         "GET /items", kind=SpanKind.SERVER, context=remote_parent_context(BOUND_HALF)
     ) as dropped_span:
@@ -326,7 +326,7 @@ def test_kept_flag_and_span_resolution(exporter: InMemorySpanExporter):
         assert not is_server_span_kept()
         assert get_server_span() is dropped_span
         assert processor.resolve_server_span_id(dropped_span.get_span_context().span_id) is None
-        assert resolve_consumer_identifier(get_server_span()) is None
+        assert get_consumer_identifier() is None
 
 
 def test_contrib_send_receive_spans_dropped_user_spans_kept(

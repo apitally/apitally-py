@@ -10,51 +10,51 @@ VALID_TOKEN = "apt_3kPmN9xQv2bR7tH4wZ8yL5cE"
 
 def test_kwarg_beats_apitally_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("APITALLY_ENV", "dev")
-    cfg = config.configure(write_token=VALID_TOKEN, env="staging")
+    cfg = config.set_config(write_token=VALID_TOKEN, env="staging")
     assert cfg.env == "staging"
 
 
 def test_write_token_from_env_var(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("APITALLY_WRITE_TOKEN", VALID_TOKEN)
-    cfg = config.configure()
+    cfg = config.set_config()
     assert cfg.write_token == VALID_TOKEN
     assert not cfg.disabled
 
 
 def test_disabled_via_env_var(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("APITALLY_DISABLED", "1")
-    cfg = config.configure(write_token=VALID_TOKEN)
+    cfg = config.set_config(write_token=VALID_TOKEN)
     assert cfg.disabled
 
 
 def test_invalid_token_disables_config():
     invalid_token = "apt_3kPmN9xQv2bR7tH4wZ8yL5cEXTRA"
-    cfg = config.configure(write_token=invalid_token)
+    cfg = config.set_config(write_token=invalid_token)
     assert cfg.disabled
 
 
 def test_recall_semantics():
-    first = config.configure(write_token=VALID_TOKEN, env="staging")
-    assert config.configure(write_token=VALID_TOKEN, env="staging") is first
-    assert config.configure(write_token=VALID_TOKEN, env="dev") is first
-    assert config.configure(write_token=VALID_TOKEN, env="prod") is first
+    first = config.set_config(write_token=VALID_TOKEN, env="staging")
+    assert config.set_config(write_token=VALID_TOKEN, env="staging") is first
+    assert config.set_config(write_token=VALID_TOKEN, env="dev") is first
+    assert config.set_config(write_token=VALID_TOKEN, env="prod") is first
     assert first.env == "staging"
 
 
 def test_sample_rate_resolution():
-    cfg = config.configure(write_token=VALID_TOKEN, sample_rate=0.3)
+    cfg = config.set_config(write_token=VALID_TOKEN, sample_rate=0.3)
     assert cfg.sample_rate == 0.3
     config.reset()
-    cfg = config.configure(write_token=VALID_TOKEN)
+    cfg = config.set_config(write_token=VALID_TOKEN)
     assert cfg.sample_rate == 1.0
     config.reset()
-    cfg = config.configure(write_token=VALID_TOKEN, sample_rate=0.0)
+    cfg = config.set_config(write_token=VALID_TOKEN, sample_rate=0.0)
     assert cfg.sample_rate == 0.0
 
 
 @pytest.mark.parametrize("invalid_rate", [1.5, -0.1, "0.5"])
 def test_invalid_sample_rate_falls_back_to_default(invalid_rate: object):
-    cfg = config.configure(write_token=VALID_TOKEN, sample_rate=invalid_rate)
+    cfg = config.set_config(write_token=VALID_TOKEN, sample_rate=invalid_rate)
     assert cfg.sample_rate == 1.0
 
 

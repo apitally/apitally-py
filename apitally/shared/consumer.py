@@ -1,25 +1,22 @@
-from __future__ import annotations
-
 import logging
 from contextvars import ContextVar
-from typing import TYPE_CHECKING
-
-from opentelemetry.util.types import AttributeValue
+from dataclasses import dataclass
 
 from apitally.shared.span_processor import get_server_span
 
 
-if TYPE_CHECKING:
-    from opentelemetry.sdk.trace import ReadableSpan
-
-
 logger = logging.getLogger(__name__)
 
-# Request-scoped consumer holder: the transport middleware (asgi.py/wsgi.py) calls
-# reset_consumer_identifier() at request entry and resolve_consumer_identifier() at request
-# completion, so consumer-dimension metrics stay complete even when a cooperative
-# sampler drops the SERVER span
-consumer_identifier_var: ContextVar[str | None] = ContextVar("apitally_consumer_identifier", default=None)
+
+@dataclass(slots=True)
+class ConsumerHolder:
+    identifier: str | None = None
+
+
+# Request-scoped mutable holder, set by the transport middleware at request entry. Copied
+# contexts (threadpool endpoints, BaseHTTPMiddleware child tasks) share the holder by
+# reference, so set_consumer's mutation is visible to the middleware at request completion.
+consumer_holder_var: ContextVar[ConsumerHolder | None] = ContextVar("apitally_consumer_holder", default=None)
 
 
 def set_consumer(identifier: str, name: str | None = None, group: str | None = None) -> None:
@@ -27,7 +24,11 @@ def set_consumer(identifier: str, name: str | None = None, group: str | None = N
         identifier = str(identifier).strip()[:128]
         if not identifier:
             return
-        consumer_identifier_var.set(identifier)
+        holder = consumer_holder_var.get()
+        if holder is None:
+            holder = ConsumerHolder()
+            consumer_holder_var.set(holder)
+        holder.identifier = identifier
         span = get_server_span()
         if span is None or not span.is_recording():
             return
@@ -40,37 +41,10 @@ def set_consumer(identifier: str, name: str | None = None, group: str | None = N
         logger.debug("Error in set_consumer", exc_info=True)
 
 
-def set_request_attribute(key: str, value: AttributeValue) -> None:
-    try:
-        span = get_server_span()
-        if span is not None and span.is_recording():
-            span.set_attribute(key, value)
-    except Exception:
-        logger.debug("Error in set_request_attribute", exc_info=True)
-
-
-def capture_exception(exc: BaseException) -> None:
-    try:
-        span = get_server_span()
-        if span is not None and span.is_recording():
-            span.record_exception(exc)
-    except Exception:
-        logger.debug("Error in capture_exception", exc_info=True)
-
-
 def get_consumer_identifier() -> str | None:
-    return consumer_identifier_var.get()
+    holder = consumer_holder_var.get()
+    return holder.identifier if holder is not None else None
 
 
-def resolve_consumer_identifier(span: ReadableSpan | None) -> str | None:
-    # Sync endpoints run in a copied context (anyio), where set_consumer's ContextVar write is
-    # lost; the span object is shared across threads, so its attribute is the fallback
-    identifier = consumer_identifier_var.get()
-    if identifier is None and span is not None:
-        value = (span.attributes or {}).get("apitally.consumer.identifier")
-        identifier = value if isinstance(value, str) else None
-    return identifier
-
-
-def reset_consumer_identifier() -> None:
-    consumer_identifier_var.set(None)
+def reset_consumer() -> None:
+    consumer_holder_var.set(ConsumerHolder())

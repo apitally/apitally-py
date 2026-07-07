@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import uuid
 from collections.abc import Sequence
@@ -50,11 +48,13 @@ def resolve_env(user_provider: TracerProvider | None) -> str:
             if config.env not in (resource_env, ApitallyConfig.env):
                 logger.warning(
                     "Configured Apitally env '%s' conflicts with the existing OpenTelemetry resource attribute "
-                    "deployment.environment.name='%s', using '%s'. To use a different env for Apitally, change "
-                    "your OpenTelemetry resource or let Apitally manage its own tracer provider.",
+                    "deployment.environment.name='%s'; using '%s'. To resolve this, either remove the env argument "
+                    "from init_apitally() or set the deployment.environment.name resource attribute to '%s' in "
+                    "your OpenTelemetry setup.",
                     config.env,
                     resource_env,
                     resource_env,
+                    config.env,
                 )
             return str(resource_env)
     return config.env
