@@ -9,7 +9,7 @@ from opentelemetry.trace import SpanKind
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Route
+from starlette.routing import Mount, Route
 from starlette.testclient import TestClient
 
 from apitally.shared import activation, startup
@@ -31,7 +31,15 @@ def create_app() -> Starlette:
         logging.getLogger("myapp").warning("handling item")
         return JSONResponse({"item_id": request.path_params["item_id"]})
 
-    return Starlette(routes=[Route("/items/{item_id}", get_item)])
+    async def list_users(request: Request) -> JSONResponse:
+        return JSONResponse([])
+
+    return Starlette(
+        routes=[
+            Route("/items/{item_id}", get_item),
+            Mount("/admin", routes=[Route("/users", list_users)]),
+        ]
+    )
 
 
 @pytest.fixture()
@@ -77,6 +85,21 @@ def test_request_flow_span_histogram_and_startup_event(
     assert {"method": "get", "path": "/items/{item_id}"} in payload["paths"]
     (record,) = [r for r in records if r.body == "handling item"]
     assert unwrap(record.attributes)["apitally.request.server_span_id"] == format(span.context.span_id, "016x")
+
+
+def test_mounted_route_full_template_on_span_and_metrics(
+    app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch)
+    with TestClient(app) as client:
+        reader = attach_metric_reader()
+        client.get("/admin/users")
+
+    (span,) = exported_spans(exporters)
+    (point,) = duration_data_points(reader)
+    assert span.name == "GET /admin/users"
+    assert unwrap(span.attributes)["http.route"] == "/admin/users"
+    assert unwrap(point.attributes)["http.route"] == "/admin/users"
 
 
 def test_init_apitally_swallows_instrumentation_errors(app: Starlette, monkeypatch: pytest.MonkeyPatch):

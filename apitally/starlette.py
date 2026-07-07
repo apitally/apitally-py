@@ -80,8 +80,8 @@ def _instrument_app(app: Starlette) -> None:
 
 
 def _resolve_route(scope: Scope, routes: list[BaseRoute] | None = None) -> str | None:
-    # Ported from the 0.x route matcher; returns the route template without root_path,
-    # matching the http.route the instrumentor sets on the SERVER span
+    # Ported from the 0.x route matcher; returns the full route template including mount
+    # prefixes, without the server root_path
     if routes is None:
         app = scope.get("app")
         routes = getattr(app, "routes", None) or []
@@ -90,7 +90,7 @@ def _resolve_route(scope: Scope, routes: list[BaseRoute] | None = None) -> str |
         if sub_routes is not None:
             path = _resolve_route(scope, routes=sub_routes)
             if path is not None:
-                return path
+                return str(getattr(route, "path", "")) + path
         elif (path := getattr(route, "path", None)) is not None:
             match, _ = route.matches(scope)
             if match == Match.FULL:

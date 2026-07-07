@@ -1,7 +1,8 @@
+import json
 from collections.abc import Iterator
 
 import pytest
-from django.test import Client
+from django.test import Client, override_settings
 from opentelemetry.trace import SpanKind
 
 from tests.conftest import (
@@ -9,6 +10,7 @@ from tests.conftest import (
     attach_metric_reader,
     duration_data_points,
     exported_spans,
+    installed,
     startup_payload,
 )
 from tests.django_utils import (
@@ -41,6 +43,18 @@ def test_startup_paths_include_viewset_route_templates(exporters: InMemoryExport
     assert payload["versions"]["djangorestframework"]
     assert {"method": "GET", "path": "/items/"} in payload["paths"]
     assert {"method": "GET", "path": "/items/{pk}/"} in payload["paths"]
+
+
+@pytest.mark.skipif(not installed("drf_spectacular"), reason="drf-spectacular is not installed")
+def test_openapi_generated_via_drf_spectacular(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    with override_settings(REST_FRAMEWORK={"DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema"}):
+        init(monkeypatch)
+        activate_via_signal()
+        payload = startup_payload(exporters)
+
+    openapi = json.loads(payload["openapi"])
+    assert openapi["openapi"].startswith("3.")
+    assert "/items/{id}/" in openapi["paths"]
 
 
 def test_request_flow(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

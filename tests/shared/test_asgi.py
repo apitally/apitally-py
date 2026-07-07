@@ -181,6 +181,19 @@ async def test_body_over_cap_sentinel_with_passthrough():
     assert span.attributes["http.request.body.size"] == 60_000
 
 
+@pytest.mark.parametrize("extra_headers", [[("content-length", "60000")], []], ids=["declared", "mid-stream"])
+async def test_response_body_over_cap_sentinel(extra_headers: list[tuple[str, str]]):
+    set_config(write_token=WRITE_TOKEN, log_response_body=True)
+    tracer, exporter = create_trace_pipeline()
+    app = EchoApp(response_headers=JSON_HEADERS + extra_headers, response_chunks=[b"a" * 30_000, b"b" * 30_000])
+    await send_request(tracer, app)
+
+    (span,) = exporter.get_finished_spans()
+    assert span.attributes is not None
+    assert span.attributes["apitally.response.body"] == BODY_TOO_LARGE
+    assert span.attributes["http.response.body.size"] == 60_000
+
+
 async def test_mask_callback_none_or_raise_yields_masked():
     def mask(span: ReadableSpan, body: bytes) -> bytes | None:
         if b"boom" in body:

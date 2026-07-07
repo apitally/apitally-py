@@ -101,8 +101,17 @@ class ApitallyASGIMiddleware(CaptureMixin):
             final_response_size = response_size
             if final_response_size is None and response_started:
                 final_response_size = response_size_counter
+            try:
+                route = self.resolve_route(scope)
+            except Exception:
+                logger.exception("Error resolving route in Apitally ASGI middleware")
+                route = None
             span = get_server_span()
             if kept and span is not None and span.is_recording():
+                if route:
+                    # Overwrites the instrumentor's raw route so spans and metrics agree on the template
+                    span.set_attribute("http.route", route)
+                    span.update_name(f"{scope.get('method', '')} {route}".strip())
                 if final_request_size is not None:
                     span.set_attribute("http.request.body.size", final_request_size)
                 if final_response_size is not None:
@@ -128,11 +137,6 @@ class ApitallyASGIMiddleware(CaptureMixin):
                         config.mask_response_body,
                         "mask_response_body",
                     )
-            try:
-                route = self.resolve_route(scope)
-            except Exception:
-                logger.exception("Error resolving route in Apitally ASGI middleware")
-                route = None
             metrics.record_request(
                 method=scope.get("method", ""),
                 route=route or "",
