@@ -115,7 +115,7 @@ async def _before_send(message: Message, scope: Scope) -> None:
 
 
 def _after_exception(exception: Exception, scope: Scope) -> None:
-    """Litestar turns handler exceptions into responses before the OTel middleware sees anything raised (spec 6.4)."""
+    """Litestar turns handler exceptions into responses before the OTel middleware sees anything raised."""
     try:
         if isinstance(exception, HTTPException) and exception.status_code < 500:
             return

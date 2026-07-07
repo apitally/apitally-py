@@ -33,7 +33,7 @@ span_limits_warned = False
 
 
 def get_user_tracer_provider() -> TracerProvider | None:
-    """Return the user's TracerProvider (cooperative mode), or None (own-it-all mode)."""
+    """Return the user's previously configured TracerProvider, or None if Apitally should set up its own."""
     provider = trace.get_tracer_provider()
     if isinstance(provider, trace.ProxyTracerProvider):
         return None
@@ -62,7 +62,7 @@ def resolve_env(user_provider: TracerProvider | None) -> str:
 
 def create_resource(env: str) -> Resource:
     # Resource.create picks up OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES; the Apitally-required
-    # attributes are merged on top so the Apitally-Env header always matches the resource (spec section 4)
+    # attributes are merged on top so the Apitally-Env header always matches the resource
     return Resource.create({}).merge(
         Resource(
             {

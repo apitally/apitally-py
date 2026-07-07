@@ -107,7 +107,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
                     span.set_attribute("http.request.body.size", final_request_size)
                 if final_response_size is not None:
                     span.set_attribute("http.response.body.size", final_response_size)
-                # Partial buffers from aborted requests/responses are never exported (spec 6.3)
+                # Partial buffers from aborted requests/responses are never exported
                 if request_too_large:
                     span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
                 elif capture_request and request_body and request_body_complete:

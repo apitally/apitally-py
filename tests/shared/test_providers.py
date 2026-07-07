@@ -30,7 +30,7 @@ def test_mode_detection():
     assert providers.get_user_tracer_provider() is user_provider
 
 
-def test_own_it_all_tracer_provider(monkeypatch: pytest.MonkeyPatch):
+def test_setup_own_tracer_provider(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OTEL_TRACES_SAMPLER", "always_off")
     monkeypatch.setenv("OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT", "100")
     monkeypatch.setenv("OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT", "100")
@@ -60,7 +60,7 @@ def test_own_it_all_tracer_provider(monkeypatch: pytest.MonkeyPatch):
     assert attributes["service.name"] == "test-service"
 
 
-def test_cooperative_pipeline():
+def test_attach_to_user_tracer_provider():
     set_config(write_token=WRITE_TOKEN)
     user_exporter = InMemorySpanExporter()
     user_provider = TracerProvider()
@@ -79,14 +79,14 @@ def test_cooperative_pipeline():
     assert len(our_exporter.get_finished_spans()) == 1
 
 
-def test_cooperative_env_conflict_uses_resource_value():
+def test_env_conflict_uses_user_resource_value():
     set_config(write_token=WRITE_TOKEN, env="staging")
     user_provider = TracerProvider(resource=Resource.create({"deployment.environment.name": "production"}))
     env = providers.resolve_env(user_provider)
     assert env == "production"
 
 
-def test_apitally_env_header_matches_resource_in_both_modes():
+def test_apitally_env_header_matches_resource_with_and_without_user_provider():
     set_config(write_token=WRITE_TOKEN, env="staging")
 
     env = providers.resolve_env(None)

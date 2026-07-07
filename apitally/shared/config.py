@@ -78,7 +78,7 @@ def reset() -> None:
 def ensure_semconv_opt_in() -> None:
     # The contrib instrumentors latch this process-globally at first init and emit old HTTP
     # semconv names when unset; http/dup adds the stable names without changing anything for
-    # a cooperative user's own backend. A user-set value is respected.
+    # a user's existing OTel backend. A user-set value is respected.
     os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http/dup")
 
 

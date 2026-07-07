@@ -114,7 +114,7 @@ def _wrap_error_handler(app: Application) -> None:
     # BlackSheep converts unhandled handler exceptions into 500 responses before the
     # instrumentor sees anything raised; handle_internal_server_error is reached exactly
     # for those (HTTPExceptions and user-handled exceptions route elsewhere), so record
-    # the exception on the SERVER span there (spec 6.4)
+    # the exception on the SERVER span there
     original = app.handle_internal_server_error
 
     async def handle_internal_server_error(request: Request, exc: Exception) -> Response:
