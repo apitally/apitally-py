@@ -104,6 +104,7 @@ test = [
     "django",
     "django-ninja",
     "djangorestframework",
+    "drf-spectacular",
     "fastapi",
     "flask",
     "inflection",

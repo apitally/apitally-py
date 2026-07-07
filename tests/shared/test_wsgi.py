@@ -218,6 +218,19 @@ def test_response_body_accumulated_redacted_and_close_propagated(tracer: Tracer,
     assert iterable.closed
 
 
+def test_response_body_over_cap_sentinel(tracer: Tracer, exporter: InMemorySpanExporter):
+    set_config(write_token=WRITE_TOKEN, log_response_body=True)
+
+    def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
+        start_response("200 OK", [("Content-Type", "application/json")])
+        return [b"a" * 30_000, b"b" * 30_000]
+
+    attributes = run_request(ApitallyWSGIMiddleware(app), make_environ(), tracer, exporter)
+
+    assert attributes["apitally.response.body"] == BODY_TOO_LARGE
+    assert attributes["http.response.body.size"] == 60_000
+
+
 def test_request_headers_redacted(tracer: Tracer, exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN, log_request_headers=True)
 

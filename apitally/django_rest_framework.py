@@ -35,7 +35,7 @@ def _get_drf_schema(urlconfs: list[str | None]) -> Mapping[str, Any] | None:
 
 
 def _get_drf_spectacular_schema(urlconfs: list[str | None]) -> Mapping[str, Any] | None:
-    from drf_spectacular.generators import SchemaGenerator  # ty: ignore[unresolved-import]
+    from drf_spectacular.generators import SchemaGenerator
 
     schemas: list[Mapping[str, Any]] = []
     for urlconf in urlconfs:

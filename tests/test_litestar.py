@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from litestar import Litestar, get, post
+from litestar.exceptions import HTTPException
 from litestar.middleware.base import DefineMiddleware
 from litestar.params import FromPath
 from litestar.plugins.opentelemetry import (
@@ -46,6 +47,11 @@ async def healthz() -> str:
 @get("/error")
 async def error_route() -> None:
     raise ValueError("boom")
+
+
+@get("/bad-request")
+async def bad_request_route() -> None:
+    raise HTTPException(status_code=400, detail="invalid")
 
 
 ROUTE_HANDLERS = [get_user, create_user, healthz]
@@ -136,6 +142,17 @@ def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporter
     (event,) = [event for event in span.events if event.name == "exception"]
     assert (event.attributes or {})["exception.type"] == "ValueError"
     assert (event.attributes or {})["exception.message"] == "boom"
+
+
+def test_client_error_not_recorded_as_exception(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    app = Litestar(route_handlers=[bad_request_route], plugins=[ApitallyPlugin(write_token=WRITE_TOKEN)])
+    with TestClient(app=app) as client:
+        assert client.get("/bad-request").status_code == 400
+
+    (span,) = exported_spans(exporters)
+    assert (span.attributes or {})["http.response.status_code"] == 400
+    assert [event for event in span.events if event.name == "exception"] == []
 
 
 def test_on_startup_activates_and_emits_startup_event(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
