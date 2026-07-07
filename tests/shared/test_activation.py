@@ -10,12 +10,16 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind
 
 from apitally.shared import activation, log_processor, metrics, providers
 from apitally.shared.asgi import Message, Receive, Scope, Send
 from apitally.shared.span_processor import ApitallySpanProcessor
-from tests.conftest import WRITE_TOKEN, InMemoryExporters
+from tests.conftest import WRITE_TOKEN, InMemoryExporters, exported_spans
 
 
 if TYPE_CHECKING:
@@ -150,6 +154,27 @@ def test_on_activate_hooks_run_last(exporters: InMemoryExporters, monkeypatch: p
     activation.configure(write_token=WRITE_TOKEN)
     activation.activate()
     assert observed == [(True, True, True)]
+
+
+def test_activation_attaches_to_existing_user_tracer_provider(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    user_exporter = InMemorySpanExporter()
+    user_provider = TracerProvider(resource=Resource.create({"deployment.environment.name": "production"}))
+    user_provider.add_span_processor(SimpleSpanProcessor(user_exporter))
+    trace.set_tracer_provider(user_provider)
+
+    activation.configure(write_token=WRITE_TOKEN)
+    activation.activate()
+    assert trace.get_tracer_provider() is user_provider
+    assert activation.env == "production"
+
+    with trace.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        pass
+    assert len(user_exporter.get_finished_spans()) == 1
+    (span,) = exported_spans(exporters)
+    assert span.name == "GET /items"
 
 
 def test_before_fork_quiesces_sdk_threads(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
