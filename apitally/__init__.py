@@ -12,7 +12,8 @@ from apitally.otel import (
     instrument_sqlalchemy,
     span,
 )
-from apitally.shared.consumer import capture_exception, set_consumer, set_request_attribute
+from apitally.shared.consumer import set_consumer
+from apitally.shared.helpers import capture_exception, set_request_attribute
 
 
 __all__ = [

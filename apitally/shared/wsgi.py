@@ -4,12 +4,13 @@ import io
 import logging
 import time
 from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from apitally.shared import metrics
 from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
 from apitally.shared.config import ApitallyConfig
-from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier
+from apitally.shared.consumer import get_consumer_identifier, reset_consumer
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import get_server_span, is_server_span_kept
 
@@ -41,7 +42,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
         config = self.config
         state = RequestState()
         try:
-            reset_consumer_identifier()
+            reset_consumer()
             state.request_size = parse_content_length(environ.get("CONTENT_LENGTH"))
             state.request_body = self.capture_request_body(environ, config, state.request_size)
         except Exception:
@@ -144,7 +145,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
                 method=environ.get("REQUEST_METHOD", ""),
                 route=route or "",
                 status_code=state.status_code,
-                consumer=resolve_consumer_identifier(span),
+                consumer=get_consumer_identifier(),
                 duration=duration,
                 request_size=state.request_size,
                 response_size=state.response_size,
@@ -203,18 +204,18 @@ class ResponseWrapper:
             close()
 
 
+@dataclass(slots=True)
 class RequestState:
-    def __init__(self) -> None:
-        self.start_time = time.perf_counter()
-        self.status_code = 0
-        self.request_size: int | None = None
-        self.request_body: bytes | str | None = None
-        self.request_attributes_written = False
-        self.response_size: int | None = None
-        self.response_body: bytearray | str | None = None
-        self.bytes_sent = 0
-        self.completed = False
-        self.finalized = False
+    start_time: float = field(default_factory=time.perf_counter)
+    status_code: int = 0
+    request_size: int | None = None
+    request_body: bytes | str | None = None
+    request_attributes_written: bool = False
+    response_size: int | None = None
+    response_body: bytearray | str | None = None
+    bytes_sent: int = 0
+    completed: bool = False
+    finalized: bool = False
 
 
 def parse_content_length(value: str | None) -> int | None:

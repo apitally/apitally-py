@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import time
 from collections.abc import Awaitable, Callable, Iterable
@@ -9,7 +7,7 @@ from opentelemetry.sdk.trace import Span
 
 from apitally.shared import metrics
 from apitally.shared.capture import ALLOWED_CONTENT_TYPES, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
-from apitally.shared.consumer import reset_consumer_identifier, resolve_consumer_identifier
+from apitally.shared.consumer import get_consumer_identifier, reset_consumer
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import get_server_span, is_server_span_kept
 
@@ -56,7 +54,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
         kept = False
 
         try:
-            reset_consumer_identifier()
+            reset_consumer()
             request_headers = scope.get("headers") or []
             request_size = parse_int(get_header(request_headers, b"content-length"))
             # Excluded and sampled-out requests skip all capture work; metrics are still recorded
@@ -139,7 +137,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
                 method=scope.get("method", ""),
                 route=route or "",
                 status_code=status,
-                consumer=resolve_consumer_identifier(span),
+                consumer=get_consumer_identifier(),
                 duration=duration,
                 request_size=final_request_size,
                 response_size=final_response_size,

@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from contextvars import copy_context
 
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
@@ -7,7 +8,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally import capture_exception, set_consumer, set_request_attribute
-from apitally.shared.consumer import consumer_identifier_var, get_consumer_identifier
+from apitally.shared.consumer import consumer_holder_var, get_consumer_identifier, reset_consumer
 from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span, server_span_var
 from tests.conftest import unwrap
 
@@ -16,7 +17,7 @@ from tests.conftest import unwrap
 def reset_context_vars() -> Iterator[None]:
     yield
     server_span_var.set(None)
-    consumer_identifier_var.set(None)
+    consumer_holder_var.set(None)
 
 
 @pytest.fixture()
@@ -52,25 +53,13 @@ def test_set_consumer_truncates_identifier_name_and_group(tracer: Tracer, export
     assert unwrap(server.attributes)["apitally.consumer.group"] == "g" * 64
 
 
-def test_set_request_attribute_outside_request_is_silent_noop():
+def test_consumer_set_in_copied_context_without_span_resolves_at_completion():
+    # Sync endpoints (anyio threadpool) and BaseHTTPMiddleware child tasks run in copied
+    # contexts; the shared holder must carry the identifier back even with no recording span
+    reset_consumer()
+    copy_context().run(set_consumer, "acme-corp")
     assert get_server_span() is None
-    set_request_attribute("tenant", "acme")
-
-
-def test_capture_exception_records_event_on_server_span(tracer: Tracer, exporter: InMemorySpanExporter):
-    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
-        capture_exception(ValueError("x"))
-    (server,) = exporter.get_finished_spans()
-    (event,) = server.events
-    assert event.name == "exception"
-    assert unwrap(event.attributes)["exception.type"] == "ValueError"
-    assert unwrap(event.attributes)["exception.message"] == "x"
-    assert "exception.stacktrace" in unwrap(event.attributes)
-
-
-def test_capture_exception_with_non_exception_does_not_raise(tracer: Tracer):
-    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
-        capture_exception("not an exception")  # ty: ignore[invalid-argument-type]
+    assert get_consumer_identifier() == "acme-corp"
 
 
 def test_writes_to_excluded_request_stay_local(tracer: Tracer, exporter: InMemorySpanExporter):

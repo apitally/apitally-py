@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import time
 from collections.abc import Iterable
 
@@ -28,6 +26,15 @@ SYSTEM_METRICS_CONFIG: dict[str, list[str] | None] = {
     "process.cpu.utilization": None,
     "process.memory.usage": None,
 }
+
+
+class ApitallyMetricReader(PeriodicExportingMetricReader):
+    def collect(self, timeout_millis: float = 10_000) -> None:  # ty: ignore[override-of-final-method]
+        # Detaching nulls the collect callback; the final ticker collect must no-op
+        # instead of logging a not-registered warning
+        if self._collect is not None:
+            super().collect(timeout_millis=timeout_millis)
+
 
 meter_provider: MeterProvider | None = None
 reader: ApitallyMetricReader | None = None
@@ -95,8 +102,6 @@ def attach_reader(env: str) -> None:
     if meter_provider is None:
         return
     detach_reader()
-    # Interval passed explicitly so OTEL_METRIC_EXPORT_INTERVAL never applies; the 60 s
-    # cadence is the liveness heartbeat
     exporter = create_metric_exporter(
         env,
         preferred_temporality=HISTOGRAM_PREFERRED_TEMPORALITY,
@@ -128,11 +133,3 @@ def reset() -> None:
 
 def observe_uptime(options: CallbackOptions) -> Iterable[Observation]:
     yield Observation(time.monotonic() - start_time)
-
-
-class ApitallyMetricReader(PeriodicExportingMetricReader):
-    def collect(self, timeout_millis: float = 10_000) -> None:  # ty: ignore[override-of-final-method]
-        # Detaching nulls the collect callback; the final ticker collect must no-op
-        # instead of logging a not-registered warning
-        if self._collect is not None:
-            super().collect(timeout_millis=timeout_millis)

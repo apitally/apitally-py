@@ -45,8 +45,6 @@ CONFIG_FIELDS = frozenset(f.name for f in fields(ApitallyConfig))
 PATTERN_FIELDS = ("mask_query_params", "mask_headers", "mask_body_fields", "exclude_paths")
 
 current_config: ApitallyConfig | None = None
-recall_warned = False
-sample_rate_warned = False
 
 
 def explicit_kwargs(params: dict[str, Any]) -> dict[str, Any]:
@@ -55,15 +53,12 @@ def explicit_kwargs(params: dict[str, Any]) -> dict[str, Any]:
     return {name: value for name, value in params.items() if name in CONFIG_FIELDS and value is not None}
 
 
-def configure(**kwargs: Any) -> ApitallyConfig:
-    global current_config, recall_warned
+def set_config(**kwargs: Any) -> ApitallyConfig:
+    global current_config
     config, error = resolve_config(kwargs)
     if current_config is not None:
-        if config != current_config and not recall_warned:
-            recall_warned = True
-            logger.warning(
-                "init_apitally was called again with different arguments; the first configuration remains active"
-            )
+        if config != current_config:
+            logger.warning("init_apitally was called again with different arguments; ignoring")
         return current_config
     if error:
         logger.error(error)
@@ -76,10 +71,8 @@ def get_config() -> ApitallyConfig | None:
 
 
 def reset() -> None:
-    global current_config, recall_warned, sample_rate_warned
+    global current_config
     current_config = None
-    recall_warned = False
-    sample_rate_warned = False
 
 
 def ensure_semconv_opt_in() -> None:
@@ -87,10 +80,6 @@ def ensure_semconv_opt_in() -> None:
     # semconv names when unset; http/dup adds the stable names without changing anything for
     # a cooperative user's own backend. A user-set value is respected.
     os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http/dup")
-
-
-def mask_token(token: str) -> str:
-    return f"{token[:8]}..."
 
 
 def drop_invalid_patterns(config: ApitallyConfig) -> None:
@@ -106,14 +95,9 @@ def drop_invalid_patterns(config: ApitallyConfig) -> None:
 
 
 def resolve_config(kwargs: dict[str, Any]) -> tuple[ApitallyConfig, str | None]:
-    global sample_rate_warned
     config = ApitallyConfig(**{k: v for k, v in kwargs.items() if k in CONFIG_FIELDS})
     drop_invalid_patterns(config)
-    # Type check before range check: comparing a non-numeric sample_rate would raise
     if not isinstance(config.sample_rate, (int, float)) or not 0 <= config.sample_rate <= 1:
-        if not sample_rate_warned:
-            sample_rate_warned = True
-            logger.warning("Invalid sample_rate ignored, expected a number between 0 and 1: %r", config.sample_rate)
         config.sample_rate = 1.0
     if "write_token" not in kwargs and (token := os.environ.get("APITALLY_WRITE_TOKEN")):
         config.write_token = token
@@ -129,8 +113,8 @@ def resolve_config(kwargs: dict[str, Any]) -> tuple[ApitallyConfig, str | None]:
     if not config.disabled:
         if not config.write_token:
             error = "Apitally write token is missing (set the write_token argument or APITALLY_WRITE_TOKEN)"
-        elif not WRITE_TOKEN_FORMAT.match(config.write_token):
-            error = f"Apitally write token has an invalid format: {mask_token(config.write_token)}"
+        elif not isinstance(config.write_token, str) or not WRITE_TOKEN_FORMAT.match(config.write_token):
+            error = f"Apitally write token has an invalid format: {str(config.write_token)[:8]}..."
         if error:
             config.disabled = True
     return config, error

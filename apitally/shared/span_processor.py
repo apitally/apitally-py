@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from collections.abc import Callable
 from contextvars import ContextVar
@@ -15,23 +13,25 @@ from apitally.shared.redaction import REDACTED, Redaction, compile_patterns, mat
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_EXCLUDE_PATH_PATTERNS = [
-    r"/_?healthz?$",
-    r"/_?health[-_]?checks?$",
-    r"/_?heart[-_]?beats?$",
-    r"/ping$",
-    r"/ready$",
-    r"/live$",
-    r"/favicon(?:-[\w-]+)?\.(ico|png|svg)$",
-    r"/apple-touch-icon(?:-[\w-]+)?\.png$",
-    r"/robots\.txt$",
-    r"/sitemap\.xml$",
-    r"/manifest\.json$",
-    r"/site\.webmanifest$",
-    r"/service-worker\.js$",
-    r"/sw\.js$",
-    r"/\.well-known/",
-]
+DEFAULT_EXCLUDE_PATH_PATTERNS = compile_patterns(
+    [
+        r"/_?healthz?$",
+        r"/_?health[-_]?checks?$",
+        r"/_?heart[-_]?beats?$",
+        r"/ping$",
+        r"/ready$",
+        r"/live$",
+        r"/favicon(?:-[\w-]+)?\.(ico|png|svg)$",
+        r"/apple-touch-icon(?:-[\w-]+)?\.png$",
+        r"/robots\.txt$",
+        r"/sitemap\.xml$",
+        r"/manifest\.json$",
+        r"/site\.webmanifest$",
+        r"/service-worker\.js$",
+        r"/sw\.js$",
+        r"/\.well-known/",
+    ]
+)
 EXCLUDE_USER_AGENT_PATTERNS = compile_patterns(
     [
         r"health[-_ ]?check",
@@ -77,7 +77,7 @@ class ApitallySpanProcessor(SpanProcessor):
         self.on_request_finished: Callable[[int, bool], None] | None = None
         self.config = get_config() or ApitallyConfig()
         self.sample_rate_bound = TraceIdRatioBased.get_bound_for_rate(self.config.sample_rate)
-        self.exclude_path_patterns = compile_patterns(DEFAULT_EXCLUDE_PATH_PATTERNS + self.config.exclude_paths)
+        self.exclude_path_patterns = DEFAULT_EXCLUDE_PATH_PATTERNS + compile_patterns(self.config.exclude_paths)
         self.redaction = Redaction(
             self.config.mask_query_params, self.config.mask_headers, self.config.mask_body_fields
         )

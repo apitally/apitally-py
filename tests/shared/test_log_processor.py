@@ -10,7 +10,7 @@ from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogR
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.trace import SpanKind, Tracer
 
-from apitally.shared.config import configure
+from apitally.shared.config import set_config
 from apitally.shared.log_processor import (
     MAX_BUFFERED_LOGS,
     ApitallyLogRecordProcessor,
@@ -56,7 +56,7 @@ def logger_provider(span_processor: ApitallySpanProcessor, log_exporter: InMemor
 
 @pytest.fixture()
 def root_handler(logger_provider: LoggerProvider) -> LoggingHandler | None:
-    configure(write_token=WRITE_TOKEN)
+    set_config(write_token=WRITE_TOKEN)
     return install_root_handler(logger_provider)
 
 
@@ -78,7 +78,7 @@ def test_log_in_nested_span_carries_server_span_id(
 
 
 def test_response_stage_dropped_request_logs_discarded(log_exporter: InMemoryLogRecordExporter):
-    configure(write_token=WRITE_TOKEN, sample_on_response=lambda span: False)
+    set_config(write_token=WRITE_TOKEN, sample_on_response=lambda span: False)
     span_processor = ApitallySpanProcessor(SpanProcessor())
     tracer_provider = TracerProvider()
     tracer_provider.add_span_processor(span_processor)
@@ -133,7 +133,7 @@ def test_self_logs_reach_user_handlers_but_not_export(
 
 
 def test_capture_logs_false_installs_no_handler(logger_provider: LoggerProvider):
-    configure(write_token=WRITE_TOKEN, capture_logs=False)
+    set_config(write_token=WRITE_TOKEN, capture_logs=False)
     handlers_before = list(logging.getLogger().handlers)
     assert install_root_handler(logger_provider) is None
     assert logging.getLogger().handlers == handlers_before
