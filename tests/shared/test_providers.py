@@ -1,8 +1,13 @@
+import logging
+import threading
 import uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 
 import pytest
 from opentelemetry import metrics, trace
 from opentelemetry._logs import get_logger_provider
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -10,10 +15,12 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON
+from opentelemetry.trace import SpanKind
 
-from apitally.shared import providers
+from apitally.shared import activation, providers
+from apitally.shared import metrics as apitally_metrics
 from apitally.shared.config import set_config
-from tests.conftest import WRITE_TOKEN
+from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, unwrap
 
 
 def test_mode_detection():
@@ -109,6 +116,48 @@ def test_exporter_endpoint_override(monkeypatch: pytest.MonkeyPatch):
     assert metric_exporter._endpoint == "http://localhost:4318/v1/metrics"
     assert log_exporter._endpoint == "http://localhost:4318/v1/logs"
     assert "x-other" not in span_exporter._headers
+
+
+def test_exporters_deliver_to_otlp_endpoint(monkeypatch: pytest.MonkeyPatch):
+    # Wire-level counterpart to the endpoint/header assertions above, which poke exporter
+    # privates: real exporters posting protobuf over HTTP, so otel-sdk drift is caught
+    received: dict[str, tuple[Any, bytes]] = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            received[self.path] = (self.headers, body)
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        monkeypatch.setenv("APITALLY_OTLP_ENDPOINT", f"http://127.0.0.1:{server.server_port}")
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+        activation.configure(write_token=WRITE_TOKEN, env="ci")
+        activation.activate()
+
+        with trace.get_tracer(CONTRIB_SCOPE).start_as_current_span("GET /items", kind=SpanKind.SERVER):
+            logging.getLogger("myapp").warning("hello")
+        apitally_metrics.record_request(method="GET", route="/items", status_code=200, consumer=None, duration=0.1)
+
+        unwrap(activation.span_processor).force_flush()
+        unwrap(activation.log_processor).force_flush()
+        unwrap(apitally_metrics.reader).force_flush()
+        server.shutdown()
+
+    assert set(received) == {"/v1/traces", "/v1/metrics", "/v1/logs"}
+    for headers, _ in received.values():
+        assert headers["Authorization"] == f"Bearer {WRITE_TOKEN}"
+        assert headers["Apitally-Env"] == "ci"
+
+    trace_request = ExportTraceServiceRequest()
+    trace_request.ParseFromString(received["/v1/traces"][1])
+    (span,) = [s for rs in trace_request.resource_spans for ss in rs.scope_spans for s in ss.spans]
+    assert span.name == "GET /items"
 
 
 def test_private_meter_and_logger_providers():
