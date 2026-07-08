@@ -64,8 +64,7 @@ def test_request_flow_span_histogram_and_startup_event(
         reader = attach_metric_reader()
         client.get("/items/42")
 
-    # Exactly one exported span: the Starlette instrumentor emits receive/send spans
-    # (no exclude_spans support) and the span processor backstop drops them
+    # The instrumentor's receive/send spans are dropped by the span processor backstop
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     assert unwrap(span.attributes)["http.request.method"] == "GET"

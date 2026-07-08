@@ -1,5 +1,4 @@
 import contextvars
-from collections.abc import Iterator
 from urllib.parse import parse_qsl
 
 import pytest
@@ -20,8 +19,6 @@ from apitally.shared.span_processor import (
     ApitallySpanProcessor,
     get_server_span,
     is_server_span_kept,
-    server_span_kept_var,
-    server_span_var,
 )
 from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, create_tracer, unwrap
 
@@ -32,15 +29,6 @@ BOUND_HALF = TraceIdRatioBased.get_bound_for_rate(0.5)
 def remote_parent_context(trace_id: int) -> Context:
     remote = SpanContext(trace_id=trace_id, span_id=1, is_remote=True, trace_flags=TraceFlags(TraceFlags.SAMPLED))
     return trace.set_span_in_context(NonRecordingSpan(remote))
-
-
-@pytest.fixture(autouse=True)
-def reset_server_span_var() -> Iterator[None]:
-    # The vars intentionally persist after a request ends, so tests
-    # sharing one context must clear them between runs
-    yield
-    server_span_var.set(None)
-    server_span_kept_var.set(False)
 
 
 @pytest.fixture()

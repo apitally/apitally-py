@@ -188,7 +188,6 @@ def test_consumer_set_in_route_reaches_span_and_histogram(
 
     response = app.test_client().get("/consumer")
 
-    # Consume the body; the transport records metrics when the response iterable completes
     assert response.get_json() == {"ok": True}
     (span,) = exported_spans(exporters)
     assert dict(span.attributes or {})["apitally.consumer.identifier"] == "tester"
@@ -230,7 +229,6 @@ def test_sampled_out_request_skips_capture(app: Flask, exporters: InMemoryExport
 
     response = app.test_client().post("/items", json={"a": 1})
 
-    # Consume the body; the transport records metrics when the response iterable completes
     assert response.get_json() == {"id": 1, "token": "abc123"}
     assert not mask_calls
     assert exported_spans(exporters) == []

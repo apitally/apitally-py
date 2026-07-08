@@ -105,10 +105,8 @@ async def test_unmatched_request_has_no_route_and_no_histogram_point(
 async def test_first_request_activates_and_records_without_lifespan(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    # PRIVATE-API CANARY: init_apitally wraps app._handle_http, the one
-    # private-API dependency. This test drives the app without lifespan so the request flows
-    # through __call__ -> _handle_http; it fails loudly if BlackSheep renames or re-signatures
-    # _handle_http, or stops awaiting start() before dispatch.
+    # PRIVATE-API CANARY: init_apitally wraps app._handle_http, the one private-API
+    # dependency; fails loudly if BlackSheep renames or re-signatures it
     assert list(inspect.signature(Application._handle_http).parameters) == ["self", "scope", "receive", "send"]
 
     allow_activation(monkeypatch)

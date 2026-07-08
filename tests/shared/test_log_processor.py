@@ -17,7 +17,7 @@ from apitally.shared.log_processor import (
     install_root_handler,
     uninstall_root_handler,
 )
-from apitally.shared.span_processor import ApitallySpanProcessor, server_span_var
+from apitally.shared.span_processor import ApitallySpanProcessor
 from tests.conftest import WRITE_TOKEN, unwrap
 
 
@@ -25,7 +25,6 @@ from tests.conftest import WRITE_TOKEN, unwrap
 def cleanup() -> Generator[None, None, None]:
     yield
     uninstall_root_handler()
-    server_span_var.set(None)
 
 
 @pytest.fixture()

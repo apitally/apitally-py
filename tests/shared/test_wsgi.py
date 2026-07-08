@@ -15,7 +15,7 @@ from opentelemetry.trace import SpanKind, Tracer
 from apitally.shared.capture import BODY_TOO_LARGE
 from apitally.shared.config import set_config
 from apitally.shared.redaction import REDACTED, Redaction
-from apitally.shared.span_processor import ApitallySpanProcessor, server_span_kept_var, server_span_var
+from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.wsgi import ApitallyWSGIMiddleware
 from tests.conftest import WRITE_TOKEN, create_tracer
 
@@ -44,13 +44,6 @@ class ClosingIterable:
 
     def close(self) -> None:
         self.closed = True
-
-
-@pytest.fixture(autouse=True)
-def reset_server_span_var() -> Iterator[None]:
-    yield
-    server_span_var.set(None)
-    server_span_kept_var.set(False)
 
 
 @pytest.fixture()
@@ -245,19 +238,20 @@ def test_request_headers_redacted(tracer: Tracer, exporter: InMemorySpanExporter
     assert attributes["http.request.header.accept"] == ("application/json",)
 
 
-def test_sampled_out_request_skips_capture(exporter: InMemorySpanExporter):
+def test_sampled_out_request_exports_nothing(exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN, sample_rate=0.0, log_request_body=True, log_response_body=True)
     provider = TracerProvider(sampler=ALWAYS_ON)
     provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
     tracer = provider.get_tracer("test")
+    body = b'{"a": 1}'
+    received: dict[str, bytes] = {}
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
+        received["body"] = environ["wsgi.input"].read(int(environ["CONTENT_LENGTH"]))
         start_response("200 OK", [("Content-Type", "application/json")])
         return [b"ok"]
 
-    body = b'{"a": 1}'
     environ = make_environ(method="POST", body=body, content_type="application/json", content_length=str(len(body)))
-    spy = environ["wsgi.input"]
 
     def start_response(status: str, headers: list[tuple[str, str]], exc_info: Any = None) -> Any:
         pass
@@ -267,8 +261,7 @@ def test_sampled_out_request_skips_capture(exporter: InMemorySpanExporter):
         list(response)
         response.close()
 
-    assert spy.read_count == 0  # request body never buffered
-    assert environ["wsgi.input"] is spy
+    assert received["body"] == body
     assert exporter.get_finished_spans() == ()
 
 

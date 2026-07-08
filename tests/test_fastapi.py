@@ -180,8 +180,7 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     with TestClient(app) as client:
         reader = attach_metric_reader()
         client.get("/items/42")
-    # One SERVER span, and the receive/send spans from the user's plain instrument_app
-    # call are dropped by the span processor backstop
+    # The user instrumentor's receive/send spans are dropped by the span processor backstop
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     response_body_size = unwrap(span.attributes)["http.response.body.size"]

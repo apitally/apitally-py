@@ -36,8 +36,8 @@ class ApitallyASGIMiddleware(CaptureMixin):
 
         config = self.config
         start_time = time.perf_counter()
-        # Mounted sub-apps grow root_path during routing; the entry value is needed to
-        # restore the mount prefix that route resolvers derive without
+        # Mounted sub-apps grow root_path during routing; the entry snapshot restores
+        # the mount prefix that route resolvers omit
         initial_root_path = str(scope.get("root_path") or "")
         request_size: int | None = None
         request_body = bytearray()

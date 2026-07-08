@@ -10,7 +10,7 @@ from opentelemetry.trace import SpanKind, Tracer
 from opentelemetry.util.types import AttributeValue
 
 from apitally.shared import activation, sentry
-from apitally.shared.span_processor import ApitallySpanProcessor, server_span_var
+from apitally.shared.span_processor import ApitallySpanProcessor
 from tests.conftest import WRITE_TOKEN
 
 
@@ -31,7 +31,6 @@ class DiscardTransport(sentry_transport.Transport):
 @pytest.fixture(autouse=True)
 def reset_sentry_state() -> Generator[None]:
     yield
-    server_span_var.set(None)
     sentry_scope.global_event_processors[:] = [
         p for p in sentry_scope.global_event_processors if p is not sentry.sentry_event_processor
     ]

@@ -1,5 +1,3 @@
-from collections.abc import Iterator
-
 import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -8,14 +6,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally import instrument
-from apitally.shared.span_processor import ApitallySpanProcessor, server_span_var
+from apitally.shared.span_processor import ApitallySpanProcessor
 from tests.conftest import unwrap
-
-
-@pytest.fixture(autouse=True)
-def reset_context_vars() -> Iterator[None]:
-    yield
-    server_span_var.set(None)
 
 
 @pytest.fixture()
@@ -27,8 +19,7 @@ def exporter() -> InMemorySpanExporter:
 def tracer(exporter: InMemorySpanExporter) -> Tracer:
     provider = TracerProvider()
     provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
-    # Global registration so instrument()'s proxy tracer resolves to this provider;
-    # the conftest autouse fixture resets trace globals after each test
+    # Global registration so instrument()'s proxy tracer resolves to this provider
     trace.set_tracer_provider(provider)
     return provider.get_tracer("opentelemetry.instrumentation.starlette")
 

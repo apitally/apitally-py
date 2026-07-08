@@ -86,8 +86,20 @@ def test_route_repair_metrics_and_no_noise_spans(exporters: InMemoryExporters, m
     assert points[0]["http.route"] == "/users/{user_id}"
 
 
-def test_user_otel_plugin_detected_and_repaired(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    app = make_app(monkeypatch, plugins=[OpenTelemetryPlugin(OpenTelemetryConfig())])
+@pytest.mark.parametrize(
+    "make_app_kwargs",
+    [
+        pytest.param({"plugins": [OpenTelemetryPlugin(OpenTelemetryConfig())]}, id="plugin"),
+        pytest.param(
+            {"middleware": [DefineMiddleware(OpenTelemetryInstrumentationMiddleware, config=OpenTelemetryConfig())]},
+            id="legacy-middleware",
+        ),
+    ],
+)
+def test_user_otel_setup_detected_and_repaired(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch, make_app_kwargs: dict[str, Any]
+):
+    app = make_app(monkeypatch, **make_app_kwargs)
     assert sum(isinstance(plugin, OpenTelemetryPlugin) for plugin in app.plugins.init) == 1
     with TestClient(app=app) as client:
         assert client.get("/users/123").status_code == 200
@@ -97,18 +109,6 @@ def test_user_otel_plugin_detected_and_repaired(exporters: InMemoryExporters, mo
     assert span.kind == SpanKind.SERVER
     assert span.name == "GET /users/{user_id}"
     assert (span.attributes or {})["http.route"] == "/users/{user_id}"
-
-
-def test_legacy_otel_middleware_detected_and_repaired(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    legacy = DefineMiddleware(OpenTelemetryInstrumentationMiddleware, config=OpenTelemetryConfig())
-    app = make_app(monkeypatch, middleware=[legacy])
-    assert sum(isinstance(plugin, OpenTelemetryPlugin) for plugin in app.plugins.init) == 1
-    with TestClient(app=app) as client:
-        assert client.get("/users/123").status_code == 200
-
-    (span,) = exported_spans(exporters)
-    assert span.kind == SpanKind.SERVER
-    assert span.name == "GET /users/{user_id}"
 
 
 def test_excluded_request_exports_nothing(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
