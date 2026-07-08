@@ -14,6 +14,12 @@ def test_kwarg_beats_apitally_env(monkeypatch: pytest.MonkeyPatch):
     assert cfg.env == "staging"
 
 
+def test_env_from_env_var(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("APITALLY_ENV", "dev")
+    cfg = config.set_config(write_token=VALID_TOKEN)
+    assert cfg.env == "dev"
+
+
 def test_write_token_from_env_var(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("APITALLY_WRITE_TOKEN", VALID_TOKEN)
     cfg = config.set_config()

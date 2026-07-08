@@ -10,6 +10,7 @@ from opentelemetry.trace import SpanKind
 
 from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, _convert_proxy_objects, init_apitally
 from apitally.shared import activation, config
+from apitally.shared.capture import BODY_TOO_LARGE
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
     InMemoryExporters,
@@ -98,6 +99,17 @@ def test_bodies_and_request_headers_captured_and_redacted(
     assert span.attributes["http.request.header.content-type"] == ("application/json",)
 
 
+def test_bodies_over_cap_replaced_with_sentinel(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(monkeypatch, log_request_body=True, log_response_body=True)
+    response = Client().post("/items/", data=json.dumps({"data": "x" * 60_000}), content_type="application/json")
+    assert response.status_code == 201
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert span.attributes is not None
+    assert span.attributes["apitally.request.body"] == BODY_TOO_LARGE
+    assert span.attributes["apitally.response.body"] == BODY_TOO_LARGE
+
+
 def test_sampled_out_request_skips_capture(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     mask_calls: list[bytes] = []
 
@@ -168,6 +180,7 @@ def test_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, monke
     assert span.attributes is not None
     assert span.attributes["apitally.consumer.identifier"] == "tester"
     assert span.attributes["apitally.consumer.name"] == "Tester"
+    assert span.attributes["apitally.consumer.group"] == "Testers"
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
 

@@ -33,12 +33,20 @@ def tracer(exporter: InMemorySpanExporter) -> Tracer:
     return provider.get_tracer("opentelemetry.instrumentation.starlette")
 
 
-def test_instrument_creates_child_span_under_server_span(tracer: Tracer, exporter: InMemorySpanExporter):
+async def test_instrument_creates_child_spans_under_server_span(tracer: Tracer, exporter: InMemorySpanExporter):
     @instrument
     def compute() -> int:
         return 42
 
+    @instrument
+    async def compute_async() -> int:
+        return 42
+
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as server:
         assert compute() == 42
-    child = next(s for s in exporter.get_finished_spans() if s.name == "compute")
-    assert unwrap(child.parent).span_id == server.get_span_context().span_id
+        assert await compute_async() == 42
+
+    children = [s for s in exporter.get_finished_spans() if s.name in ("compute", "compute_async")]
+    assert len(children) == 2
+    for child in children:
+        assert unwrap(child.parent).span_id == server.get_span_context().span_id

@@ -177,6 +177,21 @@ async def test_unhandled_exception_recorded_on_server_span(
     assert (event.attributes or {})["exception.message"] == "boom"
 
 
+async def test_init_twice_does_not_stack_middleware(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    allow_activation(monkeypatch)
+    app = create_app()
+    handler = app.__dict__["_handle_http"]
+    init_apitally(app, write_token=WRITE_TOKEN, app_version="1.2.3")
+    assert app.__dict__["_handle_http"] is handler
+
+    await app.start()
+    async with create_client(app) as client:
+        response = await client.get("/items/1")
+    assert response.status_code == 200
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert span.name == "GET /items/{id}"
+
+
 async def test_request_body_captured_and_redacted(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     allow_activation(monkeypatch)
     app = create_app(log_request_body=True)

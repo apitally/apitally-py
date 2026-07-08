@@ -20,7 +20,7 @@ def stream(request: HttpRequest) -> StreamingHttpResponse:
 
 
 def whoami(request: HttpRequest) -> HttpResponse:
-    set_consumer("tester", name="Tester")
+    set_consumer("tester", name="Tester", group="Testers")
     return HttpResponse("ok")
 
 

@@ -196,6 +196,20 @@ def test_consumer_set_in_route_reaches_span_and_histogram(
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
 
 
+def test_init_twice_does_not_stack_middleware(
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch)
+    wsgi_app = app.wsgi_app
+    init(app, monkeypatch)
+    assert app.wsgi_app is wsgi_app
+
+    response = app.test_client().get("/items/42")
+    assert response.status_code == 200
+    (span,) = exported_spans(exporters)
+    assert span.kind == SpanKind.SERVER
+
+
 def test_sampled_out_request_skips_capture(app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     mask_calls: list[bytes] = []
 
