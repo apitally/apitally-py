@@ -36,6 +36,9 @@ class ApitallyASGIMiddleware(CaptureMixin):
 
         config = self.config
         start_time = time.perf_counter()
+        # Mounted sub-apps grow root_path during routing; the entry value is needed to
+        # restore the mount prefix that route resolvers derive without
+        initial_root_path = str(scope.get("root_path") or "")
         request_size: int | None = None
         request_body = bytearray()
         request_body_length = 0
@@ -106,6 +109,10 @@ class ApitallyASGIMiddleware(CaptureMixin):
             except Exception:
                 logger.exception("Error resolving route in Apitally ASGI middleware")
                 route = None
+            if route:
+                root_path = str(scope.get("root_path") or "")
+                if root_path.startswith(initial_root_path):
+                    route = root_path[len(initial_root_path) :] + route
             span = get_server_span()
             if kept and span is not None and span.is_recording():
                 if route:
