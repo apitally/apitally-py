@@ -47,6 +47,10 @@ def app() -> Iterator[Flask]:
         set_consumer("tester")
         return jsonify({"ok": True})
 
+    @app.get("/error")
+    def error() -> Response:
+        raise ValueError("boom")
+
     yield app
     if getattr(app, "_is_instrumented_by_opentelemetry", False):
         FlaskInstrumentor.uninstrument_app(app)
@@ -100,7 +104,7 @@ def test_first_request_activates_and_is_recorded(
     assert attributes["http.response.status_code"] == 200
 
 
-def test_bodies_captured_while_span_recording(
+def test_request_and_response_bodies_captured_and_redacted(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch, log_request_body=True, log_response_body=True)
@@ -180,7 +184,7 @@ def test_response_headers_captured_wire_final(
     assert "http.response.header.content-length" in attributes
 
 
-def test_consumer_set_in_route_reaches_span_and_histogram(
+def test_set_consumer_reaches_span_and_histogram(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch)
@@ -236,7 +240,23 @@ def test_sampled_out_request_skips_capture(app: Flask, exporters: InMemoryExport
     assert point.count == 1
 
 
-def test_pre_instrumented_app_adapts_without_double_spans(
+def test_unhandled_exception_recorded_on_server_span(
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch)
+
+    response = app.test_client().get("/error")
+
+    assert response.status_code == 500
+    (span,) = exported_spans(exporters)
+    attributes = dict(span.attributes or {})
+    assert attributes["http.response.status_code"] == 500
+    (event,) = [e for e in span.events if e.name == "exception"]
+    assert (event.attributes or {})["exception.type"] == "ValueError"
+    assert (event.attributes or {})["exception.message"] == "boom"
+
+
+def test_pre_instrumented_app_adapts_without_duplicate_spans(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     FlaskInstrumentor().instrument_app(app)

@@ -5,7 +5,7 @@ from typing import Any, Iterator, cast
 import pytest
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.starlette import StarletteInstrumentor
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanKind, StatusCode
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -34,9 +34,13 @@ def create_app() -> Starlette:
     async def list_users(request: Request) -> JSONResponse:
         return JSONResponse([])
 
+    async def error(request: Request) -> JSONResponse:
+        raise ValueError("boom")
+
     return Starlette(
         routes=[
             Route("/items/{item_id}", get_item),
+            Route("/error", error),
             Mount("/admin", routes=[Route("/users", list_users)]),
         ]
     )
@@ -115,7 +119,27 @@ def test_init_twice_does_not_stack_middleware(
     assert span.kind == SpanKind.SERVER
 
 
-def test_pre_instrumented_app_inserts_transport_inside_otel_middleware(
+def test_unhandled_exception_recorded_on_server_span(
+    app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        reader = attach_metric_reader()
+        response = client.get("/error")
+    assert response.status_code == 500
+
+    # The 500 response comes from ServerErrorMiddleware outside all user middleware,
+    # so the span carries the exception but no status code; metrics still record 500
+    (span,) = exported_spans(exporters)
+    assert span.status.status_code == StatusCode.ERROR
+    (event,) = [e for e in span.events if e.name == "exception"]
+    assert unwrap(event.attributes)["exception.type"] == "ValueError"
+    assert unwrap(event.attributes)["exception.message"] == "boom"
+    (point,) = duration_data_points(reader)
+    assert unwrap(point.attributes)["http.response.status_code"] == 500
+
+
+def test_pre_instrumented_app_adapts_without_duplicate_spans(
     app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     StarletteInstrumentor.instrument_app(app)

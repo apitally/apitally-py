@@ -189,7 +189,7 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
 
 
-def test_unhandled_exception_recorded_as_event_on_500_span(
+def test_unhandled_exception_recorded_on_server_span(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch)
@@ -258,3 +258,15 @@ def test_init_twice_does_not_stack_middleware(
     with TestClient(app) as client:
         client.get("/items/1")
     assert len(exported_spans(exporters)) == 1
+
+
+def test_init_without_write_token_exports_nothing(
+    app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("APITALLY_WRITE_TOKEN", raising=False)
+    init_apitally(app)
+    with TestClient(app) as client:
+        assert client.get("/items/42").status_code == 200
+    assert not activation.is_activated()
+    assert exporters.span == exporters.log == exporters.metric == []

@@ -169,7 +169,7 @@ def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monk
     assert unwrap(point.attributes)["http.route"] == "/api/things/{pk}/"
 
 
-def test_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+def test_set_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
     reader = attach_metric_reader()
@@ -185,7 +185,7 @@ def test_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, monke
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
 
 
-def test_unhandled_exception_recorded(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
     reader = attach_metric_reader()

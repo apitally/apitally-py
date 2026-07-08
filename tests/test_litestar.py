@@ -118,7 +118,9 @@ def test_excluded_request_exports_nothing(exporters: InMemoryExporters, monkeypa
     assert exported_spans(exporters) == []
 
 
-def test_body_capture_on_server_span(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+def test_request_and_response_bodies_captured_and_redacted(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
     with TestClient(app=make_app(monkeypatch, log_request_body=True, log_response_body=True)) as client:
         response = client.post("/users", json={"user": "u", "password": "secret"})
         assert response.status_code == 201

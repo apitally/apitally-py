@@ -123,7 +123,7 @@ async def test_first_request_activates_and_records_without_lifespan(
     assert span.name == "GET /items/{id}"
 
 
-async def test_preinstrumented_app_adapted_without_duplicate_server_spans(
+async def test_pre_instrumented_app_adapts_without_duplicate_spans(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     allow_activation(monkeypatch)
