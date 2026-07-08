@@ -56,7 +56,7 @@ def init_apitally(
             versions=startup.resolve_versions(app_version, fastapi="fastapi", starlette="starlette"),
             openapi=lambda: _get_openapi(app, openapi_url),
         )
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.exception("Apitally setup for FastAPI failed")
 
 

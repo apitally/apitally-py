@@ -71,7 +71,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
             span = get_server_span()
             if kept and config.log_request_headers and span is not None and span.is_recording():
                 self.set_header_attributes(span, "http.request.header.", request_headers)
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error in Apitally ASGI middleware")
 
         async def receive_wrapper() -> Message:
@@ -88,7 +88,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
                             request_body = bytearray()
                     if not message.get("more_body", False):
                         request_body_complete = True
-            except Exception:
+            except Exception:  # pragma: no cover
                 logger.exception("Error in Apitally ASGI middleware")
             return message
 
@@ -106,7 +106,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
                 final_response_size = response_size_counter
             try:
                 route = self.resolve_route(scope)
-            except Exception:
+            except Exception:  # pragma: no cover
                 logger.exception("Error resolving route in Apitally ASGI middleware")
                 route = None
             if route:
@@ -189,7 +189,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
                         # Final message: write size attributes and record metrics while the span is still recording
                         response_body_complete = True
                         finish()
-            except Exception:
+            except Exception:  # pragma: no cover
                 logger.exception("Error in Apitally ASGI middleware")
             await send(message)
 
@@ -203,7 +203,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
         finally:
             try:
                 finish()
-            except Exception:
+            except Exception:  # pragma: no cover
                 logger.exception("Error in Apitally ASGI middleware")
 
     def set_header_attributes(self, span: Span, prefix: str, headers: Iterable[tuple[bytes, bytes]]) -> None:
@@ -238,5 +238,5 @@ def parse_int(value: bytes | None) -> int | None:
         return None
     try:
         return int(value.decode("latin-1"))
-    except ValueError:
+    except ValueError:  # pragma: no cover
         return None

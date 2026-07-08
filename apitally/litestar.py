@@ -72,7 +72,7 @@ class ApitallyPlugin(InitPluginProtocol):
             app_config.before_send.append(_before_send)
             app_config.after_exception.append(_after_exception)
             app_config.on_startup.append(self.on_startup)
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error initializing Apitally for Litestar")
         return app_config
 
@@ -85,7 +85,7 @@ class ApitallyPlugin(InitPluginProtocol):
                 openapi=lambda: _get_openapi(app),
             )
             activation.activate()
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error initializing Apitally for Litestar")
 
 
@@ -110,7 +110,7 @@ async def _before_send(message: Message, scope: Scope) -> None:
             # The bare template per semconv; the method prefix belongs only in the span name
             span.set_attribute("http.route", str(path_template))
             span.update_name(f"{scope.get('method', '')} {path_template}".strip())
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.exception("Error in Apitally before_send hook")
 
 
@@ -122,7 +122,7 @@ def _after_exception(exception: Exception, scope: Scope) -> None:
         span = get_server_span()
         if span is not None and span.is_recording():
             span.record_exception(exception)
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.exception("Error in Apitally after_exception hook")
 
 

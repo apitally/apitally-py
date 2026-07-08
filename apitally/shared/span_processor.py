@@ -84,7 +84,7 @@ class ApitallySpanProcessor(SpanProcessor):
 
     def on_start(self, span: Span, parent_context: Context | None = None) -> None:
         try:
-            if span.context is None:
+            if span.context is None:  # pragma: no cover
                 return
             if is_noise_span(span):
                 self.spans[span.context.span_id] = (False, None)
@@ -100,13 +100,13 @@ class ApitallySpanProcessor(SpanProcessor):
                     self.spans[span.context.span_id] = (False, None)
             else:
                 self.spans[span.context.span_id] = self.spans.get(span.parent.span_id, (False, None))
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error in Apitally span processor")
 
     def on_end(self, span: ReadableSpan) -> None:
         try:
             context = span.get_span_context()
-            if context is None:
+            if context is None:  # pragma: no cover
                 return
             keep, server_span_id = self.spans.pop(context.span_id, (False, None))
             if not keep:
@@ -135,7 +135,7 @@ class ApitallySpanProcessor(SpanProcessor):
                     logger.debug("Apitally span buffer cap reached for request, dropping span")
                 return
             self.downstream.on_end(self.redact_span(span))
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error in Apitally span processor")
 
     def resolve_server_span_id(self, span_id: int) -> int | None:

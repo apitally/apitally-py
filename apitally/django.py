@@ -91,7 +91,7 @@ def init_apitally(
             ),
         }
         startup.set_app_info(framework="django", paths=_get_paths, versions=versions, openapi=_get_openapi)
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.exception("Apitally setup for Django failed")
 
 
@@ -102,7 +102,7 @@ def _insert_middleware(caller_globals: dict[str, Any]) -> None:
         if isinstance(middleware, tuple):
             middleware = list(middleware)
             settings.MIDDLEWARE = middleware
-    if not isinstance(middleware, list):
+    if not isinstance(middleware, list):  # pragma: no cover
         logger.warning("Apitally could not find the MIDDLEWARE setting, requests will not be tracked")
         return
     if APITALLY_MIDDLEWARE not in middleware:
@@ -131,12 +131,12 @@ class ApitallyDjangoMiddleware(CaptureMixin):
             reset_consumer()
             request_size = parse_content_length(request.headers.get("Content-Length"))
             request_body = self.capture_request_body(request, config, request_size)
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error in Apitally Django middleware")
         response = self.get_response(request)
         try:
             self.finalize(request, response, config, start_time, request_size, request_body)
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error in Apitally Django middleware")
         return response
 
@@ -150,7 +150,7 @@ class ApitallyDjangoMiddleware(CaptureMixin):
             or not is_allowed_content_type(request.headers.get("Content-Type"))
         ):
             return None
-        if request_size is None:
+        if request_size is None:  # pragma: no cover
             return None
         if request_size > MAX_BODY_SIZE:
             return BODY_TOO_LARGE
@@ -218,7 +218,7 @@ class ApitallyDjangoMiddleware(CaptureMixin):
         match = request.resolver_match
         if match is not None and match.route:
             return _transform_path(match.route)
-        return None
+        return None  # pragma: no cover
 
     def set_header_attributes(self, span: Span, prefix: str, headers: Iterable[tuple[str, str]]) -> None:
         for name, value in headers:

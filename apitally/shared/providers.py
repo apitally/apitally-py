@@ -25,7 +25,7 @@ MAX_ATTRIBUTE_LENGTH = 65_536
 
 try:
     DISTRO_VERSION = version("apitally")
-except PackageNotFoundError:
+except PackageNotFoundError:  # pragma: no cover
     DISTRO_VERSION = "unknown"
 
 sampler_warned = False

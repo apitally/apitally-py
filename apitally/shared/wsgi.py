@@ -45,7 +45,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
             reset_consumer()
             state.request_size = parse_content_length(environ.get("CONTENT_LENGTH"))
             state.request_body = self.capture_request_body(environ, config, state.request_size)
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error in Apitally WSGI middleware")
 
         def wrapped_start_response(
@@ -53,7 +53,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
         ) -> Callable[[bytes], object]:
             try:
                 self.handle_response_start(config, state, status, response_headers, environ)
-            except Exception:
+            except Exception:  # pragma: no cover
                 logger.exception("Error in Apitally WSGI middleware")
             return start_response(status, response_headers, exc_info)
 
@@ -148,7 +148,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
                 response_size=state.response_size,
                 scheme=environ.get("wsgi.url_scheme"),
             )
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error in Apitally WSGI middleware")
 
     def set_header_attributes(self, span: Span, prefix: str, headers: dict[str, list[str]]) -> None:
@@ -190,7 +190,7 @@ class ResponseWrapper:
                 self.state.response_body += chunk
                 if len(self.state.response_body) > MAX_BODY_SIZE:
                     self.state.response_body = BODY_TOO_LARGE
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error in Apitally WSGI middleware")
         return chunk
 

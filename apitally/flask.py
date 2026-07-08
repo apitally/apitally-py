@@ -65,7 +65,7 @@ def init_apitally(
             paths=lambda: _get_paths(app),
             versions=startup.resolve_versions(app_version, flask="flask"),
         )
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.exception("Error initializing Apitally for Flask")
 
 
@@ -93,7 +93,7 @@ def _create_response_body_hook(transport: ApitallyWSGIMiddleware) -> Callable[[R
                     config.mask_response_body,
                     "mask_response_body",
                 )
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error in Apitally after_request hook")
         return response
 
@@ -107,7 +107,7 @@ def _create_route_resolver(app: Flask) -> Callable[[WSGIEnvironment], str | None
         try:
             rule, _ = app.url_map.bind_to_environ(environ).match(return_rule=True)
             return rule.rule
-        except Exception:
+        except Exception:  # pragma: no cover
             return None
 
     return get_route

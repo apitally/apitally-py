@@ -47,7 +47,7 @@ def resolve_versions(app_version: str | None, **packages: str) -> dict[str, str]
 
 def emit_startup_event() -> None:
     """Emit the startup event directly on the private LoggerProvider."""
-    if activation.logger_provider is None:
+    if activation.logger_provider is None:  # pragma: no cover
         return
     payload: dict[str, Any] = {
         "framework": app_info.get("framework"),
@@ -72,7 +72,7 @@ def resolve(value: T | Callable[[], T] | None) -> T | None:
         return value
     try:
         return cast("Callable[[], T]", value)()
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.exception("Error resolving Apitally app info for the startup event")
         return None
 

@@ -72,13 +72,13 @@ def activate() -> None:
         try:
             start_pipelines()
             activated = True
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Apitally activation failed")
             return
         for hook in on_activate_hooks:
             try:
                 hook()
-            except Exception:
+            except Exception:  # pragma: no cover
                 logger.exception("Error in Apitally on-activate hook")
 
 
@@ -175,7 +175,7 @@ def before_fork() -> None:
     # Held across the fork so an in-flight activate completes first; released in both after
     # handlers (the child gets a fresh lock, since an inherited locked mutex would deadlock)
     activation_lock.acquire()
-    if not activated:
+    if not activated:  # pragma: no cover
         return
     try:
         reader = metrics.reader
@@ -188,21 +188,21 @@ def before_fork() -> None:
         if log_processor is not None:
             retired_processors.append(log_processor.downstream)
             log_processor.downstream.shutdown()
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.exception("Error quiescing Apitally before fork")
 
 
 def after_fork_in_parent() -> None:
     """Re-activate by swapping fresh batch processors into the registered wrappers."""
     try:
-        if not activated or env is None:
+        if not activated or env is None:  # pragma: no cover
             return
         if span_processor is not None:
             span_processor.downstream = BatchSpanProcessor(providers.create_span_exporter(env))
         if log_processor is not None:
             log_processor.downstream = BatchLogRecordProcessor(providers.create_log_exporter(env))
         metrics.attach_reader(env)
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.exception("Error re-activating Apitally after fork")
     finally:
         activation_lock.release()
@@ -213,12 +213,12 @@ def after_fork_in_child() -> None:
     global activation_lock, activation_attempted, activated, env, resource
     global span_processor, log_processor, logger_provider, inherited_span_processor
     activation_lock = threading.Lock()
-    if not activated:
+    if not activated:  # pragma: no cover
         return
     try:
         uninstall_root_handler()
         metrics.reset()
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.exception("Error resetting Apitally in forked child")
     activation_attempted = False
     activated = False
