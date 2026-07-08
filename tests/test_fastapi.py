@@ -150,6 +150,28 @@ def test_request_body_captured_and_redacted(
     assert isinstance(body_size, int) and body_size > 0
 
 
+def test_mounted_subapp_route_includes_mount_prefix(
+    app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    subapp = FastAPI()
+
+    @subapp.get("/things/{thing_id}")
+    def get_thing(thing_id: int) -> dict[str, int]:
+        return {"thing_id": thing_id}
+
+    app.mount("/sub", subapp)
+    init(app, monkeypatch)
+    with TestClient(app) as client:
+        reader = attach_metric_reader()
+        client.get("/sub/things/7")
+
+    (span,) = exported_spans(exporters)
+    (point,) = duration_data_points(reader)
+    assert span.name == "GET /sub/things/{thing_id}"
+    assert unwrap(span.attributes)["http.route"] == "/sub/things/{thing_id}"
+    assert unwrap(point.attributes)["http.route"] == "/sub/things/{thing_id}"
+
+
 def test_pre_instrumented_app_adapts_without_duplicate_spans(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):

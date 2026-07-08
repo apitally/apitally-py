@@ -87,7 +87,7 @@ def test_request_flow_span_histogram_and_startup_event(
     assert unwrap(record.attributes)["apitally.request.server_span_id"] == format(span.context.span_id, "016x")
 
 
-def test_mounted_route_full_template_on_span_and_metrics(
+def test_mounted_route_includes_mount_prefix(
     app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch)

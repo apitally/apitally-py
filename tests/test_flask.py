@@ -2,7 +2,7 @@ import json
 from typing import Any, Iterator, NoReturn
 
 import pytest
-from flask import Flask, Response, jsonify
+from flask import Blueprint, Flask, Response, jsonify
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import ReadableSpan
@@ -18,6 +18,7 @@ from tests.conftest import (
     attach_metric_reader,
     duration_data_points,
     exported_spans,
+    unwrap,
 )
 
 
@@ -59,6 +60,27 @@ def init(app: Flask, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
 def activate_with_metric_reader() -> InMemoryMetricReader:
     activation.activate()
     return attach_metric_reader()
+
+
+def test_blueprint_route_includes_url_prefix(app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    blueprint = Blueprint("api", __name__, url_prefix="/api")
+
+    @blueprint.get("/things/<int:thing_id>")
+    def get_thing(thing_id: int) -> Response:
+        return jsonify({"id": thing_id})
+
+    app.register_blueprint(blueprint)
+    init(app, monkeypatch)
+    reader = activate_with_metric_reader()
+
+    response = app.test_client().get("/api/things/7")
+
+    # Consume the body; the transport records metrics when the response iterable completes
+    assert response.get_json() == {"id": 7}
+    (span,) = exported_spans(exporters)
+    (point,) = duration_data_points(reader)
+    assert unwrap(span.attributes)["http.route"] == "/api/things/<int:thing_id>"
+    assert unwrap(point.attributes)["http.route"] == "/api/things/<int:thing_id>"
 
 
 def test_first_request_activates_and_is_recorded(
