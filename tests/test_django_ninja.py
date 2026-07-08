@@ -34,7 +34,9 @@ def django_teardown() -> Iterator[None]:
     teardown_django_instrumentation()
 
 
-def test_startup_paths_and_openapi(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+def test_startup_event_paths_match_routes_and_openapi_parses(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
     init(monkeypatch, app_version="1.2.3")
     activate_via_signal()
 

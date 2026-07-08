@@ -134,7 +134,7 @@ def test_request_and_response_bodies_captured_and_redacted(
     assert json.loads(str(attributes["apitally.response.body"])) == {"id": 1, "token": REDACTED}
 
 
-def test_streaming_response_uncaptured_but_recorded(
+def test_streaming_response_recorded_without_body_and_size(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch, log_response_body=True)

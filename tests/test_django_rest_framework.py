@@ -36,7 +36,9 @@ def django_teardown() -> Iterator[None]:
     teardown_django_instrumentation()
 
 
-def test_startup_paths_include_viewset_route_templates(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+def test_startup_event_paths_include_viewset_route_templates(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
     init(monkeypatch)
     activate_via_signal()
 
@@ -63,12 +65,12 @@ def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monk
     activate_via_signal()
     reader = attach_metric_reader()
 
-    assert Client().get("/api/items/42/").status_code == 200
+    assert Client().get("/api/things/42/").status_code == 200
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     (point,) = duration_data_points(reader)
-    assert unwrap(span.attributes)["http.route"] == "/api/items/{pk}/"
-    assert unwrap(point.attributes)["http.route"] == "/api/items/{pk}/"
+    assert unwrap(span.attributes)["http.route"] == "/api/things/{pk}/"
+    assert unwrap(point.attributes)["http.route"] == "/api/things/{pk}/"
 
 
 def test_request_flow(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

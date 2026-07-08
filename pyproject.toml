@@ -161,6 +161,13 @@ python-version = "3.14"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    # Python 3.14 asyncio deprecations triggered inside pytest-asyncio, not our code
+    "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning",
+    "ignore:'asyncio.get_event_loop_policy' is deprecated:DeprecationWarning",
+    # fastapi.testclient still imports starlette.testclient with httpx installed
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:Warning",
+]
 
 [tool.coverage.run]
 source = ["apitally"]

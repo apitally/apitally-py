@@ -44,7 +44,7 @@ def django_teardown() -> Iterator[None]:
     teardown_django_instrumentation()
 
 
-def test_request_span_and_activation_order(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+def test_first_request_activates_and_is_recorded(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     assert not activation.is_activated()
 
