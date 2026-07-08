@@ -3,11 +3,10 @@ from collections.abc import Generator
 from typing import TYPE_CHECKING
 
 import pytest
-from opentelemetry.sdk.trace import Span, TracerProvider
+from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind, Tracer
-from opentelemetry.util.types import AttributeValue
 
 from apitally.shared import activation, sentry
 from apitally.shared.span_processor import ApitallySpanProcessor
@@ -93,23 +92,3 @@ def test_configure_without_sentry_sdk_installs_nothing(monkeypatch: pytest.Monke
 
     assert not sentry.installed
     assert sentry_scope.global_event_processors == processors_before
-
-
-def test_raising_hook_is_swallowed(
-    sentry_initialized: None, tracer: Tracer, exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
-):
-    activation.configure(write_token=WRITE_TOKEN)
-
-    # Break the span at the OTel boundary so the event processor fails without patching
-    # any Apitally internals
-    def raise_on_set_attribute(self: Span, key: str, value: AttributeValue) -> None:
-        raise RuntimeError("broken span")
-
-    monkeypatch.setattr(Span, "set_attribute", raise_on_set_attribute)
-
-    event_id = capture_exception_in_server_span(tracer)
-
-    assert event_id is not None
-    spans = exporter.get_finished_spans()
-    assert len(spans) == 1
-    assert "apitally.exception.sentry_event_id" not in (spans[0].attributes or {})

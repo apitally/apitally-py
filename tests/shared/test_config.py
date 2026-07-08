@@ -39,7 +39,13 @@ def test_invalid_token_disables_config():
     assert cfg.disabled
 
 
-def test_recall_semantics():
+def test_missing_write_token_disables_config(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("APITALLY_WRITE_TOKEN", raising=False)
+    cfg = config.set_config()
+    assert cfg.disabled
+
+
+def test_set_config_first_call_wins():
     first = config.set_config(write_token=VALID_TOKEN, env="staging")
     assert config.set_config(write_token=VALID_TOKEN, env="staging") is first
     assert config.set_config(write_token=VALID_TOKEN, env="dev") is first

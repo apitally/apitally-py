@@ -45,7 +45,7 @@ def test_set_consumer_truncates_identifier_name_and_group(tracer: Tracer, export
     assert unwrap(server.attributes)["apitally.consumer.group"] == "g" * 64
 
 
-def test_consumer_set_in_copied_context_without_span_resolves_at_completion():
+def test_consumer_set_in_copied_context_without_span_visible_from_parent_context():
     # Sync endpoints (anyio threadpool) and BaseHTTPMiddleware child tasks run in copied
     # contexts; the shared holder must carry the identifier back even with no recording span
     reset_consumer()

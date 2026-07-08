@@ -112,6 +112,20 @@ def test_init_apitally_swallows_instrumentation_errors(app: Starlette, monkeypat
     assert response.status_code == 200
 
 
+def test_init_twice_does_not_stack_middleware(
+    app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch)
+    user_middleware = list(app.user_middleware)
+    init(app, monkeypatch)
+    assert app.user_middleware == user_middleware
+
+    with TestClient(app) as client:
+        assert client.get("/items/42").status_code == 200
+    (span,) = exported_spans(exporters)
+    assert span.kind == SpanKind.SERVER
+
+
 def test_pre_instrumented_app_inserts_transport_inside_otel_middleware(
     app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):

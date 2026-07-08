@@ -192,7 +192,7 @@ def test_raising_sample_on_request_keeps_span(exporter: InMemorySpanExporter):
     assert len(exporter.get_finished_spans()) == 1
 
 
-def test_invalid_sample_callback_return_keeps_span(exporter: InMemorySpanExporter):
+def test_invalid_sample_on_request_return_keeps_span(exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN, sample_rate=0.0, sample_on_request=lambda span: "yes")
     tracer = create_tracer(exporter)
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):

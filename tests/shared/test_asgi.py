@@ -194,7 +194,21 @@ async def test_response_body_over_cap_sentinel(extra_headers: list[tuple[str, st
     assert span.attributes["http.response.body.size"] == 60_000
 
 
-async def test_mask_callback_none_or_raise_yields_masked():
+async def test_mask_request_body_result_exported_after_redaction():
+    def mask(span: ReadableSpan, body: bytes) -> bytes:
+        return b'{"password": "x", "card": "masked"}'
+
+    set_config(write_token=WRITE_TOKEN, log_request_body=True, mask_request_body=mask)
+    tracer, exporter = create_trace_pipeline()
+    app = EchoApp()
+    await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"card": "4111111111111111"}'])
+
+    (span,) = exporter.get_finished_spans()
+    assert span.attributes is not None
+    assert json.loads(str(span.attributes["apitally.request.body"])) == {"password": REDACTED, "card": "masked"}
+
+
+async def test_mask_request_body_none_or_raise_yields_redacted():
     def mask(span: ReadableSpan, body: bytes) -> bytes | None:
         if b"boom" in body:
             raise ValueError("boom")
@@ -213,7 +227,7 @@ async def test_mask_callback_none_or_raise_yields_masked():
         assert span.attributes["apitally.request.body"] == REDACTED
 
 
-async def test_mask_callback_output_over_cap_yields_too_large():
+async def test_mask_request_body_result_over_cap_yields_too_large():
     set_config(write_token=WRITE_TOKEN, log_request_body=True, mask_request_body=lambda span, body: b"x" * 50_001)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()

@@ -231,11 +231,19 @@ def test_request_headers_redacted(tracer: Tracer, exporter: InMemorySpanExporter
         start_response("200 OK", [("Content-Type", "text/plain")])
         return [b"ok"]
 
-    environ = make_environ(HTTP_AUTHORIZATION="Bearer secret123", HTTP_ACCEPT="application/json")
+    environ = make_environ(
+        content_type="text/plain",
+        content_length="0",
+        HTTP_AUTHORIZATION="Bearer secret123",
+        HTTP_ACCEPT="application/json",
+    )
     attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, exporter)
 
     assert attributes["http.request.header.authorization"] == [REDACTED]
     assert attributes["http.request.header.accept"] == ("application/json",)
+    # CONTENT_TYPE and CONTENT_LENGTH live outside the HTTP_ environ namespace
+    assert attributes["http.request.header.content-type"] == ("text/plain",)
+    assert attributes["http.request.header.content-length"] == ("0",)
 
 
 def test_sampled_out_request_exports_nothing(exporter: InMemorySpanExporter):
