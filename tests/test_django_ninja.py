@@ -12,7 +12,7 @@ from tests.conftest import (
     exported_spans,
     startup_payload,
 )
-from tests.django_utils import (
+from tests.django.utils import (
     activate_via_signal,
     configure_django_settings,
     init,
@@ -23,7 +23,7 @@ from tests.django_utils import (
 
 @pytest.fixture(scope="module", autouse=True)
 def django_settings() -> Iterator[None]:
-    configure_django_settings(ROOT_URLCONF="tests.django_ninja_urls")
+    configure_django_settings(ROOT_URLCONF="tests.django.ninja_urls")
     yield
     reset_django_settings()
 

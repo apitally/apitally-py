@@ -21,7 +21,7 @@ from tests.conftest import (
     startup_payload,
     unwrap,
 )
-from tests.django_utils import (
+from tests.django.utils import (
     activate_via_signal,
     configure_django_settings,
     init,
@@ -32,7 +32,7 @@ from tests.django_utils import (
 
 @pytest.fixture(scope="module", autouse=True)
 def django_settings() -> Iterator[None]:
-    configure_django_settings(ROOT_URLCONF="tests.django_urls")
+    configure_django_settings(ROOT_URLCONF="tests.django.urls")
     yield
     reset_django_settings()
 
@@ -226,8 +226,8 @@ def test_lazy_schema_strings_converted_for_json():
 def test_init_from_settings_module(monkeypatch: pytest.MonkeyPatch):
     saved = settings._wrapped
     settings._wrapped = empty
-    monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "tests.django_settings")
-    sys.modules.pop("tests.django_settings", None)
+    monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "tests.django.settings")
+    sys.modules.pop("tests.django.settings", None)
     try:
         # Accessing settings imports the module, running init_apitally at its end
         assert settings.MIDDLEWARE == [
@@ -237,4 +237,4 @@ def test_init_from_settings_module(monkeypatch: pytest.MonkeyPatch):
         ]
     finally:
         settings._wrapped = saved
-        sys.modules.pop("tests.django_settings", None)
+        sys.modules.pop("tests.django.settings", None)

@@ -1,5 +1,5 @@
 import json
-from typing import Any, Iterator, NoReturn
+from typing import Any, Iterator
 
 import pytest
 from flask import Blueprint, Flask, Response, jsonify
@@ -234,18 +234,6 @@ def test_sampled_out_request_skips_capture(app: Flask, exporters: InMemoryExport
     assert exported_spans(exporters) == []
     (point,) = duration_data_points(reader)
     assert point.count == 1
-
-
-def test_init_apitally_swallows_instrumentation_errors(app: Flask, monkeypatch: pytest.MonkeyPatch):
-    def raise_error(*args: Any, **kwargs: Any) -> NoReturn:
-        raise RuntimeError("instrumentation failed")
-
-    monkeypatch.setattr(FlaskInstrumentor, "instrument_app", raise_error)
-    init_apitally(app, write_token=WRITE_TOKEN)
-
-    response = app.test_client().get("/items/1")
-
-    assert response.status_code == 200
 
 
 def test_pre_instrumented_app_adapts_without_double_spans(

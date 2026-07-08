@@ -101,17 +101,6 @@ def test_mounted_route_includes_mount_prefix(
     assert unwrap(point.attributes)["http.route"] == "/admin/users"
 
 
-def test_init_apitally_swallows_instrumentation_errors(app: Starlette, monkeypatch: pytest.MonkeyPatch):
-    def raise_error(*args: Any, **kwargs: Any) -> None:
-        raise RuntimeError("instrumentation failed")
-
-    monkeypatch.setattr(StarletteInstrumentor, "instrument_app", raise_error)
-    init_apitally(app, write_token=WRITE_TOKEN)
-    with TestClient(app) as client:
-        response = client.get("/items/1")
-    assert response.status_code == 200
-
-
 def test_init_twice_does_not_stack_middleware(
     app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):

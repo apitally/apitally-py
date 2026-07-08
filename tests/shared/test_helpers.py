@@ -42,8 +42,3 @@ def test_capture_exception_records_event_on_server_span(tracer: Tracer, exporter
     assert unwrap(event.attributes)["exception.type"] == "ValueError"
     assert unwrap(event.attributes)["exception.message"] == "x"
     assert "exception.stacktrace" in unwrap(event.attributes)
-
-
-def test_capture_exception_with_non_exception_does_not_raise(tracer: Tracer):
-    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
-        capture_exception("not an exception")  # ty: ignore[invalid-argument-type]

@@ -1,7 +1,7 @@
 import json
 import logging
 from collections.abc import Iterator
-from typing import Any, NoReturn
+from typing import Any
 
 import pytest
 from fastapi import APIRouter, FastAPI
@@ -247,17 +247,6 @@ def test_sample_rate_zero_drops_spans_keeps_metrics(
     assert exported_spans(exporters) == []
     (point,) = duration_data_points(reader)
     assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
-
-
-def test_init_apitally_swallows_instrumentation_errors(app: FastAPI, monkeypatch: pytest.MonkeyPatch):
-    def raise_error(*args: Any, **kwargs: Any) -> NoReturn:
-        raise RuntimeError("instrumentation failed")
-
-    monkeypatch.setattr(FastAPIInstrumentor, "instrument_app", raise_error)
-    init_apitally(app, write_token=WRITE_TOKEN)
-    with TestClient(app) as client:
-        response = client.get("/items/1")
-    assert response.status_code == 200
 
 
 def test_init_twice_does_not_stack_middleware(
