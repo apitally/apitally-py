@@ -130,6 +130,13 @@ def test_unknown_sizes_skip_size_observations():
     assert "http.server.response.body.size" not in collected
 
 
+def test_setup_twice_moves_system_metrics_to_new_provider():
+    # The instrumentor is a singleton, so a second setup must uninstrument it first
+    create_pipeline()
+    reader = create_pipeline()
+    assert "process.cpu.utilization" in collect_metrics(reader)
+
+
 def test_system_metrics_exact_instrument_set():
     reader = create_pipeline()
     assert set(collect_metrics(reader)) == {"process.cpu.utilization", "process.memory.usage", "process.uptime"}

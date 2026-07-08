@@ -6,7 +6,7 @@ from opentelemetry import trace
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace import Span as SDKSpan
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, TraceIdRatioBased
 from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, TraceFlags, Tracer
@@ -253,15 +253,16 @@ def test_late_descendant_follows_request_decision(exporter: InMemorySpanExporter
         exporter.clear()
 
 
-def test_shutdown_discards_pending_buffers(
-    tracer: Tracer, processor: ApitallySpanProcessor, exporter: InMemorySpanExporter
-):
-    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
-        with tracer.start_as_current_span("child"):
-            pass
-        processor.shutdown()
-        assert not processor.pending
-    assert exporter.get_finished_spans() == ()
+def test_shutdown_flushes_queued_spans(exporter: InMemorySpanExporter):
+    processor = ApitallySpanProcessor(BatchSpanProcessor(exporter))
+    provider = TracerProvider(sampler=ALWAYS_ON)
+    provider.add_span_processor(processor)
+    with provider.get_tracer(CONTRIB_SCOPE).start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        pass
+    assert exporter.get_finished_spans() == ()  # released to the batch processor, still queued
+    provider.shutdown()
+    (span,) = exporter.get_finished_spans()
+    assert span.name == "GET /items"
 
 
 def test_same_trace_id_verdict_at_both_stages(exporter: InMemorySpanExporter):

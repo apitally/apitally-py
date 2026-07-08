@@ -139,6 +139,22 @@ def test_unhandled_exception_recorded_on_server_span(
     assert unwrap(point.attributes)["http.response.status_code"] == 500
 
 
+def test_pre_instrumented_started_app_rebuilds_middleware_stack(
+    app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    StarletteInstrumentor.instrument_app(app)
+    with TestClient(app):
+        pass  # first startup builds the middleware stack
+    init(app, monkeypatch)
+
+    with TestClient(app) as client:
+        client.get("/items/42")
+    (span,) = exported_spans(exporters)
+    assert span.kind == SpanKind.SERVER
+    response_body_size = unwrap(span.attributes)["http.response.body.size"]
+    assert isinstance(response_body_size, int) and response_body_size > 0
+
+
 def test_pre_instrumented_app_adapts_without_duplicate_spans(
     app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
