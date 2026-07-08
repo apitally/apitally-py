@@ -6,10 +6,12 @@ import pytest
 from django.conf import settings
 from django.test import Client
 from django.utils.functional import empty, lazy
+from opentelemetry.instrumentation.django import DjangoInstrumentor
 from opentelemetry.trace import SpanKind
 
 from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, _convert_proxy_objects, init_apitally
 from apitally.shared import activation, config
+from apitally.shared.capture import BODY_TOO_LARGE
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
     InMemoryExporters,
@@ -20,7 +22,7 @@ from tests.conftest import (
     startup_payload,
     unwrap,
 )
-from tests.django_utils import (
+from tests.django.utils import (
     activate_via_signal,
     configure_django_settings,
     init,
@@ -31,7 +33,7 @@ from tests.django_utils import (
 
 @pytest.fixture(scope="module", autouse=True)
 def django_settings() -> Iterator[None]:
-    configure_django_settings(ROOT_URLCONF="tests.django_urls")
+    configure_django_settings(ROOT_URLCONF="tests.django.urls")
     yield
     reset_django_settings()
 
@@ -42,7 +44,7 @@ def django_teardown() -> Iterator[None]:
     teardown_django_instrumentation()
 
 
-def test_request_span_and_activation_order(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+def test_first_request_activates_and_is_recorded(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     assert not activation.is_activated()
 
@@ -96,6 +98,17 @@ def test_bodies_and_request_headers_captured_and_redacted(
     assert json.loads(str(span.attributes["apitally.response.body"])) == redacted
     assert span.attributes["http.request.header.authorization"] == [REDACTED]
     assert span.attributes["http.request.header.content-type"] == ("application/json",)
+
+
+def test_bodies_over_cap_replaced_with_sentinel(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(monkeypatch, log_request_body=True, log_response_body=True)
+    response = Client().post("/items/", data=json.dumps({"data": "x" * 60_000}), content_type="application/json")
+    assert response.status_code == 201
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert span.attributes is not None
+    assert span.attributes["apitally.request.body"] == BODY_TOO_LARGE
+    assert span.attributes["apitally.response.body"] == BODY_TOO_LARGE
 
 
 def test_sampled_out_request_skips_capture(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
@@ -157,7 +170,7 @@ def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monk
     assert unwrap(point.attributes)["http.route"] == "/api/things/{pk}/"
 
 
-def test_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+def test_set_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
     reader = attach_metric_reader()
@@ -168,11 +181,12 @@ def test_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, monke
     assert span.attributes is not None
     assert span.attributes["apitally.consumer.identifier"] == "tester"
     assert span.attributes["apitally.consumer.name"] == "Tester"
+    assert span.attributes["apitally.consumer.group"] == "Testers"
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
 
 
-def test_unhandled_exception_recorded(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
     reader = attach_metric_reader()
@@ -189,6 +203,34 @@ def test_unhandled_exception_recorded(exporters: InMemoryExporters, monkeypatch:
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.response.status_code"] == 500
     assert (point.attributes or {})["error.type"] == "500"
+
+
+def test_pre_instrumented_app_adapts_without_duplicate_spans(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    DjangoInstrumentor().instrument()
+    init(monkeypatch)
+    assert settings.MIDDLEWARE.count(OTEL_MIDDLEWARE) == 1
+    assert settings.MIDDLEWARE.index(APITALLY_MIDDLEWARE) == settings.MIDDLEWARE.index(OTEL_MIDDLEWARE) + 1
+
+    response = Client().get("/items/123/")
+    assert response.status_code == 200
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["http.route"] == "/items/{pk}/"
+    # The Apitally middleware still sets its attributes on the span created by the user's instrumentation
+    response_body_size = unwrap(span.attributes)["http.response.body.size"]
+    assert isinstance(response_body_size, int) and response_body_size > 0
+
+
+def test_init_twice_does_not_stack_middleware(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(monkeypatch)
+    init(monkeypatch)
+    assert settings.MIDDLEWARE.count(APITALLY_MIDDLEWARE) == 1
+    assert settings.MIDDLEWARE.count(OTEL_MIDDLEWARE) == 1
+
+    response = Client().get("/items/123/")
+    assert response.status_code == 200
+    assert len(exported_spans(exporters, kind=SpanKind.SERVER)) == 1
 
 
 def test_include_django_views_adds_class_based_view_paths(
@@ -213,8 +255,8 @@ def test_lazy_schema_strings_converted_for_json():
 def test_init_from_settings_module(monkeypatch: pytest.MonkeyPatch):
     saved = settings._wrapped
     settings._wrapped = empty
-    monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "tests.django_settings")
-    sys.modules.pop("tests.django_settings", None)
+    monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "tests.django.settings")
+    sys.modules.pop("tests.django.settings", None)
     try:
         # Accessing settings imports the module, running init_apitally at its end
         assert settings.MIDDLEWARE == [
@@ -224,4 +266,4 @@ def test_init_from_settings_module(monkeypatch: pytest.MonkeyPatch):
         ]
     finally:
         settings._wrapped = saved
-        sys.modules.pop("tests.django_settings", None)
+        sys.modules.pop("tests.django.settings", None)

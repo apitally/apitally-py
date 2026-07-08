@@ -14,6 +14,12 @@ def test_kwarg_beats_apitally_env(monkeypatch: pytest.MonkeyPatch):
     assert cfg.env == "staging"
 
 
+def test_env_from_env_var(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("APITALLY_ENV", "dev")
+    cfg = config.set_config(write_token=VALID_TOKEN)
+    assert cfg.env == "dev"
+
+
 def test_write_token_from_env_var(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("APITALLY_WRITE_TOKEN", VALID_TOKEN)
     cfg = config.set_config()
@@ -33,7 +39,13 @@ def test_invalid_token_disables_config():
     assert cfg.disabled
 
 
-def test_recall_semantics():
+def test_missing_write_token_disables_config(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("APITALLY_WRITE_TOKEN", raising=False)
+    cfg = config.set_config()
+    assert cfg.disabled
+
+
+def test_set_config_first_call_wins():
     first = config.set_config(write_token=VALID_TOKEN, env="staging")
     assert config.set_config(write_token=VALID_TOKEN, env="staging") is first
     assert config.set_config(write_token=VALID_TOKEN, env="dev") is first

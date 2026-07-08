@@ -1,5 +1,5 @@
 import json
-from typing import Any, Iterator, NoReturn
+from typing import Any, Iterator
 
 import pytest
 from flask import Blueprint, Flask, Response, jsonify
@@ -18,6 +18,7 @@ from tests.conftest import (
     attach_metric_reader,
     duration_data_points,
     exported_spans,
+    startup_payload,
     unwrap,
 )
 
@@ -46,6 +47,10 @@ def app() -> Iterator[Flask]:
     def consumer() -> Response:
         set_consumer("tester")
         return jsonify({"ok": True})
+
+    @app.get("/error")
+    def error() -> Response:
+        raise ValueError("boom")
 
     yield app
     if getattr(app, "_is_instrumented_by_opentelemetry", False):
@@ -100,7 +105,28 @@ def test_first_request_activates_and_is_recorded(
     assert attributes["http.response.status_code"] == 200
 
 
-def test_bodies_captured_while_span_recording(
+def test_startup_event_paths_match_routes(app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(app, monkeypatch, app_version="1.2.3")
+
+    response = app.test_client().get("/items/42")
+
+    assert response.status_code == 200
+    payload = startup_payload(exporters)
+    assert payload["framework"] == "flask"
+    assert "flask" in payload["versions"]
+    assert payload["versions"]["app"] == "1.2.3"
+    # Exact list: pins the exclusion of HEAD/OPTIONS methods and the static route
+    assert sorted(payload["paths"], key=lambda p: (p["path"], p["method"])) == [
+        {"method": "GET", "path": "/consumer"},
+        {"method": "GET", "path": "/error"},
+        {"method": "GET", "path": "/headers"},
+        {"method": "POST", "path": "/items"},
+        {"method": "GET", "path": "/items/<int:item_id>"},
+        {"method": "GET", "path": "/stream"},
+    ]
+
+
+def test_request_and_response_bodies_captured_and_redacted(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch, log_request_body=True, log_response_body=True)
@@ -115,7 +141,7 @@ def test_bodies_captured_while_span_recording(
     assert json.loads(str(attributes["apitally.response.body"])) == {"id": 1, "token": REDACTED}
 
 
-def test_streaming_response_uncaptured_but_recorded(
+def test_streaming_response_recorded_without_body_and_size(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch, log_response_body=True)
@@ -180,7 +206,7 @@ def test_response_headers_captured_wire_final(
     assert "http.response.header.content-length" in attributes
 
 
-def test_consumer_set_in_route_reaches_span_and_histogram(
+def test_set_consumer_reaches_span_and_histogram(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch)
@@ -188,12 +214,25 @@ def test_consumer_set_in_route_reaches_span_and_histogram(
 
     response = app.test_client().get("/consumer")
 
-    # Consume the body; the transport records metrics when the response iterable completes
     assert response.get_json() == {"ok": True}
     (span,) = exported_spans(exporters)
     assert dict(span.attributes or {})["apitally.consumer.identifier"] == "tester"
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
+
+
+def test_init_twice_does_not_stack_middleware(
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch)
+    wsgi_app = app.wsgi_app
+    init(app, monkeypatch)
+    assert app.wsgi_app is wsgi_app
+
+    response = app.test_client().get("/items/42")
+    assert response.status_code == 200
+    (span,) = exported_spans(exporters)
+    assert span.kind == SpanKind.SERVER
 
 
 def test_sampled_out_request_skips_capture(app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
@@ -216,7 +255,6 @@ def test_sampled_out_request_skips_capture(app: Flask, exporters: InMemoryExport
 
     response = app.test_client().post("/items", json={"a": 1})
 
-    # Consume the body; the transport records metrics when the response iterable completes
     assert response.get_json() == {"id": 1, "token": "abc123"}
     assert not mask_calls
     assert exported_spans(exporters) == []
@@ -224,19 +262,23 @@ def test_sampled_out_request_skips_capture(app: Flask, exporters: InMemoryExport
     assert point.count == 1
 
 
-def test_init_apitally_swallows_instrumentation_errors(app: Flask, monkeypatch: pytest.MonkeyPatch):
-    def raise_error(*args: Any, **kwargs: Any) -> NoReturn:
-        raise RuntimeError("instrumentation failed")
+def test_unhandled_exception_recorded_on_server_span(
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch)
 
-    monkeypatch.setattr(FlaskInstrumentor, "instrument_app", raise_error)
-    init_apitally(app, write_token=WRITE_TOKEN)
+    response = app.test_client().get("/error")
 
-    response = app.test_client().get("/items/1")
+    assert response.status_code == 500
+    (span,) = exported_spans(exporters)
+    attributes = dict(span.attributes or {})
+    assert attributes["http.response.status_code"] == 500
+    (event,) = [e for e in span.events if e.name == "exception"]
+    assert (event.attributes or {})["exception.type"] == "ValueError"
+    assert (event.attributes or {})["exception.message"] == "boom"
 
-    assert response.status_code == 200
 
-
-def test_pre_instrumented_app_adapts_without_double_spans(
+def test_pre_instrumented_app_adapts_without_duplicate_spans(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     FlaskInstrumentor().instrument_app(app)
@@ -248,5 +290,5 @@ def test_pre_instrumented_app_adapts_without_double_spans(
     (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     assert attributes["http.route"] == "/items/<int:item_id>"
-    # Transport glue still lands on the user-instrumented span
+    # The Apitally middleware still sets its attributes on the span created by the user's instrumentation
     assert "http.response.header.content-type" in attributes

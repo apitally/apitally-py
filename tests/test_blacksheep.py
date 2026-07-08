@@ -105,10 +105,8 @@ async def test_unmatched_request_has_no_route_and_no_histogram_point(
 async def test_first_request_activates_and_records_without_lifespan(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    # PRIVATE-API CANARY: init_apitally wraps app._handle_http, the one
-    # private-API dependency. This test drives the app without lifespan so the request flows
-    # through __call__ -> _handle_http; it fails loudly if BlackSheep renames or re-signatures
-    # _handle_http, or stops awaiting start() before dispatch.
+    # PRIVATE-API CANARY: init_apitally wraps app._handle_http, the one private-API
+    # dependency; fails loudly if BlackSheep renames or re-signatures it
     assert list(inspect.signature(Application._handle_http).parameters) == ["self", "scope", "receive", "send"]
 
     allow_activation(monkeypatch)
@@ -125,7 +123,7 @@ async def test_first_request_activates_and_records_without_lifespan(
     assert span.name == "GET /items/{id}"
 
 
-async def test_preinstrumented_app_adapted_without_duplicate_server_spans(
+async def test_pre_instrumented_app_adapts_without_duplicate_spans(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     allow_activation(monkeypatch)
@@ -175,6 +173,21 @@ async def test_unhandled_exception_recorded_on_server_span(
     (event,) = [event for event in span.events if event.name == "exception"]
     assert (event.attributes or {})["exception.type"] == "ValueError"
     assert (event.attributes or {})["exception.message"] == "boom"
+
+
+async def test_init_twice_does_not_stack_middleware(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    allow_activation(monkeypatch)
+    app = create_app()
+    handler = app.__dict__["_handle_http"]
+    init_apitally(app, write_token=WRITE_TOKEN, app_version="1.2.3")
+    assert app.__dict__["_handle_http"] is handler
+
+    await app.start()
+    async with create_client(app) as client:
+        response = await client.get("/items/1")
+    assert response.status_code == 200
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert span.name == "GET /items/{id}"
 
 
 async def test_request_body_captured_and_redacted(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

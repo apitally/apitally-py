@@ -12,7 +12,7 @@ from tests.conftest import (
     exported_spans,
     startup_payload,
 )
-from tests.django_utils import (
+from tests.django.utils import (
     activate_via_signal,
     configure_django_settings,
     init,
@@ -23,7 +23,7 @@ from tests.django_utils import (
 
 @pytest.fixture(scope="module", autouse=True)
 def django_settings() -> Iterator[None]:
-    configure_django_settings(ROOT_URLCONF="tests.django_ninja_urls")
+    configure_django_settings(ROOT_URLCONF="tests.django.ninja_urls")
     yield
     reset_django_settings()
 
@@ -34,7 +34,9 @@ def django_teardown() -> Iterator[None]:
     teardown_django_instrumentation()
 
 
-def test_startup_paths_and_openapi(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+def test_startup_event_paths_match_routes_and_openapi_parses(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
     init(monkeypatch, app_version="1.2.3")
     activate_via_signal()
 

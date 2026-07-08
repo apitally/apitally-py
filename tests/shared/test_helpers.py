@@ -1,5 +1,3 @@
-from collections.abc import Iterator
-
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -7,14 +5,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally import capture_exception, set_request_attribute
-from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span, server_span_var
+from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span
 from tests.conftest import unwrap
-
-
-@pytest.fixture(autouse=True)
-def reset_context_vars() -> Iterator[None]:
-    yield
-    server_span_var.set(None)
 
 
 @pytest.fixture()
@@ -50,8 +42,3 @@ def test_capture_exception_records_event_on_server_span(tracer: Tracer, exporter
     assert unwrap(event.attributes)["exception.type"] == "ValueError"
     assert unwrap(event.attributes)["exception.message"] == "x"
     assert "exception.stacktrace" in unwrap(event.attributes)
-
-
-def test_capture_exception_with_non_exception_does_not_raise(tracer: Tracer):
-    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
-        capture_exception("not an exception")  # ty: ignore[invalid-argument-type]

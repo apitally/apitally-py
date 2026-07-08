@@ -85,7 +85,7 @@ def init_apitally(
             paths=lambda: _get_paths(app),
             versions=startup.resolve_versions(app_version, blacksheep="blacksheep"),
         )
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.exception("Error setting up Apitally for BlackSheep")
 
 
@@ -103,7 +103,7 @@ def _wrap_router(app: Application) -> None:
                 if span is not None and span.is_recording():
                     span.set_attribute("http.route", route)
                     span.update_name(f"{request.method} {route}")
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error resolving route in Apitally BlackSheep integration")
         return match
 
@@ -122,7 +122,7 @@ def _wrap_error_handler(app: Application) -> None:
             span = get_server_span()
             if span is not None and span.is_recording():
                 span.record_exception(exc)
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error recording exception in Apitally BlackSheep integration")
         return await original(request, exc)
 

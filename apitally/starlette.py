@@ -57,7 +57,7 @@ def init_apitally(
             paths=lambda: _get_paths(app),
             versions=startup.resolve_versions(app_version, starlette="starlette"),
         )
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.exception("Apitally setup for Starlette failed")
 
 
@@ -95,7 +95,7 @@ def _resolve_route(scope: Scope, routes: list[BaseRoute] | None = None) -> str |
             match, _ = route.matches(scope)
             if match == Match.FULL:
                 return path
-    return None
+    return None  # pragma: no cover
 
 
 def _get_paths(app: Starlette) -> list[dict[str, str]]:

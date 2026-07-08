@@ -237,7 +237,7 @@ init_apitally(
 
 Sensitive values in query parameters, headers, and body fields are masked automatically based on built-in patterns, and you can add your own via the `mask_query_params`, `mask_headers`, and `mask_body_fields` arguments.
 
-On high-traffic applications you can capture traces and logs for only a fraction of requests by setting `sample_rate` (e.g. `0.1` for 10%), or decide per request with the `sample_on_request` and `sample_on_response` callbacks. A request's telemetry is held in memory until the request completes (up to 1,000 spans and 1,000 log records per request), so a request dropped by `sample_on_response` never counts toward your quota. Request-stage sampling additionally skips capture work such as body buffering and masking. Metrics always count every request, regardless of sampling.
+On high-traffic applications you can capture traces and logs for only a fraction of requests by setting `sample_rate` (e.g. `0.1` for 10%), or decide per request with the `sample_on_request` and `sample_on_response` callbacks. A request's telemetry is held in memory until the request completes (up to 1,000 spans and 1,000 log records per request), so a request dropped by `sample_on_response` never counts toward your quota. Request-stage sampling additionally skips capture work such as body buffering and masking (for Flask, request bodies are still buffered because the sampling decision happens later). Metrics always count every request, regardless of sampling.
 
 Application logs written via the standard `logging` module are captured and correlated with requests by default. Log messages are exported as-is, so if your application logs sensitive data, sanitize it at the source or opt out with `capture_logs=False`.
 

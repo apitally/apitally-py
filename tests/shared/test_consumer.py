@@ -1,4 +1,3 @@
-from collections.abc import Iterator
 from contextvars import copy_context
 
 import pytest
@@ -8,16 +7,9 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally import capture_exception, set_consumer, set_request_attribute
-from apitally.shared.consumer import consumer_holder_var, get_consumer_identifier, reset_consumer
-from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span, server_span_var
+from apitally.shared.consumer import get_consumer_identifier, reset_consumer
+from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span
 from tests.conftest import unwrap
-
-
-@pytest.fixture(autouse=True)
-def reset_context_vars() -> Iterator[None]:
-    yield
-    server_span_var.set(None)
-    consumer_holder_var.set(None)
 
 
 @pytest.fixture()
@@ -53,7 +45,7 @@ def test_set_consumer_truncates_identifier_name_and_group(tracer: Tracer, export
     assert unwrap(server.attributes)["apitally.consumer.group"] == "g" * 64
 
 
-def test_consumer_set_in_copied_context_without_span_resolves_at_completion():
+def test_consumer_set_in_copied_context_without_span_visible_from_parent_context():
     # Sync endpoints (anyio threadpool) and BaseHTTPMiddleware child tasks run in copied
     # contexts; the shared holder must carry the identifier back even with no recording span
     reset_consumer()

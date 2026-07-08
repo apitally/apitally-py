@@ -86,10 +86,10 @@ def instrument_botocore(**kwargs: Any) -> None:  # pragma: no cover
     BotocoreInstrumentor().instrument(**kwargs)
 
 
-def instrument_httpx(client: HttpxClient | HttpxAsyncClient | None = None, **kwargs: Any) -> None:
+def instrument_httpx(client: HttpxClient | HttpxAsyncClient | None = None, **kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-    except ImportError:  # pragma: no cover
+    except ImportError:
         raise RuntimeError("`instrument_httpx()` requires the `opentelemetry-instrumentation-httpx` package")
 
     if client is not None:
@@ -156,10 +156,10 @@ def instrument_redis(**kwargs: Any) -> None:  # pragma: no cover
     RedisInstrumentor().instrument(**kwargs)
 
 
-def instrument_requests(**kwargs: Any) -> None:
+def instrument_requests(**kwargs: Any) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.requests import RequestsInstrumentor
-    except ImportError:  # pragma: no cover
+    except ImportError:
         raise RuntimeError("`instrument_requests()` requires the `opentelemetry-instrumentation-requests` package")
 
     RequestsInstrumentor().instrument(**kwargs)

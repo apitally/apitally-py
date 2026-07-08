@@ -5,7 +5,7 @@ from apitally.django import init_apitally
 
 SECRET_KEY = "secret"
 ALLOWED_HOSTS = ["testserver"]
-ROOT_URLCONF = "tests.django_urls"
+ROOT_URLCONF = "tests.django.urls"
 DEBUG = False
 
 MIDDLEWARE = [

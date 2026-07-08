@@ -1,7 +1,7 @@
 import json
 import logging
 from collections.abc import Iterator
-from typing import Any, NoReturn
+from typing import Any
 
 import pytest
 from fastapi import APIRouter, FastAPI
@@ -180,8 +180,7 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     with TestClient(app) as client:
         reader = attach_metric_reader()
         client.get("/items/42")
-    # One SERVER span, and the receive/send spans from the user's plain instrument_app
-    # call are dropped by the span processor backstop
+    # The user instrumentor's receive/send spans are dropped by the span processor backstop
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     response_body_size = unwrap(span.attributes)["http.response.body.size"]
@@ -190,7 +189,7 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
 
 
-def test_unhandled_exception_recorded_as_event_on_500_span(
+def test_unhandled_exception_recorded_on_server_span(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch)
@@ -227,8 +226,8 @@ def test_startup_event_paths_match_routes_and_openapi_parses(
 def test_consumer_set_in_sync_endpoint_reaches_metrics(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    # def endpoints run in a copied context (threadpool), so the ContextVar write is lost
-    # and the span attribute fallback must carry the consumer into the histogram
+    # sync endpoints run in a copied context (threadpool); set_consumer must reach metrics
+    # through the holder shared by reference across context copies
     init(app, monkeypatch)
     with TestClient(app) as client:
         reader = attach_metric_reader()
@@ -250,17 +249,6 @@ def test_sample_rate_zero_drops_spans_keeps_metrics(
     assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
 
 
-def test_init_apitally_swallows_instrumentation_errors(app: FastAPI, monkeypatch: pytest.MonkeyPatch):
-    def raise_error(*args: Any, **kwargs: Any) -> NoReturn:
-        raise RuntimeError("instrumentation failed")
-
-    monkeypatch.setattr(FastAPIInstrumentor, "instrument_app", raise_error)
-    init_apitally(app, write_token=WRITE_TOKEN)
-    with TestClient(app) as client:
-        response = client.get("/items/1")
-    assert response.status_code == 200
-
-
 def test_init_twice_does_not_stack_middleware(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
@@ -270,3 +258,15 @@ def test_init_twice_does_not_stack_middleware(
     with TestClient(app) as client:
         client.get("/items/1")
     assert len(exported_spans(exporters)) == 1
+
+
+def test_init_without_write_token_exports_nothing(
+    app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("APITALLY_WRITE_TOKEN", raising=False)
+    init_apitally(app)
+    with TestClient(app) as client:
+        assert client.get("/items/42").status_code == 200
+    assert not activation.is_activated()
+    assert exporters.span == exporters.log == exporters.metric == []

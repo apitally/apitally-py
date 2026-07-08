@@ -27,7 +27,8 @@ from opentelemetry.test.globals_test import reset_trace_globals
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import activation, config, metrics, providers, startup
-from apitally.shared.span_processor import ApitallySpanProcessor
+from apitally.shared.consumer import consumer_holder_var
+from apitally.shared.span_processor import ApitallySpanProcessor, server_span_kept_var, server_span_var
 
 
 WRITE_TOKEN = "apt_" + "a" * 24
@@ -96,6 +97,15 @@ def reset_apitally_activation() -> Iterator[None]:
     yield
     activation.reset()
     startup.reset()
+
+
+@pytest.fixture(autouse=True)
+def reset_context_vars() -> Iterator[None]:
+    # Request-scoped ContextVars intentionally persist after a request; clear them between tests
+    yield
+    server_span_var.set(None)
+    server_span_kept_var.set(False)
+    consumer_holder_var.set(None)
 
 
 class InMemoryMetricExporter(MetricExporter):

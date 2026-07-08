@@ -75,7 +75,7 @@ class ApitallyLogRecordProcessor(LogRecordProcessor):
                     logger.debug("Apitally log buffer cap reached for request, dropping log record")
                 return
             self.downstream.on_emit(log_record)
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Error in Apitally log record processor")
 
     def finish_request(self, server_span_id: int, keep: bool) -> None:

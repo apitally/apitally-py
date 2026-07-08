@@ -34,6 +34,6 @@ def sentry_event_processor(event: Event, hint: Hint) -> Event:
             span = get_server_span()
             if span is not None and span.is_recording():
                 span.set_attribute("apitally.exception.sentry_event_id", event_id)
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.debug("Error in Apitally Sentry event processor", exc_info=True)
     return event

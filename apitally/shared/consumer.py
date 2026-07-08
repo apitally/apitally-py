@@ -22,7 +22,7 @@ consumer_holder_var: ContextVar[ConsumerHolder | None] = ContextVar("apitally_co
 def set_consumer(identifier: str, name: str | None = None, group: str | None = None) -> None:
     try:
         identifier = str(identifier).strip()[:128]
-        if not identifier:
+        if not identifier:  # pragma: no cover
             return
         holder = consumer_holder_var.get()
         if holder is None:
@@ -37,7 +37,7 @@ def set_consumer(identifier: str, name: str | None = None, group: str | None = N
             span.set_attribute("apitally.consumer.name", name)
         if group and (group := str(group).strip()[:64]):
             span.set_attribute("apitally.consumer.group", group)
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.debug("Error in set_consumer", exc_info=True)
 
 

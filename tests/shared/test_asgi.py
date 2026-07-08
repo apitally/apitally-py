@@ -7,7 +7,7 @@ import pytest
 from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan
-from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
+from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler, TraceIdRatioBased
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import config, metrics
@@ -163,8 +163,7 @@ async def test_content_type_allowlist(content_type: str, captured: bool):
     if captured:
         assert span.attributes["apitally.request.body"] == "hello"
     else:
-        assert app.received_receive is not None  # app still received the body untouched
-        assert app.received_messages[0]["body"] == b"hello"
+        assert app.received_messages[0]["body"] == b"hello"  # app still received the body untouched
 
 
 async def test_body_over_cap_sentinel_with_passthrough():
@@ -194,7 +193,21 @@ async def test_response_body_over_cap_sentinel(extra_headers: list[tuple[str, st
     assert span.attributes["http.response.body.size"] == 60_000
 
 
-async def test_mask_callback_none_or_raise_yields_masked():
+async def test_mask_request_body_result_exported_after_redaction():
+    def mask(span: ReadableSpan, body: bytes) -> bytes:
+        return b'{"password": "x", "card": "masked"}'
+
+    set_config(write_token=WRITE_TOKEN, log_request_body=True, mask_request_body=mask)
+    tracer, exporter = create_trace_pipeline()
+    app = EchoApp()
+    await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"card": "4111111111111111"}'])
+
+    (span,) = exporter.get_finished_spans()
+    assert span.attributes is not None
+    assert json.loads(str(span.attributes["apitally.request.body"])) == {"password": REDACTED, "card": "masked"}
+
+
+async def test_mask_request_body_none_or_raise_yields_redacted():
     def mask(span: ReadableSpan, body: bytes) -> bytes | None:
         if b"boom" in body:
             raise ValueError("boom")
@@ -213,7 +226,7 @@ async def test_mask_callback_none_or_raise_yields_masked():
         assert span.attributes["apitally.request.body"] == REDACTED
 
 
-async def test_mask_callback_output_over_cap_yields_too_large():
+async def test_mask_request_body_result_over_cap_yields_too_large():
     set_config(write_token=WRITE_TOKEN, log_request_body=True, mask_request_body=lambda span, body: b"x" * 50_001)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
@@ -251,13 +264,15 @@ async def test_aborted_response_body_not_exported():
 
 
 async def test_invalid_user_pattern_dropped_and_request_succeeds():
-    set_config(write_token=WRITE_TOKEN, log_request_headers=True, mask_headers=["("])
+    set_config(write_token=WRITE_TOKEN, log_request_headers=True, mask_headers=["(", "x-custom"])
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
-    await send_request(tracer, app, request_headers=[("Authorization", "Bearer x")])
+    await send_request(tracer, app, request_headers=[("Authorization", "Bearer x"), ("X-Custom", "v")])
 
     (span,) = exporter.get_finished_spans()
     assert header_values(span, "http.request.header.authorization") == (REDACTED,)
+    # Only the invalid pattern is dropped; the valid one from the same list still applies
+    assert header_values(span, "http.request.header.x-custom") == (REDACTED,)
 
 
 async def test_headers_redacted_and_repeated_as_list():
@@ -306,9 +321,19 @@ async def test_histogram_records_once_with_consumer(metric_reader: InMemoryMetri
     }
 
 
-async def test_sampled_out_request_still_records_metrics(metric_reader: InMemoryMetricReader):
-    set_config(write_token=WRITE_TOKEN)
-    tracer, exporter = create_trace_pipeline(sampler=TraceIdRatioBased(0.0))
+@pytest.mark.parametrize(
+    ("config_kwargs", "sampler"),
+    [
+        pytest.param({}, TraceIdRatioBased(0.0), id="user-sampler"),
+        pytest.param({"sample_rate": 0.0}, ALWAYS_ON, id="apitally-sample-rate"),
+        pytest.param({"sample_on_response": lambda span: False}, ALWAYS_ON, id="response-stage-drop"),
+    ],
+)
+async def test_dropped_request_still_records_metrics(
+    metric_reader: InMemoryMetricReader, config_kwargs: dict[str, Any], sampler: Sampler
+):
+    set_config(write_token=WRITE_TOKEN, **config_kwargs)
+    tracer, exporter = create_trace_pipeline(sampler=sampler)
     app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
     await send_request(tracer, app, method="GET")
 
@@ -319,25 +344,15 @@ async def test_sampled_out_request_still_records_metrics(metric_reader: InMemory
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tenant-1"
 
 
-async def test_apitally_sampled_out_request_still_records_metrics(metric_reader: InMemoryMetricReader):
-    # Same as above, but dropped by Apitally's sample_rate instead of the user's OTel sampler
+async def test_consumer_set_in_copied_context_still_reaches_metrics(metric_reader: InMemoryMetricReader):
     set_config(write_token=WRITE_TOKEN, sample_rate=0.0)
     tracer, exporter = create_trace_pipeline()
-    app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
-    await send_request(tracer, app, method="GET")
 
-    assert exporter.get_finished_spans() == ()
-    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    (point,) = duration_metric.data.data_points
-    assert (point.attributes or {})["apitally.consumer.identifier"] == "tenant-1"
+    def set_consumer_in_copied_context() -> None:
+        # Mirrors sync endpoints: the copied context discards set_consumer's ContextVar write
+        contextvars.copy_context().run(set_consumer, "tenant-1")
 
-
-async def test_response_stage_dropped_request_still_records_metrics(metric_reader: InMemoryMetricReader):
-    # Response-stage twin: buffered spans discard at SERVER end while metrics record regardless
-    set_config(write_token=WRITE_TOKEN, sample_on_response=lambda span: False)
-    tracer, exporter = create_trace_pipeline()
-    app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
+    app = EchoApp(on_request=set_consumer_in_copied_context)
     await send_request(tracer, app, method="GET")
 
     assert exporter.get_finished_spans() == ()
@@ -376,18 +391,3 @@ async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricRe
     assert isinstance(duration_metric.data, ExponentialHistogram)
     (point,) = duration_metric.data.data_points
     assert point.count == 1
-
-
-async def test_sampled_out_sync_endpoint_consumer_reaches_metrics(metric_reader: InMemoryMetricReader):
-    # Sync endpoints run in a copied context where set_consumer's ContextVar write is lost;
-    # the span-attribute fallback must carry the consumer even for a sampled-out request
-    set_config(write_token=WRITE_TOKEN, sample_rate=0.0)
-    tracer, exporter = create_trace_pipeline()
-    app = EchoApp(on_request=lambda: contextvars.copy_context().run(set_consumer, "tenant-1"))
-    await send_request(tracer, app, method="GET")
-
-    assert exporter.get_finished_spans() == ()
-    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    (point,) = duration_metric.data.data_points
-    assert (point.attributes or {})["apitally.consumer.identifier"] == "tenant-1"

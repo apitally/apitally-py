@@ -1,5 +1,4 @@
 import contextvars
-from collections.abc import Iterator
 from urllib.parse import parse_qsl
 
 import pytest
@@ -7,7 +6,7 @@ from opentelemetry import trace
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace import Span as SDKSpan
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, TraceIdRatioBased
 from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, TraceFlags, Tracer
@@ -20,8 +19,6 @@ from apitally.shared.span_processor import (
     ApitallySpanProcessor,
     get_server_span,
     is_server_span_kept,
-    server_span_kept_var,
-    server_span_var,
 )
 from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, create_tracer, unwrap
 
@@ -32,15 +29,6 @@ BOUND_HALF = TraceIdRatioBased.get_bound_for_rate(0.5)
 def remote_parent_context(trace_id: int) -> Context:
     remote = SpanContext(trace_id=trace_id, span_id=1, is_remote=True, trace_flags=TraceFlags(TraceFlags.SAMPLED))
     return trace.set_span_in_context(NonRecordingSpan(remote))
-
-
-@pytest.fixture(autouse=True)
-def reset_server_span_var() -> Iterator[None]:
-    # The vars intentionally persist after a request ends, so tests
-    # sharing one context must clear them between runs
-    yield
-    server_span_var.set(None)
-    server_span_kept_var.set(False)
 
 
 @pytest.fixture()
@@ -204,7 +192,7 @@ def test_raising_sample_on_request_keeps_span(exporter: InMemorySpanExporter):
     assert len(exporter.get_finished_spans()) == 1
 
 
-def test_invalid_sample_callback_return_keeps_span(exporter: InMemorySpanExporter):
+def test_invalid_sample_on_request_return_keeps_span(exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN, sample_rate=0.0, sample_on_request=lambda span: "yes")
     tracer = create_tracer(exporter)
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
@@ -265,15 +253,16 @@ def test_late_descendant_follows_request_decision(exporter: InMemorySpanExporter
         exporter.clear()
 
 
-def test_shutdown_discards_pending_buffers(
-    tracer: Tracer, processor: ApitallySpanProcessor, exporter: InMemorySpanExporter
-):
-    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
-        with tracer.start_as_current_span("child"):
-            pass
-        processor.shutdown()
-        assert not processor.pending
-    assert exporter.get_finished_spans() == ()
+def test_shutdown_flushes_queued_spans(exporter: InMemorySpanExporter):
+    processor = ApitallySpanProcessor(BatchSpanProcessor(exporter))
+    provider = TracerProvider(sampler=ALWAYS_ON)
+    provider.add_span_processor(processor)
+    with provider.get_tracer(CONTRIB_SCOPE).start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        pass
+    assert exporter.get_finished_spans() == ()  # released to the batch processor, still queued
+    provider.shutdown()
+    (span,) = exporter.get_finished_spans()
+    assert span.name == "GET /items"
 
 
 def test_same_trace_id_verdict_at_both_stages(exporter: InMemorySpanExporter):

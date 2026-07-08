@@ -12,8 +12,9 @@ from tests.conftest import (
     exported_spans,
     installed,
     startup_payload,
+    unwrap,
 )
-from tests.django_utils import (
+from tests.django.utils import (
     activate_via_signal,
     configure_django_settings,
     init,
@@ -24,7 +25,7 @@ from tests.django_utils import (
 
 @pytest.fixture(scope="module", autouse=True)
 def django_settings() -> Iterator[None]:
-    configure_django_settings(ROOT_URLCONF="tests.django_rest_framework_urls")
+    configure_django_settings(ROOT_URLCONF="tests.django.rest_framework_urls")
     yield
     reset_django_settings()
 
@@ -35,14 +36,20 @@ def django_teardown() -> Iterator[None]:
     teardown_django_instrumentation()
 
 
-def test_startup_paths_include_viewset_route_templates(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+def test_startup_event_paths_include_viewset_route_templates(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
     init(monkeypatch)
     activate_via_signal()
 
     payload = startup_payload(exporters)
     assert payload["versions"]["djangorestframework"]
-    assert {"method": "GET", "path": "/items/"} in payload["paths"]
-    assert {"method": "GET", "path": "/items/{pk}/"} in payload["paths"]
+    # Exact list: pins the exclusion of HEAD/OPTIONS methods
+    assert sorted(payload["paths"], key=lambda p: (p["path"], p["method"])) == [
+        {"method": "GET", "path": "/api/things/{pk}/"},
+        {"method": "GET", "path": "/items/"},
+        {"method": "GET", "path": "/items/{pk}/"},
+    ]
 
 
 @pytest.mark.skipif(not installed("drf_spectacular"), reason="drf-spectacular is not installed")
@@ -55,6 +62,19 @@ def test_openapi_generated_via_drf_spectacular(exporters: InMemoryExporters, mon
     openapi = json.loads(payload["openapi"])
     assert openapi["openapi"].startswith("3.")
     assert "/items/{id}/" in openapi["paths"]
+
+
+def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(monkeypatch)
+    activate_via_signal()
+    reader = attach_metric_reader()
+
+    assert Client().get("/api/things/42/").status_code == 200
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    (point,) = duration_data_points(reader)
+    assert unwrap(span.attributes)["http.route"] == "/api/things/{pk}/"
+    assert unwrap(point.attributes)["http.route"] == "/api/things/{pk}/"
 
 
 def test_request_flow(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

@@ -6,7 +6,11 @@ import pytest
 from opentelemetry._logs import LogRecord, SeverityNumber
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
 from opentelemetry.sdk._logs import LoggerProvider
-from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
+from opentelemetry.sdk._logs.export import (
+    BatchLogRecordProcessor,
+    InMemoryLogRecordExporter,
+    SimpleLogRecordProcessor,
+)
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.trace import SpanKind, Tracer
 
@@ -17,7 +21,7 @@ from apitally.shared.log_processor import (
     install_root_handler,
     uninstall_root_handler,
 )
-from apitally.shared.span_processor import ApitallySpanProcessor, server_span_var
+from apitally.shared.span_processor import ApitallySpanProcessor
 from tests.conftest import WRITE_TOKEN, unwrap
 
 
@@ -25,7 +29,6 @@ from tests.conftest import WRITE_TOKEN, unwrap
 def cleanup() -> Generator[None, None, None]:
     yield
     uninstall_root_handler()
-    server_span_var.set(None)
 
 
 @pytest.fixture()
@@ -137,6 +140,24 @@ def test_capture_logs_false_installs_no_handler(logger_provider: LoggerProvider)
     handlers_before = list(logging.getLogger().handlers)
     assert install_root_handler(logger_provider) is None
     assert logging.getLogger().handlers == handlers_before
+
+
+def test_shutdown_flushes_queued_logs(log_exporter: InMemoryLogRecordExporter):
+    set_config(write_token=WRITE_TOKEN)
+    span_processor = ApitallySpanProcessor(SpanProcessor())
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(span_processor)
+    logger_provider = LoggerProvider()
+    logger_provider.add_log_record_processor(
+        ApitallyLogRecordProcessor(BatchLogRecordProcessor(log_exporter), span_processor)
+    )
+    install_root_handler(logger_provider)
+    with tracer_provider.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        logging.getLogger("myapp").warning("during request")
+    assert log_exporter.get_finished_logs() == ()  # released to the batch processor, still queued
+    logger_provider.shutdown()
+    (exported,) = log_exporter.get_finished_logs()
+    assert exported.log_record.body == "during request"
 
 
 def test_excluded_request_contributes_no_logs(

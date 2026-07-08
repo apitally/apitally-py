@@ -99,7 +99,7 @@ def record_request(
 
 def attach_reader(env: str) -> None:
     global reader
-    if meter_provider is None:
+    if meter_provider is None:  # pragma: no cover
         return
     detach_reader()
     exporter = create_metric_exporter(

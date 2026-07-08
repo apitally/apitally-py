@@ -23,7 +23,7 @@ from apitally.shared.config import set_config
 from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, unwrap
 
 
-def test_mode_detection():
+def test_user_tracer_provider_detection():
     assert providers.get_user_tracer_provider() is None
     user_provider = TracerProvider()
     trace.set_tracer_provider(user_provider)
