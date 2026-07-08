@@ -6,6 +6,7 @@ import pytest
 from django.conf import settings
 from django.test import Client
 from django.utils.functional import empty, lazy
+from opentelemetry.instrumentation.django import DjangoInstrumentor
 from opentelemetry.trace import SpanKind
 
 from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, _convert_proxy_objects, init_apitally
@@ -202,6 +203,34 @@ def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporter
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.response.status_code"] == 500
     assert (point.attributes or {})["error.type"] == "500"
+
+
+def test_pre_instrumented_app_adapts_without_duplicate_spans(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    DjangoInstrumentor().instrument()
+    init(monkeypatch)
+    assert settings.MIDDLEWARE.count(OTEL_MIDDLEWARE) == 1
+    assert settings.MIDDLEWARE.index(APITALLY_MIDDLEWARE) == settings.MIDDLEWARE.index(OTEL_MIDDLEWARE) + 1
+
+    response = Client().get("/items/123/")
+    assert response.status_code == 200
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["http.route"] == "/items/{pk}/"
+    # The Apitally middleware still sets its attributes on the span created by the user's instrumentation
+    response_body_size = unwrap(span.attributes)["http.response.body.size"]
+    assert isinstance(response_body_size, int) and response_body_size > 0
+
+
+def test_init_twice_does_not_stack_middleware(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(monkeypatch)
+    init(monkeypatch)
+    assert settings.MIDDLEWARE.count(APITALLY_MIDDLEWARE) == 1
+    assert settings.MIDDLEWARE.count(OTEL_MIDDLEWARE) == 1
+
+    response = Client().get("/items/123/")
+    assert response.status_code == 200
+    assert len(exported_spans(exporters, kind=SpanKind.SERVER)) == 1
 
 
 def test_include_django_views_adds_class_based_view_paths(

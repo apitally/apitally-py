@@ -18,4 +18,5 @@ router.register("items", ItemViewSet, basename="item")
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("api/", include(router.urls)),
 ]

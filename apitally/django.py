@@ -116,7 +116,7 @@ def _handle_request_started(sender: object, **kwargs: Any) -> None:
 
 
 class ApitallyDjangoMiddleware(CaptureMixin):
-    """Transport glue running inside the OTel Django middleware while the SERVER span is recording."""
+    """Sets Apitally span attributes and records metrics inside the OTel Django middleware, while the SERVER span is recording."""
 
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response

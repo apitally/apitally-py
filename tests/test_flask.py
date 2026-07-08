@@ -18,6 +18,7 @@ from tests.conftest import (
     attach_metric_reader,
     duration_data_points,
     exported_spans,
+    startup_payload,
     unwrap,
 )
 
@@ -102,6 +103,20 @@ def test_first_request_activates_and_is_recorded(
     attributes = dict(span.attributes or {})
     assert attributes["http.route"] == "/items/<int:item_id>"
     assert attributes["http.response.status_code"] == 200
+
+
+def test_startup_event_paths_match_routes(app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(app, monkeypatch, app_version="1.2.3")
+
+    response = app.test_client().get("/items/42")
+
+    assert response.status_code == 200
+    payload = startup_payload(exporters)
+    assert payload["framework"] == "flask"
+    assert "flask" in payload["versions"]
+    assert payload["versions"]["app"] == "1.2.3"
+    assert {"method": "GET", "path": "/items/<int:item_id>"} in payload["paths"]
+    assert {"method": "POST", "path": "/items"} in payload["paths"]
 
 
 def test_request_and_response_bodies_captured_and_redacted(
@@ -268,5 +283,5 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     assert attributes["http.route"] == "/items/<int:item_id>"
-    # Transport glue still lands on the user-instrumented span
+    # The Apitally middleware still sets its attributes on the span created by the user's instrumentation
     assert "http.response.header.content-type" in attributes

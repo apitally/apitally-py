@@ -14,6 +14,7 @@ from starlette.testclient import TestClient
 
 from apitally.shared import activation, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
+from apitally.shared.redaction import REDACTED
 from apitally.starlette import init_apitally
 from tests.conftest import (
     WRITE_TOKEN,
@@ -34,12 +35,16 @@ def create_app() -> Starlette:
     async def list_users(request: Request) -> JSONResponse:
         return JSONResponse([])
 
+    async def create_item(request: Request) -> JSONResponse:
+        return JSONResponse(await request.json())
+
     async def error(request: Request) -> JSONResponse:
         raise ValueError("boom")
 
     return Starlette(
         routes=[
             Route("/items/{item_id}", get_item),
+            Route("/items", create_item, methods=["POST"]),
             Route("/error", error),
             Mount("/admin", routes=[Route("/users", list_users)]),
         ]
@@ -103,6 +108,20 @@ def test_mounted_route_includes_mount_prefix(
     assert span.name == "GET /admin/users"
     assert unwrap(span.attributes)["http.route"] == "/admin/users"
     assert unwrap(point.attributes)["http.route"] == "/admin/users"
+
+
+def test_request_body_captured_and_redacted(
+    app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch, log_request_body=True)
+    with TestClient(app) as client:
+        client.post("/items", json={"name": "widget", "password": "hunter2"})
+    (span,) = exported_spans(exporters)
+    body = unwrap(span.attributes)["apitally.request.body"]
+    assert isinstance(body, str)
+    assert json.loads(body) == {"name": "widget", "password": REDACTED}
+    body_size = unwrap(span.attributes)["http.request.body.size"]
+    assert isinstance(body_size, int) and body_size > 0
 
 
 def test_init_twice_does_not_stack_middleware(

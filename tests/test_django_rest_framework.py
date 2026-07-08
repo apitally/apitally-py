@@ -12,6 +12,7 @@ from tests.conftest import (
     exported_spans,
     installed,
     startup_payload,
+    unwrap,
 )
 from tests.django.utils import (
     activate_via_signal,
@@ -55,6 +56,19 @@ def test_openapi_generated_via_drf_spectacular(exporters: InMemoryExporters, mon
     openapi = json.loads(payload["openapi"])
     assert openapi["openapi"].startswith("3.")
     assert "/items/{id}/" in openapi["paths"]
+
+
+def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(monkeypatch)
+    activate_via_signal()
+    reader = attach_metric_reader()
+
+    assert Client().get("/api/items/42/").status_code == 200
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    (point,) = duration_data_points(reader)
+    assert unwrap(span.attributes)["http.route"] == "/api/items/{pk}/"
+    assert unwrap(point.attributes)["http.route"] == "/api/items/{pk}/"
 
 
 def test_request_flow(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
