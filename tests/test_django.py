@@ -18,6 +18,7 @@ from tests.conftest import (
     exported_spans,
     metric_data_points,
     startup_payload,
+    unwrap,
 )
 from tests.django_utils import (
     activate_via_signal,
@@ -141,6 +142,19 @@ def test_streaming_response_recorded_without_body_and_size(
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.route"] == "/stream/"
     assert metric_data_points(reader, "http.server.response.body.size") == []
+
+
+def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(monkeypatch)
+    activate_via_signal()
+    reader = attach_metric_reader()
+
+    assert Client().get("/api/things/7/").status_code == 200
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    (point,) = duration_data_points(reader)
+    assert unwrap(span.attributes)["http.route"] == "/api/things/{pk}/"
+    assert unwrap(point.attributes)["http.route"] == "/api/things/{pk}/"
 
 
 def test_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

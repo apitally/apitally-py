@@ -1,7 +1,7 @@
 import json
 
 from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
-from django.urls import path
+from django.urls import include, path
 from django.views import View
 
 from apitally import set_consumer
@@ -43,4 +43,5 @@ urlpatterns = [
     path("whoami/", whoami),
     path("error/", error),
     path("notes/", NotesView.as_view()),
+    path("api/", include([path("things/<int:pk>/", get_item)])),
 ]

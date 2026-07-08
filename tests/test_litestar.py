@@ -4,7 +4,7 @@ from importlib import metadata
 from typing import Any
 
 import pytest
-from litestar import Litestar, get, post
+from litestar import Litestar, Router, get, post
 from litestar.exceptions import HTTPException
 from litestar.middleware.base import DefineMiddleware
 from litestar.params import FromPath
@@ -142,6 +142,20 @@ def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporter
     (event,) = [event for event in span.events if event.name == "exception"]
     assert (event.attributes or {})["exception.type"] == "ValueError"
     assert (event.attributes or {})["exception.message"] == "boom"
+
+
+def test_route_includes_router_path_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    router = Router(path="/v1", route_handlers=[get_user])
+    app = Litestar(route_handlers=[router], plugins=[ApitallyPlugin(write_token=WRITE_TOKEN)])
+    with TestClient(app=app) as client:
+        reader = attach_metric_reader()
+        assert client.get("/v1/users/123").status_code == 200
+
+    (span,) = exported_spans(exporters)
+    (point,) = duration_data_points(reader)
+    assert (span.attributes or {})["http.route"] == "/v1/users/{user_id}"
+    assert (point.attributes or {})["http.route"] == "/v1/users/{user_id}"
 
 
 def test_client_error_not_recorded_as_exception(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
