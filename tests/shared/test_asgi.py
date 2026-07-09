@@ -163,8 +163,7 @@ async def test_content_type_allowlist(content_type: str, captured: bool):
     if captured:
         assert span.attributes["apitally.request.body"] == "hello"
     else:
-        assert app.received_receive is not None  # app still received the body untouched
-        assert app.received_messages[0]["body"] == b"hello"
+        assert app.received_messages[0]["body"] == b"hello"  # app still received the body untouched
 
 
 async def test_body_over_cap_sentinel_with_passthrough():
@@ -265,13 +264,15 @@ async def test_aborted_response_body_not_exported():
 
 
 async def test_invalid_user_pattern_dropped_and_request_succeeds():
-    set_config(write_token=WRITE_TOKEN, log_request_headers=True, mask_headers=["("])
+    set_config(write_token=WRITE_TOKEN, log_request_headers=True, mask_headers=["(", "x-custom"])
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
-    await send_request(tracer, app, request_headers=[("Authorization", "Bearer x")])
+    await send_request(tracer, app, request_headers=[("Authorization", "Bearer x"), ("X-Custom", "v")])
 
     (span,) = exporter.get_finished_spans()
     assert header_values(span, "http.request.header.authorization") == (REDACTED,)
+    # Only the invalid pattern is dropped; the valid one from the same list still applies
+    assert header_values(span, "http.request.header.x-custom") == (REDACTED,)
 
 
 async def test_headers_redacted_and_repeated_as_list():

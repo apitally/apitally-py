@@ -226,8 +226,8 @@ def test_startup_event_paths_match_routes_and_openapi_parses(
 def test_consumer_set_in_sync_endpoint_reaches_metrics(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    # def endpoints run in a copied context (threadpool), so the ContextVar write is lost
-    # and the span attribute fallback must carry the consumer into the histogram
+    # sync endpoints run in a copied context (threadpool); set_consumer must reach metrics
+    # through the holder shared by reference across context copies
     init(app, monkeypatch)
     with TestClient(app) as client:
         reader = attach_metric_reader()

@@ -115,8 +115,15 @@ def test_startup_event_paths_match_routes(app: Flask, exporters: InMemoryExporte
     assert payload["framework"] == "flask"
     assert "flask" in payload["versions"]
     assert payload["versions"]["app"] == "1.2.3"
-    assert {"method": "GET", "path": "/items/<int:item_id>"} in payload["paths"]
-    assert {"method": "POST", "path": "/items"} in payload["paths"]
+    # Exact list: pins the exclusion of HEAD/OPTIONS methods and the static route
+    assert sorted(payload["paths"], key=lambda p: (p["path"], p["method"])) == [
+        {"method": "GET", "path": "/consumer"},
+        {"method": "GET", "path": "/error"},
+        {"method": "GET", "path": "/headers"},
+        {"method": "POST", "path": "/items"},
+        {"method": "GET", "path": "/items/<int:item_id>"},
+        {"method": "GET", "path": "/stream"},
+    ]
 
 
 def test_request_and_response_bodies_captured_and_redacted(

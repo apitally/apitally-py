@@ -44,8 +44,12 @@ def test_startup_event_paths_include_viewset_route_templates(
 
     payload = startup_payload(exporters)
     assert payload["versions"]["djangorestframework"]
-    assert {"method": "GET", "path": "/items/"} in payload["paths"]
-    assert {"method": "GET", "path": "/items/{pk}/"} in payload["paths"]
+    # Exact list: pins the exclusion of HEAD/OPTIONS methods
+    assert sorted(payload["paths"], key=lambda p: (p["path"], p["method"])) == [
+        {"method": "GET", "path": "/api/things/{pk}/"},
+        {"method": "GET", "path": "/items/"},
+        {"method": "GET", "path": "/items/{pk}/"},
+    ]
 
 
 @pytest.mark.skipif(not installed("drf_spectacular"), reason="drf-spectacular is not installed")

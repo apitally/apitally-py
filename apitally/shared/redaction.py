@@ -4,9 +4,6 @@ from urllib.parse import parse_qsl, urlencode
 
 
 REDACTED = "[REDACTED]"
-
-JSONValue = None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
-
 DEFAULT_QUERY_PARAM_PATTERNS = [
     r"auth",
     r"api-?key",
@@ -32,6 +29,8 @@ DEFAULT_BODY_FIELD_PATTERNS = [
     r"ccv",
     r"ssn",
 ]
+
+JSONValue = None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
 
 
 class Redaction:
