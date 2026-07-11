@@ -67,7 +67,7 @@ def activate() -> None:
         if activation_attempted:
             return
         activation_attempted = True
-        if skip_activation():
+        if should_skip_activation():
             return
         try:
             start_pipelines()
@@ -128,7 +128,7 @@ class WSGIActivationShim:
         return self.wsgi_app(environ, start_response)
 
 
-def skip_activation() -> bool:
+def should_skip_activation() -> bool:
     # Test-environment detection at the activation boundary
     cfg = config.get_config()
     return (

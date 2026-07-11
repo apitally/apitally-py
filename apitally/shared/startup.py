@@ -51,11 +51,11 @@ def emit_startup_event() -> None:
         return
     payload: dict[str, Any] = {
         "framework": app_info.get("framework"),
-        "versions": {"python": platform.python_version(), **(resolve(app_info.get("versions")) or {})},
+        "versions": {"python": platform.python_version(), **(resolve_value(app_info.get("versions")) or {})},
     }
-    if (paths := resolve(app_info.get("paths"))) is not None:
+    if (paths := resolve_value(app_info.get("paths"))) is not None:
         payload["paths"] = paths
-    openapi = resolve(app_info.get("openapi"))
+    openapi = resolve_value(app_info.get("openapi"))
     if openapi and len(openapi.encode()) <= MAX_OPENAPI_BYTES:
         payload["openapi"] = openapi
     # The explicit invalid-span context keeps trace context off the record
@@ -67,7 +67,7 @@ def emit_startup_event() -> None:
     )
 
 
-def resolve(value: T | Callable[[], T] | None) -> T | None:
+def resolve_value(value: T | Callable[[], T] | None) -> T | None:
     if not callable(value):
         return value
     try:

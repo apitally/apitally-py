@@ -44,8 +44,8 @@ EXCLUDE_USER_AGENT_PATTERNS = compile_patterns(
 
 QUERY_ATTRIBUTES = ("url.query", "http.target", "http.url", "url.full")
 HEADER_ATTRIBUTE_PREFIXES = ("http.request.header.", "http.response.header.")
-NOISE_NAME_SUFFIXES = (" http send", " http receive", " websocket send", " websocket receive")
-NOISE_SCOPE_PREFIX = "opentelemetry.instrumentation."
+RECEIVE_SEND_NAME_SUFFIXES = (" http send", " http receive", " websocket send", " websocket receive")
+CONTRIB_SCOPE_PREFIX = "opentelemetry.instrumentation."
 MAX_BUFFERED_SPANS = 1_000
 
 server_span_var: ContextVar[Span | None] = ContextVar("apitally_server_span", default=None)
@@ -67,7 +67,7 @@ def get_server_span_processor() -> "ApitallySpanProcessor | None":
     return server_span_processor_var.get()
 
 
-def sampled_in(trace_id: int, bound: int) -> bool:
+def is_sampled_in(trace_id: int, bound: int) -> bool:
     # TraceIdRatioBased convention: the low 64 bits of the trace ID tested against round(rate * 2**64),
     # deterministic per trace so services sampling at the same rate capture the same traces
     return trace_id & TraceIdRatioBased.TRACE_ID_LIMIT < bound
@@ -96,7 +96,7 @@ class ApitallySpanProcessor(SpanProcessor):
         try:
             if span.context is None:  # pragma: no cover
                 return
-            if is_noise_span(span):
+            if is_contrib_receive_send_span(span):
                 self.spans[span.context.span_id] = (False, None)
             elif span.parent is None or span.parent.is_remote:
                 if span.kind == SpanKind.SERVER:
@@ -125,7 +125,7 @@ class ApitallySpanProcessor(SpanProcessor):
                     # Hold until finish_export; the spans and pending entries stay alive meanwhile
                     self.held[context.span_id] = span
                     return
-            self.export_span(span, context)
+            self.process_ended_span(span, context)
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally span processor")
 
@@ -157,11 +157,11 @@ class ApitallySpanProcessor(SpanProcessor):
                 span = copy_span_with_attributes(span, {**(span.attributes or {}), **extra_attributes})
             context = span.get_span_context()
             if context is not None:
-                self.export_span(span, context)
+                self.process_ended_span(span, context)
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally span processor")
 
-    def export_span(self, span: ReadableSpan, context: SpanContext) -> None:
+    def process_ended_span(self, span: ReadableSpan, context: SpanContext) -> None:
         keep, server_span_id = self.spans.pop(context.span_id, (False, None))
         if not keep:
             return
@@ -223,13 +223,13 @@ class ApitallySpanProcessor(SpanProcessor):
     def sample_request(self, span: Span, trace_id: int) -> bool:
         rate = self.resolve_sample_rate(self.config.sample_on_request, span, "sample_on_request")
         if rate is None:
-            return sampled_in(trace_id, self.sample_rate_bound)
-        return sampled_in(trace_id, TraceIdRatioBased.get_bound_for_rate(rate))
+            return is_sampled_in(trace_id, self.sample_rate_bound)
+        return is_sampled_in(trace_id, TraceIdRatioBased.get_bound_for_rate(rate))
 
     def sample_response(self, span: ReadableSpan, trace_id: int) -> bool:
         # If no callback is configured, or it returns None, the request-stage decision stands
         rate = self.resolve_sample_rate(self.config.sample_on_response, span, "sample_on_response")
-        return rate is None or sampled_in(trace_id, TraceIdRatioBased.get_bound_for_rate(rate))
+        return rate is None or is_sampled_in(trace_id, TraceIdRatioBased.get_bound_for_rate(rate))
 
     def resolve_sample_rate(
         self, callback: Callable[[ReadableSpan], float | bool | None] | None, span: ReadableSpan, name: str
@@ -292,11 +292,11 @@ def copy_span_with_attributes(span: ReadableSpan, attributes: dict[str, Attribut
     )
 
 
-def is_noise_span(span: Span) -> bool:
+def is_contrib_receive_send_span(span: Span) -> bool:
     # Spans with these names from user-owned instrumentation are kept
     return (
         span.kind == SpanKind.INTERNAL
-        and span.name.endswith(NOISE_NAME_SUFFIXES)
+        and span.name.endswith(RECEIVE_SEND_NAME_SUFFIXES)
         and span.instrumentation_scope is not None
-        and span.instrumentation_scope.name.startswith(NOISE_SCOPE_PREFIX)
+        and span.instrumentation_scope.name.startswith(CONTRIB_SCOPE_PREFIX)
     )
