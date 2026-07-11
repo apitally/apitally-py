@@ -27,7 +27,7 @@ def install_root_handler(logger_provider: LoggerProvider) -> LoggingHandler | No
         return None
     if installed_handler is None:
         handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider, log_code_attributes=True)
-        handler.addFilter(exclude_self_logs)
+        handler.addFilter(is_not_self_log)
         logging.getLogger().addHandler(handler)
         installed_handler = handler
     return installed_handler
@@ -40,7 +40,7 @@ def uninstall_root_handler() -> None:
         installed_handler = None
 
 
-def exclude_self_logs(record: logging.LogRecord) -> bool:
+def is_not_self_log(record: logging.LogRecord) -> bool:
     # SDK and OTel self-logs stay out of the export; they still reach the user's own handlers
     return record.name.partition(".")[0] not in SELF_LOGGER_NAMESPACES
 

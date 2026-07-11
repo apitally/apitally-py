@@ -72,7 +72,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
         try:
             reset_consumer()
             request_size = parse_int(get_header(request_headers, b"content-length"))
-            capture_request = config.log_request_body and is_supported_content_type(
+            capture_request = config.log_request_body and is_allowed_content_type(
                 get_header(request_headers, b"content-type")
             )
             request_too_large = capture_request and request_size is not None and request_size > MAX_BODY_SIZE
@@ -180,7 +180,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
                     capture_response = (
                         kept
                         and config.log_response_body
-                        and is_supported_content_type(get_header(response_headers, b"content-type"))
+                        and is_allowed_content_type(get_header(response_headers, b"content-type"))
                     )
                     response_too_large = (
                         capture_response and response_size is not None and response_size > MAX_BODY_SIZE
@@ -224,7 +224,7 @@ def resolve_route_from_scope(scope: Scope) -> str | None:
     return path if isinstance(path, str) else None
 
 
-def is_supported_content_type(content_type: bytes | None) -> bool:
+def is_allowed_content_type(content_type: bytes | None) -> bool:
     return content_type is not None and content_type.decode("latin-1").strip().lower().startswith(ALLOWED_CONTENT_TYPES)
 
 

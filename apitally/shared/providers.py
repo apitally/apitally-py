@@ -92,8 +92,8 @@ def setup_tracer_provider(resource: Resource, span_processor: SpanProcessor) -> 
 
 
 def attach_to_tracer_provider(user_provider: TracerProvider, span_processor: SpanProcessor) -> None:
-    check_sampler(user_provider.sampler)
-    check_span_limits(user_provider)
+    warn_if_sampler_drops_spans(user_provider.sampler)
+    warn_if_attribute_limit_too_low(user_provider)
     user_provider.add_span_processor(span_processor)
 
 
@@ -137,7 +137,7 @@ def reset() -> None:
     span_limits_warned = False
 
 
-def check_sampler(sampler: Sampler) -> None:
+def warn_if_sampler_drops_spans(sampler: Sampler) -> None:
     global sampler_warned
     root = sampler._root if isinstance(sampler, ParentBased) else sampler
     if root is ALWAYS_OFF or isinstance(root, TraceIdRatioBased):
@@ -152,7 +152,7 @@ def check_sampler(sampler: Sampler) -> None:
             )
 
 
-def check_span_limits(user_provider: TracerProvider) -> None:
+def warn_if_attribute_limit_too_low(user_provider: TracerProvider) -> None:
     global span_limits_warned
     config = get_config() or ApitallyConfig()
     capture_enabled = (

@@ -293,7 +293,7 @@ class ApitallyDjangoMiddleware(CaptureMixin):
     def get_route(self, request: HttpRequest) -> str | None:
         match = request.resolver_match
         if match is not None and match.route:
-            return _transform_path(match.route)
+            return _regex_to_route_template(match.route)
         return None  # pragma: no cover
 
     def set_header_attributes(self, span: Span, prefix: str, headers: Iterable[tuple[str, str]]) -> None:
@@ -303,7 +303,7 @@ class ApitallyDjangoMiddleware(CaptureMixin):
             span.set_attribute(prefix + name, values)
 
 
-def _transform_path(path: str) -> str:
+def _regex_to_route_template(path: str) -> str:
     return PATH_PARAMETER_RE.sub(r"{\g<parameter>}", simplify_regex(path))
 
 
@@ -318,7 +318,7 @@ def _get_paths() -> list[dict[str, str]]:
 
         paths.extend(_get_ninja_paths(_urlconfs))
     if _include_django_views:
-        paths.extend(_get_django_paths(_urlconfs))
+        paths.extend(_get_django_view_paths(_urlconfs))
     seen: set[tuple[str, str]] = set()
     deduplicated = []
     for path in paths:
@@ -329,9 +329,9 @@ def _get_paths() -> list[dict[str, str]]:
     return deduplicated
 
 
-def _get_django_paths(urlconfs: list[str | None]) -> list[dict[str, str]]:
+def _get_django_view_paths(urlconfs: list[str | None]) -> list[dict[str, str]]:
     return [
-        {"method": method.upper(), "path": _transform_path(regex)}
+        {"method": method.upper(), "path": _regex_to_route_template(regex)}
         for urlconf in urlconfs
         for callback, regex, _, _ in extract_views_from_urlpatterns(get_resolver(urlconf).url_patterns)
         if hasattr(callback, "view_class") and issubclass(callback.view_class, View)
