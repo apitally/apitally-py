@@ -67,9 +67,9 @@ def _instrument_app(app: FastAPI) -> None:
     if not getattr(app, "_is_instrumented_by_opentelemetry", False):
         FastAPIInstrumentor.instrument_app(app, exclude_spans=["receive", "send"])
 
-    # Chain-patch after the instrumentor's patch so the transport middleware wraps the whole
-    # instrumented stack, outside ServerErrorMiddleware: responses to unhandled exceptions then
-    # pass through it, with the SERVER span still recording
+    # The instrumentor already replaced build_middleware_stack; replace it again on top so the
+    # transport middleware wraps the whole instrumented stack, outside ServerErrorMiddleware:
+    # responses to unhandled exceptions then pass through it, with the SERVER span still recording
     build_inner = app.build_middleware_stack
 
     def build_with_shim() -> activation.ASGIActivationShim:
@@ -84,8 +84,9 @@ def _instrument_app(app: FastAPI) -> None:
 
 
 def _resolve_route(scope: Scope) -> str | None:
-    # FastAPI 0.138+ keeps included-router routes unflattened; only the effective route
-    # context carries the full templated path, scope["route"].path lacks the prefix (0.x parity)
+    # FastAPI 0.138+ no longer copies included-router routes into the app's route list; the full
+    # templated path is only on the effective route context, scope["route"].path lacks the prefix
+    # (0.x parity)
     context = scope.get("fastapi", {}).get("effective_route_context")
     path = getattr(context, "path", None) or getattr(scope.get("route"), "path", None)
     return path if isinstance(path, str) else None
@@ -110,8 +111,9 @@ def _get_paths(app: FastAPI) -> list[dict[str, str]]:
 
 
 def _iter_routes(routes: list[BaseRoute]) -> Iterator[Any]:
-    # Expand FastAPI 0.138+ included-router nodes into their effective route contexts,
-    # which expose path, methods, summary, and description with the full templated path
+    # FastAPI 0.138+ route lists contain included-router entries; effective_route_contexts()
+    # expands them into route objects whose path, methods, summary, and description use the
+    # full templated path
     for route in routes:
         contexts = getattr(route, "effective_route_contexts", None)
         if callable(contexts):

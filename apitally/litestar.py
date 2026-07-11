@@ -62,8 +62,9 @@ class ApitallyPlugin(InitPluginProtocol):
         try:
             activation.configure(**self.configure_kwargs)
             if not _has_otel_instrumentation(app_config):
-                # Install via the plugin registry, never the middleware list: the hoist path
-                # is last-one-wins and silently discards a coexisting config
+                # Install via the plugin registry, never the middleware list: with two
+                # OpenTelemetry configs in the middleware list only the last one takes effect,
+                # so a user's existing config would be silently discarded
                 otel_plugin = OpenTelemetryPlugin(OpenTelemetryConfig(exclude_spans=["receive", "send"]))
                 app_config.plugins = [*app_config.plugins, otel_plugin]
             app_config.middleware.append(

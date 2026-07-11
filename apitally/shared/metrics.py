@@ -37,8 +37,8 @@ class ApitallyMetricReader(PeriodicExportingMetricReader):
         atexit.register(self.shutdown)
 
     def collect(self, timeout_millis: float = 10_000) -> None:  # ty: ignore[override-of-final-method]
-        # Detaching nulls the collect callback; the final ticker collect must no-op
-        # instead of logging a not-registered warning
+        # After the reader is detached, _collect is None; a last collect from the reader's
+        # export timer thread must do nothing instead of logging a not-registered warning
         if self._collect is not None:
             super().collect(timeout_millis=timeout_millis)
 

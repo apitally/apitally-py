@@ -67,8 +67,8 @@ def init_apitally(
         _wrap_router(app)
         _wrap_error_handler(app)
 
-        # Per-instance __call__ assignment is ignored by Python's type-based dunder lookup,
-        # so _handle_http is the interposition point
+        # Python looks up __call__ on the class, not the instance, so a wrapper assigned to
+        # app.__call__ would never be called; wrapping app._handle_http works
         chain: ApitallyASGIMiddleware | OpenTelemetryMiddleware = ApitallyASGIMiddleware(app._handle_http)
         if not instrumented_by_user:
             chain = OpenTelemetryMiddleware(chain, exclude_spans=["receive", "send"])

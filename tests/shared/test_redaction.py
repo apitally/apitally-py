@@ -28,7 +28,7 @@ def test_redact_query_params_parsing_edge_cases():
     redaction = Redaction()
     # Valueless params are preserved, not dropped
     assert redaction.redact_query_params("/items?debug&x=1", assume_query=False) == "/items?debug=&x=1"
-    # Legacy semicolon separators must not smuggle values past redaction
+    # Values separated by legacy semicolons are also redacted
     assert redaction.redact_query_params("a=1;token=x") == "a=1&token=%5BREDACTED%5D"
     # A query-less path containing '=' is not a query string
     assert redaction.redact_query_params("/items/key=value", assume_query=False) == "/items/key=value"
@@ -62,7 +62,7 @@ def test_redact_body_fields():
     }
 
 
-def test_redact_body_walk():
+def test_redact_body_recurses_into_nested_structures():
     redaction = Redaction()
     data = {
         "user": {"password": "secret", "age": 30},
