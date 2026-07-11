@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
-from opentelemetry.instrumentation.starlette import StarletteInstrumentor
+from opentelemetry.util.http import get_excluded_urls
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.routing import Match
@@ -75,10 +75,26 @@ def _instrument_app(app: Starlette) -> None:
         if app.middleware_stack is not None:
             app.middleware_stack = app.build_middleware_stack()
         return
-    # add_middleware prepends, so each layer wraps the previous: shim -> instrumentor -> transport
+    # add_middleware prepends, so each layer wraps the previous: shim -> OpenTelemetry -> transport
     app.add_middleware(ApitallyASGIMiddleware, resolve_route=_resolve_route)
-    StarletteInstrumentor.instrument_app(app)
+    # Composed directly instead of via StarletteInstrumentor.instrument_app, which does not
+    # accept exclude_spans and would create two unwanted receive/send spans per request
+    app.add_middleware(
+        OpenTelemetryMiddleware,
+        excluded_urls=get_excluded_urls("STARLETTE"),
+        default_span_details=_get_default_span_details,
+        exclude_spans=["receive", "send"],
+    )
+    setattr(app, "_is_instrumented_by_opentelemetry", True)
     app.add_middleware(activation.ASGIActivationShim)
+
+
+def _get_default_span_details(scope: Scope) -> tuple[str, dict[str, Any]]:
+    route = _resolve_route(scope)
+    method = str(scope.get("method", ""))
+    if route is None:
+        return method, {}
+    return f"{method} {route}".strip(), {"http.route": route}
 
 
 def _resolve_route(scope: Scope, routes: list[BaseRoute] | None = None) -> str | None:

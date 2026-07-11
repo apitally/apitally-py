@@ -73,7 +73,6 @@ def test_request_flow_span_histogram_and_startup_event(
         reader = attach_metric_reader()
         client.get("/items/42")
 
-    # The instrumentor's receive/send spans are dropped by the span processor's built-in filter
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     assert unwrap(span.attributes)["http.request.method"] == "GET"
