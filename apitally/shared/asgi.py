@@ -8,7 +8,7 @@ from opentelemetry.sdk.trace import Span
 from apitally.shared import metrics
 from apitally.shared.capture import ALLOWED_CONTENT_TYPES, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
 from apitally.shared.consumer import get_consumer_identifier, reset_consumer
-from apitally.shared.redaction import REDACTED
+from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import get_server_span, is_server_span_kept
 
 
@@ -21,8 +21,21 @@ Send = Callable[[Message], Awaitable[None]]
 ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 
+def set_header_attributes(
+    span: Span, prefix: str, headers: Iterable[tuple[bytes, bytes]], redaction: Redaction
+) -> None:
+    grouped: dict[str, list[str]] = {}
+    for name, value in headers:
+        grouped.setdefault(name.decode("latin-1").lower(), []).append(value.decode("latin-1"))
+    for name, values in grouped.items():
+        if redaction.should_redact_header(name):
+            values = [REDACTED]
+        span.set_attribute(prefix + name, values)
+
+
 class ApitallyASGIMiddleware(CaptureMixin):
-    """Transport middleware running inside the instrumentor's SERVER span."""
+    """Transport middleware. Accesses the SERVER span only in the receive/send/finish callbacks,
+    so it works both inside the instrumentor's span and wrapped around the instrumented stack."""
 
     def __init__(self, app: ASGIApp, resolve_route: Callable[[Scope], str | None] | None = None) -> None:
         self.app = app
@@ -39,6 +52,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
         # Mounted sub-apps grow root_path during routing; the entry snapshot restores
         # the mount prefix that route resolvers omit
         initial_root_path = str(scope.get("root_path") or "")
+        request_headers = scope.get("headers") or []
         request_size: int | None = None
         request_body = bytearray()
         request_body_length = 0
@@ -54,34 +68,28 @@ class ApitallyASGIMiddleware(CaptureMixin):
         response_too_large = False
         capture_response = False
         completed = False
-        kept = False
 
         try:
             reset_consumer()
-            request_headers = scope.get("headers") or []
             request_size = parse_int(get_header(request_headers, b"content-length"))
-            # Excluded and sampled-out requests skip all capture work; metrics are still recorded
-            kept = is_server_span_kept()
-            capture_request = (
-                kept
-                and config.log_request_body
-                and is_supported_content_type(get_header(request_headers, b"content-type"))
+            capture_request = config.log_request_body and is_supported_content_type(
+                get_header(request_headers, b"content-type")
             )
             request_too_large = capture_request and request_size is not None and request_size > MAX_BODY_SIZE
-            span = get_server_span()
-            if kept and config.log_request_headers and span is not None and span.is_recording():
-                self.set_header_attributes(span, "http.request.header.", request_headers)
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally ASGI middleware")
 
         async def receive_wrapper() -> Message:
-            nonlocal request_body, request_body_length, request_body_complete, request_too_large
+            nonlocal request_body, request_body_length, request_body_complete, request_too_large, capture_request
             message = await receive()
             try:
                 if message["type"] == "http.request":
+                    if capture_request and not is_server_span_kept():
+                        capture_request = False
+                        request_body = bytearray()
                     body = message.get("body", b"")
                     request_body_length += len(body)
-                    if not request_too_large:
+                    if capture_request and not request_too_large:
                         request_body += body
                         if len(request_body) > MAX_BODY_SIZE:
                             request_too_large = True
@@ -114,7 +122,9 @@ class ApitallyASGIMiddleware(CaptureMixin):
                 if root_path.startswith(initial_root_path):
                     route = root_path[len(initial_root_path) :] + route
             span = get_server_span()
-            if kept and span is not None and span.is_recording():
+            if is_server_span_kept() and span is not None and span.is_recording():
+                if config.log_request_headers:
+                    set_header_attributes(span, "http.request.header.", request_headers, self.redaction)
                 if route:
                     # Overwrites the instrumentor's raw route so spans and metrics agree on the template
                     span.set_attribute("http.route", route)
@@ -166,6 +176,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
                     content_length = parse_int(get_header(response_headers, b"content-length"))
                     if content_length is not None and get_header(response_headers, b"transfer-encoding") != b"chunked":
                         response_size = content_length
+                    kept = is_server_span_kept()
                     capture_response = (
                         kept
                         and config.log_response_body
@@ -176,7 +187,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
                     )
                     span = get_server_span()
                     if kept and config.log_response_headers and span is not None and span.is_recording():
-                        self.set_header_attributes(span, "http.response.header.", response_headers)
+                        set_header_attributes(span, "http.response.header.", response_headers, self.redaction)
                 elif message["type"] == "http.response.body":
                     body = message.get("body", b"")
                     response_size_counter += len(body)
@@ -205,15 +216,6 @@ class ApitallyASGIMiddleware(CaptureMixin):
                 finish()
             except Exception:  # pragma: no cover
                 logger.exception("Error in Apitally ASGI middleware")
-
-    def set_header_attributes(self, span: Span, prefix: str, headers: Iterable[tuple[bytes, bytes]]) -> None:
-        grouped: dict[str, list[str]] = {}
-        for name, value in headers:
-            grouped.setdefault(name.decode("latin-1").lower(), []).append(value.decode("latin-1"))
-        for name, values in grouped.items():
-            if self.redaction.should_redact_header(name):
-                values = [REDACTED]
-            span.set_attribute(prefix + name, values)
 
 
 def resolve_route_from_scope(scope: Scope) -> str | None:

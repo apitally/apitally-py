@@ -61,18 +61,24 @@ def init_apitally(
 
 
 def _instrument_app(app: FastAPI) -> None:
-    if any(m.cls is ApitallyASGIMiddleware for m in app.user_middleware):
+    if getattr(app, "_is_instrumented_by_apitally", False):
         return
+    setattr(app, "_is_instrumented_by_apitally", True)
     if not getattr(app, "_is_instrumented_by_opentelemetry", False):
         FastAPIInstrumentor.instrument_app(app, exclude_spans=["receive", "send"])
-    # Lands inside the SERVER span regardless of order: the instrumentor wraps the whole built stack lazily
-    app.add_middleware(ApitallyASGIMiddleware, resolve_route=_resolve_route)
-    # Chain-patch after the instrumentor's patch so the shim wraps the built stack outermost
-    # (add_middleware cannot reach outside the instrumentor's wrap)
+
+    # Chain-patch after the instrumentor's patch so the transport middleware wraps the whole
+    # instrumented stack, outside ServerErrorMiddleware: responses to unhandled exceptions then
+    # pass through it, with the SERVER span still recording
     build_inner = app.build_middleware_stack
 
     def build_with_shim() -> activation.ASGIActivationShim:
-        return activation.ASGIActivationShim(build_inner())
+        return activation.ASGIActivationShim(
+            ApitallyASGIMiddleware(
+                build_inner(),  # ty: ignore[invalid-argument-type]
+                resolve_route=_resolve_route,
+            )
+        )
 
     app.build_middleware_stack = build_with_shim  # ty: ignore[invalid-assignment]
 
