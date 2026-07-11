@@ -104,7 +104,7 @@ def test_user_otel_setup_detected_and_repaired(
     with TestClient(app=app) as client:
         assert client.get("/users/123").status_code == 200
 
-    # The user's config has no exclude_spans; the backstop drops the receive/send spans
+    # The user's config has no exclude_spans; the span processor's built-in filter drops the receive/send spans
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     assert span.name == "GET /users/{user_id}"

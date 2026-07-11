@@ -119,8 +119,8 @@ def test_exporter_endpoint_override(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_exporters_deliver_to_otlp_endpoint(monkeypatch: pytest.MonkeyPatch):
-    # Wire-level counterpart to the endpoint/header assertions above, which poke exporter
-    # privates: real exporters posting protobuf over HTTP, so otel-sdk drift is caught
+    # The endpoint/header assertions above read private exporter attributes; this test runs
+    # real exporters posting protobuf over HTTP, so it catches changes in the OTel SDK
     received: dict[str, tuple[Any, bytes]] = {}
 
     class Handler(BaseHTTPRequestHandler):

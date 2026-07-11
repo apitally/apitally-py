@@ -70,7 +70,7 @@ def test_invalid_sample_rate_falls_back_to_default(invalid_rate: object):
     assert cfg.sample_rate == 1.0
 
 
-def test_semconv_helper(monkeypatch: pytest.MonkeyPatch):
+def test_semconv_opt_in_env_var_set_only_when_unset(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("OTEL_SEMCONV_STABILITY_OPT_IN", raising=False)
     config.ensure_semconv_opt_in()
     assert os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] == "http/dup"

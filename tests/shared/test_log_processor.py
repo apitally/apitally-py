@@ -80,7 +80,7 @@ def test_log_in_nested_span_carries_server_span_id(
     )
 
 
-def test_response_stage_dropped_request_logs_discarded(log_exporter: InMemoryLogRecordExporter):
+def test_logs_discarded_when_sample_on_response_drops_request(log_exporter: InMemoryLogRecordExporter):
     set_config(write_token=WRITE_TOKEN, sample_on_response=lambda span: False)
     span_processor = ApitallySpanProcessor(SpanProcessor())
     tracer_provider = TracerProvider()
