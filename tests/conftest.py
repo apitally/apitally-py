@@ -28,7 +28,12 @@ from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import activation, config, metrics, providers, startup
 from apitally.shared.consumer import consumer_holder_var
-from apitally.shared.span_processor import ApitallySpanProcessor, server_span_kept_var, server_span_var
+from apitally.shared.span_processor import (
+    ApitallySpanProcessor,
+    server_span_kept_var,
+    server_span_processor_var,
+    server_span_var,
+)
 
 
 WRITE_TOKEN = "apt_" + "a" * 24
@@ -79,8 +84,8 @@ def reset_apitally_config() -> Iterator[None]:
         os.environ.pop("OTEL_SEMCONV_STABILITY_OPT_IN", None)
     else:
         os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = semconv_before
-    # The instrumentation layer reads the env var once into a process-global latch on the
-    # first instrument() call; reset it so each test re-reads the current env var
+    # The instrumentation layer reads the env var once on the first instrument() call and
+    # caches it process-globally; reset the cache so each test re-reads the current env var
     _OpenTelemetrySemanticConventionStability._initialized = False
     _OpenTelemetrySemanticConventionStability._OTEL_SEMCONV_STABILITY_SIGNAL_MAPPING = {}
 
@@ -105,6 +110,7 @@ def reset_context_vars() -> Iterator[None]:
     yield
     server_span_var.set(None)
     server_span_kept_var.set(False)
+    server_span_processor_var.set(None)
     consumer_holder_var.set(None)
 
 

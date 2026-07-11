@@ -1,11 +1,12 @@
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanContext, SpanKind
+from opentelemetry.util.types import AttributeValue
 
 from apitally.shared.config import ApitallyConfig, get_config
 from apitally.shared.redaction import REDACTED, Redaction, compile_patterns, matches_any
@@ -49,6 +50,9 @@ MAX_BUFFERED_SPANS = 1_000
 
 server_span_var: ContextVar[Span | None] = ContextVar("apitally_server_span", default=None)
 server_span_kept_var: ContextVar[bool] = ContextVar("apitally_server_span_kept", default=False)
+server_span_processor_var: ContextVar["ApitallySpanProcessor | None"] = ContextVar(
+    "apitally_server_span_processor", default=None
+)
 
 
 def get_server_span() -> Span | None:
@@ -57,6 +61,10 @@ def get_server_span() -> Span | None:
 
 def is_server_span_kept() -> bool:
     return server_span_kept_var.get()
+
+
+def get_server_span_processor() -> "ApitallySpanProcessor | None":
+    return server_span_processor_var.get()
 
 
 def sampled_in(trace_id: int, bound: int) -> bool:
@@ -73,6 +81,8 @@ class ApitallySpanProcessor(SpanProcessor):
         self.downstream = downstream
         self.spans: dict[int, tuple[bool, int | None]] = {}
         self.pending: dict[int, list[ReadableSpan]] = {}
+        self.deferred: set[int] = set()
+        self.held: dict[int, ReadableSpan] = {}
         # Assigned by the log processor so both buffers flush or discard on the same decision
         self.on_request_finished: Callable[[int, bool], None] | None = None
         self.config = get_config() or ApitallyConfig()
@@ -91,6 +101,7 @@ class ApitallySpanProcessor(SpanProcessor):
             elif span.parent is None or span.parent.is_remote:
                 if span.kind == SpanKind.SERVER:
                     server_span_var.set(span)
+                    server_span_processor_var.set(self)
                     keep = not self.exclude_request(span) and self.sample_request(span, span.context.trace_id)
                     server_span_kept_var.set(keep)
                     self.spans[span.context.span_id] = (keep, span.context.span_id if keep else None)
@@ -108,35 +119,76 @@ class ApitallySpanProcessor(SpanProcessor):
             context = span.get_span_context()
             if context is None:  # pragma: no cover
                 return
-            keep, server_span_id = self.spans.pop(context.span_id, (False, None))
-            if not keep:
-                return
-            buffer = self.pending.pop(context.span_id, None)
-            if buffer is not None:
-                # Pending SERVER root: the response-stage decision flushes or discards the whole request
-                response_kept = self.sample_response(span, context.trace_id)
-                if response_kept:
-                    for buffered_span in buffer:
-                        self.downstream.on_end(self.redact_span(buffered_span))
-                    self.downstream.on_end(self.redact_span(span))
-                else:
-                    # Flip in-flight entries so the request's late telemetry drops locally
-                    for span_id, entry in list(self.spans.items()):
-                        if entry[1] == context.span_id:
-                            self.spans[span_id] = (False, None)
-                if self.on_request_finished is not None:
-                    self.on_request_finished(context.span_id, response_kept)
-                return
-            pending = self.pending.get(server_span_id) if server_span_id is not None else None
-            if pending is not None:
-                if len(pending) < MAX_BUFFERED_SPANS:
-                    pending.append(span)
-                else:
-                    logger.debug("Apitally span buffer cap reached for request, dropping span")
-                return
-            self.downstream.on_end(self.redact_span(span))
+            if context.span_id in self.deferred:
+                self.deferred.discard(context.span_id)
+                if self.spans.get(context.span_id, (False, None))[0]:
+                    # Hold until finish_export; the spans and pending entries stay alive meanwhile
+                    self.held[context.span_id] = span
+                    return
+            self.export_span(span, context)
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally span processor")
+
+    def defer_export(self, span_id: int) -> None:
+        """Called by a transport while the SERVER span is still recording, committing to a later finish_export."""
+        self.deferred.add(span_id)
+
+    def finish_export(self, span_id: int, extra_attributes: Mapping[str, AttributeValue] | None = None) -> None:
+        """Called by a transport when the response is complete, releasing a deferred SERVER span."""
+        try:
+            if span_id in self.deferred:
+                # The span has not ended yet; write directly and let on_end export as usual
+                self.deferred.discard(span_id)
+                span = get_server_span()
+                if (
+                    extra_attributes
+                    and span is not None
+                    and span.context is not None
+                    and span.context.span_id == span_id
+                    and span.is_recording()
+                ):
+                    for key, value in extra_attributes.items():
+                        span.set_attribute(key, value)
+                return
+            span = self.held.pop(span_id, None)
+            if span is None:
+                return
+            if extra_attributes:
+                span = copy_span_with_attributes(span, {**(span.attributes or {}), **extra_attributes})
+            context = span.get_span_context()
+            if context is not None:
+                self.export_span(span, context)
+        except Exception:  # pragma: no cover
+            logger.exception("Error in Apitally span processor")
+
+    def export_span(self, span: ReadableSpan, context: SpanContext) -> None:
+        keep, server_span_id = self.spans.pop(context.span_id, (False, None))
+        if not keep:
+            return
+        buffer = self.pending.pop(context.span_id, None)
+        if buffer is not None:
+            # Pending SERVER root: the response-stage decision flushes or discards the whole request
+            response_kept = self.sample_response(span, context.trace_id)
+            if response_kept:
+                for buffered_span in buffer:
+                    self.downstream.on_end(self.redact_span(buffered_span))
+                self.downstream.on_end(self.redact_span(span))
+            else:
+                # Mark the request's still-open spans as dropped so telemetry arriving later is discarded
+                for span_id, entry in list(self.spans.items()):
+                    if entry[1] == context.span_id:
+                        self.spans[span_id] = (False, None)
+            if self.on_request_finished is not None:
+                self.on_request_finished(context.span_id, response_kept)
+            return
+        pending = self.pending.get(server_span_id) if server_span_id is not None else None
+        if pending is not None:
+            if len(pending) < MAX_BUFFERED_SPANS:
+                pending.append(span)
+            else:
+                logger.debug("Apitally span buffer cap reached for request, dropping span")
+            return
+        self.downstream.on_end(self.redact_span(span))
 
     def resolve_server_span_id(self, span_id: int) -> int | None:
         """Return the SERVER span id for an in-flight span, or None if the request is dropped."""
@@ -144,6 +196,10 @@ class ApitallySpanProcessor(SpanProcessor):
         return entry[1] if entry else None
 
     def shutdown(self) -> None:
+        # Held spans only miss late attributes; export them as they are
+        for span_id in list(self.held):
+            self.finish_export(span_id)
+        self.deferred.clear()
         # Pending requests' SERVER spans can never export after shutdown, so their telemetry is unreachable
         self.pending.clear()
         self.downstream.shutdown()
@@ -171,14 +227,14 @@ class ApitallySpanProcessor(SpanProcessor):
         return sampled_in(trace_id, TraceIdRatioBased.get_bound_for_rate(rate))
 
     def sample_response(self, span: ReadableSpan, trace_id: int) -> bool:
-        # An unconfigured callback or an abstaining None leaves the request-stage decision standing
+        # If no callback is configured, or it returns None, the request-stage decision stands
         rate = self.resolve_sample_rate(self.config.sample_on_response, span, "sample_on_response")
         return rate is None or sampled_in(trace_id, TraceIdRatioBased.get_bound_for_rate(rate))
 
     def resolve_sample_rate(
         self, callback: Callable[[ReadableSpan], float | bool | None] | None, span: ReadableSpan, name: str
     ) -> float | None:
-        """Map a sampling callback result to an effective rate. None means there was no callback, or it abstained."""
+        """Map a sampling callback result to an effective rate. None means there was no callback, or it returned None."""
         if callback is None:
             return None
         try:
@@ -216,22 +272,24 @@ class ApitallySpanProcessor(SpanProcessor):
             if redacted != value:
                 attributes[key] = redacted
                 changed = True
-        if not changed:
-            return span
-        return ReadableSpan(
-            name=span.name,
-            context=span.get_span_context(),
-            parent=span.parent,
-            resource=span.resource,
-            attributes=attributes,
-            events=span.events,
-            links=span.links,
-            kind=span.kind,
-            status=span.status,
-            start_time=span.start_time,
-            end_time=span.end_time,
-            instrumentation_scope=span.instrumentation_scope,
-        )
+        return copy_span_with_attributes(span, attributes) if changed else span
+
+
+def copy_span_with_attributes(span: ReadableSpan, attributes: dict[str, AttributeValue]) -> ReadableSpan:
+    return ReadableSpan(
+        name=span.name,
+        context=span.get_span_context(),
+        parent=span.parent,
+        resource=span.resource,
+        attributes=attributes,
+        events=span.events,
+        links=span.links,
+        kind=span.kind,
+        status=span.status,
+        start_time=span.start_time,
+        end_time=span.end_time,
+        instrumentation_scope=span.instrumentation_scope,
+    )
 
 
 def is_noise_span(span: Span) -> bool:

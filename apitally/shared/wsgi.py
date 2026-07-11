@@ -12,7 +12,7 @@ from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin,
 from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import get_consumer_identifier, reset_consumer
 from apitally.shared.redaction import REDACTED
-from apitally.shared.span_processor import get_server_span, is_server_span_kept
+from apitally.shared.span_processor import get_server_span, get_server_span_processor, is_server_span_kept
 
 
 if TYPE_CHECKING:
@@ -57,13 +57,20 @@ class ApitallyWSGIMiddleware(CaptureMixin):
                 logger.exception("Error in Apitally WSGI middleware")
             return start_response(status, response_headers, exc_info)
 
-        return ResponseWrapper(self.app(environ, wrapped_start_response), self, environ, config, state)
+        try:
+            response = self.app(environ, wrapped_start_response)
+        except BaseException:
+            # The app raised after start_response; finalize never runs, so release the deferral
+            if state.deferred_span_id is not None and (processor := get_server_span_processor()) is not None:
+                processor.finish_export(state.deferred_span_id)
+            raise
+        return ResponseWrapper(response, self, environ, config, state)
 
     def capture_request_body(
         self, environ: WSGIEnvironment, config: ApitallyConfig, content_length: int | None
     ) -> bytes | str | None:
-        # No keep-flag gate: on Flask the SERVER span starts later, in before_request;
-        # the gated write in handle_response_start discards unkept buffers
+        # The keep decision is not checked here: on Flask the SERVER span starts later, in
+        # before_request. handle_response_start checks it and only then writes the buffered body.
         if not config.log_request_body or not is_allowed_content_type(environ.get("CONTENT_TYPE")):
             return None
         if content_length is None:
@@ -111,10 +118,13 @@ class ApitallyWSGIMiddleware(CaptureMixin):
                 self.set_body_attribute(
                     span, "apitally.request.body", state.request_body, config.mask_request_body, "mask_request_body"
                 )
-        if content_length is not None:
-            span.set_attribute("http.response.body.size", content_length)
         if config.log_response_headers:
             self.set_header_attributes(span, "http.response.header.", headers)
+        processor = get_server_span_processor()
+        if processor is not None and span.context is not None:
+            # The final response size is only known at finalize, which may run after the span has ended
+            processor.defer_export(span.context.span_id)
+            state.deferred_span_id = span.context.span_id
 
     def finalize(self, environ: WSGIEnvironment, config: ApitallyConfig, state: RequestState) -> None:
         if state.finalized:
@@ -126,17 +136,23 @@ class ApitallyWSGIMiddleware(CaptureMixin):
             kept = is_server_span_kept()
             if state.response_size is None and state.completed:
                 state.response_size = state.bytes_sent
-                if kept and span is not None and span.is_recording():
-                    span.set_attribute("http.response.body.size", state.response_size)
-            if kept and span is not None and span.is_recording() and state.response_body is not None:
+            extra: dict[str, str | int] = {}
+            if state.response_size is not None:
+                extra["http.response.body.size"] = state.response_size
+            if kept and span is not None and state.response_body is not None:
                 body = state.response_body
                 if isinstance(body, bytearray):
                     # An abandoned iterable leaves a partial buffer; never export a truncated body
                     body = bytes(body) if state.completed else None
                 if body is not None:
-                    self.set_body_attribute(
-                        span, "apitally.response.body", body, config.mask_response_body, "mask_response_body"
+                    extra["apitally.response.body"] = self.process_body(
+                        span,
+                        body,
+                        config.mask_response_body,
+                        "mask_response_body",
                     )
+            if state.deferred_span_id is not None and (processor := get_server_span_processor()) is not None:
+                processor.finish_export(state.deferred_span_id, extra or None)
             route = self.get_route(environ) if self.get_route is not None else None
             metrics.record_request(
                 method=environ.get("REQUEST_METHOD", ""),
@@ -213,6 +229,7 @@ class RequestState:
     bytes_sent: int = 0
     completed: bool = False
     finalized: bool = False
+    deferred_span_id: int | None = None
 
 
 def parse_content_length(value: str | None) -> int | None:

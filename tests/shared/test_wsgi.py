@@ -180,7 +180,7 @@ def test_redaction_failure_after_parse_fails_closed(
     assert attributes["apitally.request.body"] == REDACTED
 
 
-def test_non_allowlisted_mime_never_touches_input(tracer: Tracer, exporter: InMemorySpanExporter):
+def test_request_body_not_read_for_disallowed_content_type(tracer: Tracer, exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN, log_request_body=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
@@ -196,7 +196,7 @@ def test_non_allowlisted_mime_never_touches_input(tracer: Tracer, exporter: InMe
     assert environ["wsgi.input"] is spy
 
 
-def test_response_body_accumulated_redacted_and_close_propagated(tracer: Tracer, exporter: InMemorySpanExporter):
+def test_response_body_captured_from_chunks(tracer: Tracer, exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN, log_response_body=True)
     iterable = ClosingIterable([b'{"token": "abc", ', b'"id": 1}'])
 
@@ -246,7 +246,7 @@ def test_request_headers_redacted(tracer: Tracer, exporter: InMemorySpanExporter
     assert attributes["http.request.header.content-length"] == ("0",)
 
 
-def test_sampled_out_request_exports_nothing(exporter: InMemorySpanExporter):
+def test_sampled_out_request_produces_no_span(exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN, sample_rate=0.0, log_request_body=True, log_response_body=True)
     provider = TracerProvider(sampler=ALWAYS_ON)
     provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
@@ -273,7 +273,28 @@ def test_sampled_out_request_exports_nothing(exporter: InMemorySpanExporter):
     assert exporter.get_finished_spans() == ()
 
 
-def test_abandoned_streaming_response_leaves_size_unset(tracer: Tracer, exporter: InMemorySpanExporter):
+def test_span_export_waits_for_streaming_response_to_complete(tracer: Tracer, exporter: InMemorySpanExporter):
+    # Flask lifecycle: the span ends before the iterable is consumed; the size arrives via deferred export
+    set_config(write_token=WRITE_TOKEN)
+
+    def app(environ: WSGIEnvironment, start_response: StartResponse) -> Iterator[bytes]:
+        start_response("200 OK", [("Content-Type", "application/x-ndjson")])
+        return iter([b"one", b"two"])
+
+    def start_response(status: str, headers: list[tuple[str, str]], exc_info: Any = None) -> Any:
+        pass
+
+    environ = make_environ()
+    with tracer.start_as_current_span("request", kind=SpanKind.SERVER):
+        response: Any = ApitallyWSGIMiddleware(app)(environ, start_response)
+    assert exporter.get_finished_spans() == ()
+    body = b"".join(response)
+    response.close()
+    (span,) = exporter.get_finished_spans()
+    assert dict(span.attributes or {})["http.response.body.size"] == len(body) == 6
+
+
+def test_no_response_size_when_client_stops_reading_mid_stream(tracer: Tracer, exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> Iterator[bytes]:

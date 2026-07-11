@@ -247,10 +247,59 @@ def test_late_descendant_follows_request_decision(exporter: InMemorySpanExporter
         with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as span:
             late = tracer.start_span("late")
             span.set_attribute("http.response.status_code", status_code)
-        # A kept request's late telemetry streams as before buffering; a dropped request's is dropped locally
+        # A span ending after a kept request is exported immediately; after a dropped request it is discarded
         late.end()
         assert {s.name for s in exporter.get_finished_spans()} == expected_names
         exporter.clear()
+
+
+def test_deferred_export_held_until_finish(
+    tracer: Tracer, processor: ApitallySpanProcessor, exporter: InMemorySpanExporter
+):
+    with tracer.start_as_current_span("GET /stream", kind=SpanKind.SERVER) as server:
+        with tracer.start_as_current_span("child"):
+            pass
+        span_id = server.get_span_context().span_id
+        processor.defer_export(span_id)
+    # The span has ended but the transport has not completed the response yet
+    assert exporter.get_finished_spans() == ()
+    processor.finish_export(span_id, {"http.response.body.size": 45})
+    spans = {s.name: s for s in exporter.get_finished_spans()}
+    assert set(spans) == {"GET /stream", "child"}
+    assert unwrap(spans["GET /stream"].attributes)["http.response.body.size"] == 45
+    assert not processor.spans and not processor.pending and not processor.deferred and not processor.held
+
+
+def test_finish_export_before_span_end_writes_to_live_span(
+    tracer: Tracer, processor: ApitallySpanProcessor, exporter: InMemorySpanExporter
+):
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as server:
+        span_id = server.get_span_context().span_id
+        processor.defer_export(span_id)
+        processor.finish_export(span_id, {"http.response.body.size": 10})
+    (span,) = exporter.get_finished_spans()
+    assert unwrap(span.attributes)["http.response.body.size"] == 10
+    assert not processor.deferred and not processor.held
+
+
+def test_finish_export_without_attributes_releases_span(
+    tracer: Tracer, processor: ApitallySpanProcessor, exporter: InMemorySpanExporter
+):
+    with tracer.start_as_current_span("GET /stream", kind=SpanKind.SERVER) as server:
+        span_id = server.get_span_context().span_id
+        processor.defer_export(span_id)
+    processor.finish_export(span_id)
+    (span,) = exporter.get_finished_spans()
+    assert "http.response.body.size" not in unwrap(span.attributes)
+
+
+def test_shutdown_exports_held_spans(tracer: Tracer, processor: ApitallySpanProcessor, exporter: InMemorySpanExporter):
+    with tracer.start_as_current_span("GET /stream", kind=SpanKind.SERVER) as server:
+        processor.defer_export(server.get_span_context().span_id)
+    assert exporter.get_finished_spans() == ()
+    processor.shutdown()
+    (span,) = exporter.get_finished_spans()
+    assert span.name == "GET /stream"
 
 
 def test_shutdown_flushes_queued_spans(exporter: InMemorySpanExporter):
@@ -265,7 +314,7 @@ def test_shutdown_flushes_queued_spans(exporter: InMemorySpanExporter):
     assert span.name == "GET /items"
 
 
-def test_same_trace_id_verdict_at_both_stages(exporter: InMemorySpanExporter):
+def test_sampling_decision_consistent_between_request_and_response(exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN, sample_rate=0.5, sample_on_response=lambda span: 0.5)
     tracer = create_tracer(exporter)
     with tracer.start_as_current_span(
@@ -276,7 +325,7 @@ def test_same_trace_id_verdict_at_both_stages(exporter: InMemorySpanExporter):
     assert len(exporter.get_finished_spans()) == 1
 
 
-def test_response_abstention_leaves_boosted_request_kept(exporter: InMemorySpanExporter):
+def test_sample_on_response_none_keeps_sample_on_request_decision(exporter: InMemorySpanExporter):
     bound_tenth = TraceIdRatioBased.get_bound_for_rate(0.1)
     set_config(
         write_token=WRITE_TOKEN,
@@ -287,11 +336,11 @@ def test_response_abstention_leaves_boosted_request_kept(exporter: InMemorySpanE
     tracer = create_tracer(exporter)
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER, context=remote_parent_context(bound_tenth)):
         pass
-    # The trace ID fails the sample_rate test, so a response-stage abstention that re-tested it would drop here
+    # The trace ID fails the sample_rate test, so if the None return re-tested it, the span would be dropped here
     assert len(exporter.get_finished_spans()) == 1
 
 
-def test_kept_flag_and_span_resolution(exporter: InMemorySpanExporter):
+def test_request_context_helpers_return_current_request_state(exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN, sample_rate=0.5)
     processor = ApitallySpanProcessor(SimpleSpanProcessor(exporter))
     provider = TracerProvider(sampler=ALWAYS_ON)

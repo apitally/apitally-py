@@ -52,9 +52,17 @@ class CaptureMixin:
         mask_callback: Callable[[ReadableSpan, bytes], bytes | None] | None,
         callback_name: str,
     ) -> None:
+        span.set_attribute(key, self.process_body(span, body, mask_callback, callback_name))
+
+    def process_body(
+        self,
+        span: ReadableSpan,
+        body: bytes | str,
+        mask_callback: Callable[[ReadableSpan, bytes], bytes | None] | None,
+        callback_name: str,
+    ) -> str:
         if isinstance(body, str):
-            span.set_attribute(key, body)
-            return
+            return body
         if mask_callback is not None:
             try:
                 masked = mask_callback(span, body)
@@ -67,22 +75,17 @@ class CaptureMixin:
                 )
                 masked = None
             if masked is None:
-                span.set_attribute(key, REDACTED)
-                return
+                return REDACTED
             if len(masked) > MAX_BODY_SIZE:
-                span.set_attribute(key, BODY_TOO_LARGE)
-                return
+                return BODY_TOO_LARGE
             body = masked
         try:
             data = json.loads(body)
         except Exception:
             # Non-JSON but allowlisted (e.g. text/plain): stored as-is
-            span.set_attribute(key, body.decode("utf-8", errors="replace"))
-            return
+            return body.decode("utf-8", errors="replace")
         try:
-            value = json.dumps(self.redaction.redact_body(data), separators=(",", ":"), ensure_ascii=False)
+            return json.dumps(self.redaction.redact_body(data), separators=(",", ":"), ensure_ascii=False)
         except Exception:
-            # Fail closed: privacy over fidelity when redaction breaks on parsed JSON
             logger.warning("Error redacting body, replaced with %s", REDACTED, exc_info=True)
-            value = REDACTED
-        span.set_attribute(key, value)
+            return REDACTED
