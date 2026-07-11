@@ -293,7 +293,6 @@ def copy_span_with_attributes(span: ReadableSpan, attributes: dict[str, Attribut
 
 
 def is_contrib_receive_send_span(span: Span) -> bool:
-    # Spans with these names from user-owned instrumentation are kept
     return (
         span.kind == SpanKind.INTERNAL
         and span.name.endswith(RECEIVE_SEND_NAME_SUFFIXES)
