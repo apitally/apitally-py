@@ -289,3 +289,9 @@ def test_init_without_write_token_exports_nothing(
         assert client.get("/items/42").status_code == 200
     assert not activation.is_activated()
     assert exporters.span == exporters.log == exporters.metric == []
+
+
+def test_init_disabled_skips_instrumentation(app: FastAPI):
+    init_apitally(app, write_token=WRITE_TOKEN, disabled=True)
+    assert not getattr(app, "_is_instrumented_by_opentelemetry", False)
+    assert not isinstance(app.build_middleware_stack(), activation.ASGIActivationShim)

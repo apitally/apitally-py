@@ -45,7 +45,9 @@ def init_apitally(
 ) -> None:
     """Set up Apitally for a Flask app. Activation happens on the first request."""
     try:
-        activation.configure(**config.explicit_kwargs(locals()))
+        cfg = activation.configure(**config.explicit_kwargs(locals()))
+        if cfg.disabled:
+            return
         if isinstance(app.wsgi_app, activation.WSGIActivationShim):
             return
         transport = ApitallyWSGIMiddleware(app.wsgi_app, get_route=_create_route_resolver(app))

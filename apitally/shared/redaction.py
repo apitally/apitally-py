@@ -1,5 +1,6 @@
 import re
 from collections.abc import Mapping
+from functools import lru_cache
 from urllib.parse import parse_qsl, urlencode
 
 
@@ -75,6 +76,7 @@ class Redaction:
             return [self.redact_body(item) for item in data]
         return data
 
+    @lru_cache(maxsize=100)
     def should_redact_header(self, name: str) -> bool:
         # Also match the underscore-normalized attribute key form emitted by older instrumentors
         return matches_any(self.header_patterns, name) or matches_any(self.header_patterns, name.replace("_", "-"))
