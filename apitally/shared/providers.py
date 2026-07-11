@@ -93,7 +93,7 @@ def setup_tracer_provider(resource: Resource, span_processor: SpanProcessor) -> 
 
 def attach_to_tracer_provider(user_provider: TracerProvider, span_processor: SpanProcessor) -> None:
     warn_if_sampler_drops_spans(user_provider.sampler)
-    warn_if_attribute_limit_too_low(user_provider)
+    warn_if_attribute_length_limit_too_low(user_provider)
     user_provider.add_span_processor(span_processor)
 
 
@@ -152,7 +152,7 @@ def warn_if_sampler_drops_spans(sampler: Sampler) -> None:
             )
 
 
-def warn_if_attribute_limit_too_low(user_provider: TracerProvider) -> None:
+def warn_if_attribute_length_limit_too_low(user_provider: TracerProvider) -> None:
     global span_limits_warned
     config = get_config() or ApitallyConfig()
     capture_enabled = (
@@ -179,7 +179,5 @@ def endpoint_url(path: str) -> str:
 
 
 def export_headers(env: str) -> dict[str, str]:
-    # Endpoint and headers are always passed explicitly to the exporters, so the
-    # OTEL_EXPORTER_OTLP_* env vars are never consulted
     config = get_config() or ApitallyConfig()
     return {"Authorization": f"Bearer {config.write_token}", "Apitally-Env": env}

@@ -91,7 +91,7 @@ class ApitallyPlugin(InitPluginProtocol):
 
 
 def _has_otel_instrumentation(app_config: AppConfig) -> bool:
-    # Either a stock plugin or the legacy raw-middleware pattern
+    # Covers both the plugin and the older pattern of adding the OTel middleware directly
     return any(isinstance(plugin, OpenTelemetryPlugin) for plugin in app_config.plugins) or any(
         isinstance(middleware, DefineMiddleware)
         and isinstance(middleware.middleware, type)

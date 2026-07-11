@@ -86,7 +86,6 @@ def _instrument_app(app: FastAPI) -> None:
 def _resolve_route(scope: Scope) -> str | None:
     # FastAPI 0.138+ no longer copies included-router routes into the app's route list; the full
     # templated path is only on the effective route context, scope["route"].path lacks the prefix
-    # (0.x parity)
     context = scope.get("fastapi", {}).get("effective_route_context")
     path = getattr(context, "path", None) or getattr(scope.get("route"), "path", None)
     return path if isinstance(path, str) else None
@@ -123,7 +122,7 @@ def _iter_routes(routes: list[BaseRoute]) -> Iterator[Any]:
 
 
 def _get_openapi(app: FastAPI, openapi_url: str | None) -> str | None:
-    # 0.x semantics: emit only when the app actually serves a schema at openapi_url
+    # Emit only when the app actually serves a schema at openapi_url
     if not openapi_url or not any(getattr(route, "path", None) == openapi_url for route in app.routes):
         return None
     return json.dumps(app.openapi())

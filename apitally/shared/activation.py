@@ -129,7 +129,7 @@ class WSGIActivationShim:
 
 
 def should_skip_activation() -> bool:
-    # Test-environment detection at the activation boundary
+    # The PYTEST_CURRENT_TEST check detects pytest; the argv check detects Django's "manage.py test"
     cfg = config.get_config()
     return (
         cfg is None

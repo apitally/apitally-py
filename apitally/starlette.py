@@ -80,8 +80,8 @@ def _instrument_app(app: Starlette) -> None:
 
 
 def _resolve_route(scope: Scope, routes: list[BaseRoute] | None = None) -> str | None:
-    # Ported from the 0.x route matcher; returns the route template without the mount
-    # prefix, which the transport middleware restores from the root_path delta
+    # Returns the route template without the mount prefix; the transport middleware
+    # restores the prefix from the root_path delta
     if routes is None:
         app = scope.get("app")
         routes = getattr(app, "routes", None) or []
