@@ -77,7 +77,7 @@ litestar = [
 ]
 starlette = [
     "starlette>=0.26.1,<2.0.0",
-    "opentelemetry-instrumentation-starlette>=0.64b0",
+    "opentelemetry-instrumentation-asgi>=0.64b0",
 ]
 
 [project.urls]
