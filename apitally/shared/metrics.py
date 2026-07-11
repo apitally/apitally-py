@@ -1,11 +1,13 @@
+import atexit
 import time
 from collections.abc import Iterable
+from typing import Any
 
 from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
 from opentelemetry.metrics import CallbackOptions, Histogram, Observation
 from opentelemetry.sdk.metrics import Histogram as SDKHistogram
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import AggregationTemporality, PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.export import AggregationTemporality, MetricExporter, PeriodicExportingMetricReader
 from opentelemetry.sdk.metrics.view import Aggregation, ExponentialBucketHistogramAggregation
 from opentelemetry.sdk.resources import Resource
 
@@ -29,11 +31,20 @@ SYSTEM_METRICS_CONFIG: dict[str, list[str] | None] = {
 
 
 class ApitallyMetricReader(PeriodicExportingMetricReader):
+    def __init__(self, exporter: MetricExporter, export_interval_millis: float | None = None) -> None:
+        super().__init__(exporter, export_interval_millis=export_interval_millis)
+        # MeterProvider's atexit hook misses readers added via add_metric_reader
+        atexit.register(self.shutdown)
+
     def collect(self, timeout_millis: float = 10_000) -> None:  # ty: ignore[override-of-final-method]
         # Detaching nulls the collect callback; the final ticker collect must no-op
         # instead of logging a not-registered warning
         if self._collect is not None:
             super().collect(timeout_millis=timeout_millis)
+
+    def shutdown(self, timeout_millis: float = 30_000, **kwargs: Any) -> None:
+        atexit.unregister(self.shutdown)
+        super().shutdown(timeout_millis=timeout_millis, **kwargs)
 
 
 meter_provider: MeterProvider | None = None

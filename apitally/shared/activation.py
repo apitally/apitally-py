@@ -178,10 +178,7 @@ def before_fork() -> None:
     if not activated:  # pragma: no cover
         return
     try:
-        reader = metrics.reader
         metrics.detach_reader()
-        if reader is not None:
-            reader.shutdown()
         if span_processor is not None:
             retired_processors.append(span_processor.downstream)
             span_processor.downstream.shutdown()
@@ -236,10 +233,7 @@ def reset() -> None:
     global span_processor, log_processor, logger_provider, inherited_span_processor
     activation_lock = threading.Lock()
     uninstall_root_handler()
-    reader = metrics.reader
     metrics.reset()
-    if reader is not None:
-        reader.shutdown()
     if span_processor is not None:
         span_processor.downstream.shutdown()
     if log_processor is not None:
