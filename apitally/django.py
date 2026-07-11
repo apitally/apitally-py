@@ -71,12 +71,13 @@ def init_apitally(
     """Set up Apitally for Django. Call this at the end of settings.py, after MIDDLEWARE is defined."""
     global _urlconfs, _include_django_views
     try:
-        config_kwargs = config.explicit_kwargs(locals())
+        cfg = activation.configure(**config.explicit_kwargs(locals()))
+        if cfg.disabled:
+            return
         caller_globals = sys._getframe(1).f_globals
         if isinstance(caller_globals.get("MIDDLEWARE"), tuple):
             # A list is required so the middleware insertions below mutate the settings module in place
             caller_globals["MIDDLEWARE"] = list(caller_globals["MIDDLEWARE"])
-        activation.configure(**config_kwargs)
         _urlconfs = [urlconf] if urlconf is None or isinstance(urlconf, str) else urlconf
         _include_django_views = include_django_views
         instrumentor = DjangoInstrumentor()

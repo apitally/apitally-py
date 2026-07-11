@@ -50,7 +50,9 @@ def init_apitally(
 ) -> None:
     """Set up Apitally for a Starlette application. Activation happens on lifespan startup or the first request."""
     try:
-        activation.configure(**config.explicit_kwargs(locals()))
+        cfg = activation.configure(**config.explicit_kwargs(locals()))
+        if cfg.disabled:
+            return
         _instrument_app(app)
         startup.set_app_info(
             framework="starlette",

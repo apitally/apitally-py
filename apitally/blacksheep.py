@@ -54,7 +54,9 @@ def init_apitally(
     - Reference: https://docs.apitally.io/reference/python
     """
     try:
-        activation.configure(**config.explicit_kwargs(locals()))
+        cfg = activation.configure(**config.explicit_kwargs(locals()))
+        if cfg.disabled:
+            return
         instrumented_by_user = isinstance(app, OpenTelemetryMiddleware)
         if instrumented_by_user:
             # The user wrapped the app in their own generic ASGI instrumentor; reuse their

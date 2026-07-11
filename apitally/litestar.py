@@ -60,7 +60,9 @@ class ApitallyPlugin(InitPluginProtocol):
 
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
         try:
-            activation.configure(**self.configure_kwargs)
+            cfg = activation.configure(**self.configure_kwargs)
+            if cfg.disabled:
+                return app_config
             if not _has_otel_instrumentation(app_config):
                 # Install via the plugin registry, never the middleware list: with two
                 # OpenTelemetry configs in the middleware list only the last one takes effect,
