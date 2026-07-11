@@ -203,6 +203,20 @@ def test_unhandled_exception_recorded_on_server_span(
     assert unwrap(event.attributes)["exception.message"] == "boom"
 
 
+def test_unhandled_exception_response_captured(
+    app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch, log_response_headers=True, log_response_body=True)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/error")
+    assert response.status_code == 500
+    (span,) = exported_spans(exporters)
+    attributes = unwrap(span.attributes)
+    assert attributes["http.response.header.content-type"] == ("text/plain; charset=utf-8",)
+    assert attributes["apitally.response.body"] == "Internal Server Error"
+    assert attributes["http.response.body.size"] == len("Internal Server Error")
+
+
 def test_startup_event_paths_match_routes_and_openapi_parses(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
@@ -254,7 +268,12 @@ def test_init_twice_does_not_stack_middleware(
 ):
     init(app, monkeypatch)
     init(app, monkeypatch)
-    assert sum(1 for m in app.user_middleware if m.cls is ApitallyASGIMiddleware) == 1
+    layer = app.build_middleware_stack()
+    count = 0
+    while layer is not None:
+        count += isinstance(layer, ApitallyASGIMiddleware)
+        layer = getattr(layer, "app", None)
+    assert count == 1
     with TestClient(app) as client:
         client.get("/items/1")
     assert len(exported_spans(exporters)) == 1

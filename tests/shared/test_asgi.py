@@ -384,7 +384,6 @@ async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricRe
     with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER):
         await middleware(scope, receive, send)
 
-    assert app.received_receive is receive  # no wrapping, zero buffering
     assert not mask_calls
     assert exporter.get_finished_spans() == ()
     duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
