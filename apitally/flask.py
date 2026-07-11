@@ -4,12 +4,10 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from flask import Flask, Response
+from flask import Flask
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
 from apitally.shared import activation, config, startup
-from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, is_allowed_content_type
-from apitally.shared.span_processor import get_server_span, is_server_span_kept
 from apitally.shared.wsgi import ApitallyWSGIMiddleware
 
 
@@ -50,15 +48,10 @@ def init_apitally(
         activation.configure(**config.explicit_kwargs(locals()))
         if isinstance(app.wsgi_app, activation.WSGIActivationShim):
             return
-        transport = ApitallyWSGIMiddleware(
-            app.wsgi_app,
-            get_route=_create_route_resolver(app),
-            capture_response_body=False,
-        )
+        transport = ApitallyWSGIMiddleware(app.wsgi_app, get_route=_create_route_resolver(app))
         app.wsgi_app = transport  # ty: ignore[invalid-assignment]
         if not getattr(app, "_is_instrumented_by_opentelemetry", False):
             FlaskInstrumentor().instrument_app(app)
-        app.after_request(_create_response_body_hook(transport))
         app.wsgi_app = activation.WSGIActivationShim(app.wsgi_app)  # ty: ignore[invalid-assignment]
         startup.set_app_info(
             framework="flask",
@@ -67,37 +60,6 @@ def init_apitally(
         )
     except Exception:  # pragma: no cover
         logger.exception("Error initializing Apitally for Flask")
-
-
-def _create_response_body_hook(transport: ApitallyWSGIMiddleware) -> Callable[[Response], Response]:
-    def capture_response_body(response: Response) -> Response:
-        # The instrumentor's SERVER span ends in teardown_request, before the response
-        # iterable reaches any WSGI layer, so the body is written here while the span
-        # is still recording; streaming responses are not captured
-        try:
-            config = transport.config
-            if (
-                is_server_span_kept()
-                and config.log_response_body
-                and not response.direct_passthrough
-                and not response.is_streamed
-                and is_allowed_content_type(response.content_type)
-                and (span := get_server_span()) is not None
-                and span.is_recording()
-            ):
-                body = response.get_data()
-                transport.set_body_attribute(
-                    span,
-                    "apitally.response.body",
-                    body if len(body) <= MAX_BODY_SIZE else BODY_TOO_LARGE,
-                    config.mask_response_body,
-                    "mask_response_body",
-                )
-        except Exception:  # pragma: no cover
-            logger.exception("Error in Apitally after_request hook")
-        return response
-
-    return capture_response_body
 
 
 def _create_route_resolver(app: Flask) -> Callable[[WSGIEnvironment], str | None]:

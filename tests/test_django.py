@@ -7,6 +7,7 @@ from django.conf import settings
 from django.test import Client
 from django.utils.functional import empty, lazy
 from opentelemetry.instrumentation.django import DjangoInstrumentor
+from opentelemetry.sdk.metrics.export import ExponentialHistogramDataPoint
 from opentelemetry.trace import SpanKind
 
 from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, _convert_proxy_objects, init_apitally
@@ -16,9 +17,9 @@ from apitally.shared.redaction import REDACTED
 from tests.conftest import (
     InMemoryExporters,
     attach_metric_reader,
+    collect_metrics,
     duration_data_points,
     exported_spans,
-    metric_data_points,
     startup_payload,
     unwrap,
 )
@@ -138,9 +139,7 @@ def test_sampled_out_request_skips_capture(exporters: InMemoryExporters, monkeyp
     assert point.count == 1
 
 
-def test_streaming_response_recorded_without_body_and_size(
-    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
-):
+def test_streaming_response_size_and_body_captured(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch, log_response_body=True)
     activate_via_signal()
     reader = attach_metric_reader()
@@ -150,11 +149,35 @@ def test_streaming_response_recorded_without_body_and_size(
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
-    assert "apitally.response.body" not in span.attributes
+    # No Content-Length; the size and body accumulated while streaming reach the span
+    # after the OTel middleware ended it
+    assert span.attributes["http.response.body.size"] == 12
+    assert span.attributes["apitally.response.body"] == "chunk1chunk2"
+    # Single collection: the reader's delta temporality clears data points on each collect
+    collected = collect_metrics(reader)
+    (point,) = collected["http.server.request.duration"].data.data_points
+    assert (point.attributes or {})["http.route"] == "/stream/"
+    (size_point,) = collected["http.server.response.body.size"].data.data_points
+    assert isinstance(size_point, ExponentialHistogramDataPoint)
+    assert size_point.sum == 12
+
+
+def test_no_response_size_when_client_stops_reading_mid_stream(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(monkeypatch)
+    activate_via_signal()
+    reader = attach_metric_reader()
+
+    response = Client().get("/stream/")
+    assert next(iter(response.streaming_content)) == b"chunk1"  # ty: ignore[unresolved-attribute]
+    response.close()
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert span.attributes is not None
     assert "http.response.body.size" not in span.attributes
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.route"] == "/stream/"
-    assert metric_data_points(reader, "http.server.response.body.size") == []
 
 
 def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

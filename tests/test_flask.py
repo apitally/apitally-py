@@ -80,7 +80,7 @@ def test_blueprint_route_includes_url_prefix(app: Flask, exporters: InMemoryExpo
 
     response = app.test_client().get("/api/things/7")
 
-    # Consume the body; the transport records metrics when the response iterable completes
+    # Consume the body; telemetry is recorded when the response iterable completes
     assert response.get_json() == {"id": 7}
     (span,) = exported_spans(exporters)
     (point,) = duration_data_points(reader)
@@ -96,13 +96,14 @@ def test_first_request_activates_and_is_recorded(
 
     response = app.test_client().get("/items/42")
 
-    assert response.status_code == 200
+    assert response.get_json() == {"id": 42}
     assert activation.is_activated()
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     attributes = dict(span.attributes or {})
     assert attributes["http.route"] == "/items/<int:item_id>"
     assert attributes["http.response.status_code"] == 200
+    assert attributes["http.response.body.size"] == len(response.data)
 
 
 def test_startup_event_paths_match_routes(app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
@@ -133,15 +134,14 @@ def test_request_and_response_bodies_captured_and_redacted(
 
     response = app.test_client().post("/items", json={"password": "secret123", "name": "x"})
 
-    assert response.status_code == 200
+    assert response.get_json() == {"id": 1, "token": "abc123"}
     (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
-    # Presence on the exported span proves both writes landed before teardown ended the span
     assert json.loads(str(attributes["apitally.request.body"])) == {"password": REDACTED, "name": "x"}
     assert json.loads(str(attributes["apitally.response.body"])) == {"id": 1, "token": REDACTED}
 
 
-def test_streaming_response_recorded_without_body_and_size(
+def test_streaming_response_size_and_body_captured(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch, log_response_body=True)
@@ -152,13 +152,15 @@ def test_streaming_response_recorded_without_body_and_size(
     assert response.data == b'{"a": 1}'
     (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
-    assert "apitally.response.body" not in attributes
-    assert "http.response.body.size" not in attributes
+    # No Content-Length; the size and body accumulated at the transport reach the span
+    # after the instrumentor ended it
+    assert attributes["http.response.body.size"] == len(response.data)
+    assert json.loads(str(attributes["apitally.response.body"])) == {"a": 1}
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.route"] == "/stream"
 
 
-def test_generator_response_not_flattened_by_capture(
+def test_body_capture_does_not_consume_streaming_response_early(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     consumed = []
@@ -174,7 +176,6 @@ def test_generator_response_not_flattened_by_capture(
 
     streamed_after_capture = {}
 
-    # after_request hooks run in reverse registration order, so this runs after the capture hook
     @app.after_request
     def check(response: Response) -> Response:
         streamed_after_capture["value"] = response.is_streamed and not consumed
@@ -185,24 +186,27 @@ def test_generator_response_not_flattened_by_capture(
     response = app.test_client().get("/gen")
 
     assert response.data == b'{"a": 1}'
+    # The generator was still unconsumed when the response left the app; capture happens
+    # chunk by chunk at the transport
     assert streamed_after_capture["value"] is True
     (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     assert attributes["http.route"] == "/gen"
-    assert "apitally.response.body" not in attributes
+    assert json.loads(str(attributes["apitally.response.body"])) == {"a": 1}
 
 
-def test_response_headers_captured_wire_final(
+def test_response_headers_include_headers_added_by_framework(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch, log_response_headers=True)
 
-    app.test_client().get("/headers")
+    assert app.test_client().get("/headers").data
 
     (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     assert attributes["http.response.header.x-custom"] == ("value",)
-    # Content-Length is added by werkzeug after the view returns, proving wire-final capture
+    # Content-Length is added by werkzeug after the view returns, so its presence proves
+    # the headers were captured as sent, not as returned by the view
     assert "http.response.header.content-length" in attributes
 
 
@@ -230,7 +234,7 @@ def test_init_twice_does_not_stack_middleware(
     assert app.wsgi_app is wsgi_app
 
     response = app.test_client().get("/items/42")
-    assert response.status_code == 200
+    assert response.get_json() == {"id": 42}
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
 
@@ -270,6 +274,7 @@ def test_unhandled_exception_recorded_on_server_span(
     response = app.test_client().get("/error")
 
     assert response.status_code == 500
+    assert response.data
     (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     assert attributes["http.response.status_code"] == 500
@@ -286,7 +291,7 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
 
     response = app.test_client().get("/items/7")
 
-    assert response.status_code == 200
+    assert response.get_json() == {"id": 7}
     (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     assert attributes["http.route"] == "/items/<int:item_id>"

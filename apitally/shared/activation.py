@@ -149,12 +149,14 @@ def start_pipelines() -> None:
     resource = providers.create_resource(env)
     metrics.setup(resource)
     if inherited_span_processor is not None:
-        # Forked child re-activation: swap in a fresh downstream, like after_fork_in_parent,
-        # and drop the parent's in-flight and pending request state
+        # Forked child re-activation: swap in a fresh downstream batch processor, like
+        # after_fork_in_parent, and drop the parent's in-flight and pending request state
         span_processor = inherited_span_processor
         inherited_span_processor = None
         span_processor.spans.clear()
         span_processor.pending.clear()
+        span_processor.deferred.clear()
+        span_processor.held.clear()
         span_processor.downstream = BatchSpanProcessor(providers.create_span_exporter(env))
     else:
         span_processor = ApitallySpanProcessor(BatchSpanProcessor(providers.create_span_exporter(env)))

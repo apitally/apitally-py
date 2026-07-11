@@ -5,9 +5,9 @@ import logging
 import re
 import sys
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import django
 from django.conf import settings
@@ -24,12 +24,12 @@ from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin,
 from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import get_consumer_identifier, reset_consumer
 from apitally.shared.redaction import REDACTED
-from apitally.shared.span_processor import get_server_span, is_server_span_kept
+from apitally.shared.span_processor import get_server_span, get_server_span_processor, is_server_span_kept
 from apitally.shared.wsgi import parse_content_length
 
 
 if TYPE_CHECKING:
-    from django.http import HttpRequest, HttpResponse
+    from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
     from opentelemetry.sdk.trace import ReadableSpan, Span
 
 
@@ -175,7 +175,6 @@ class ApitallyDjangoMiddleware(CaptureMixin):
         request_size: int | None,
         request_body: bytes | str | None,
     ) -> None:
-        duration = time.perf_counter() - start_time
         streaming = getattr(response, "streaming", False)
         response_size = parse_content_length(response.get("Content-Length"))
         if response_size is None and not streaming:
@@ -203,16 +202,93 @@ class ApitallyDjangoMiddleware(CaptureMixin):
                 self.set_body_attribute(
                     span, "apitally.response.body", response_body, config.mask_response_body, "mask_response_body"
                 )
+        if streaming and response_size is None and not getattr(response, "is_async", False):
+            self.finalize_streaming(
+                request, cast("StreamingHttpResponse", response), config, start_time, request_size, route, span
+            )
+            return
         metrics.record_request(
             method=request.method or "",
             route=route or "",
             status_code=response.status_code,
             consumer=get_consumer_identifier(),
-            duration=duration,
+            duration=time.perf_counter() - start_time,
             request_size=request_size,
             response_size=response_size,
             scheme=request.scheme,
         )
+
+    def finalize_streaming(
+        self,
+        request: HttpRequest,
+        response: StreamingHttpResponse,
+        config: ApitallyConfig,
+        start_time: float,
+        request_size: int | None,
+        route: str | None,
+        span: Span | None,
+    ) -> None:
+        """Defer the span export and record metrics once the streamed content completes,
+        after the OTel middleware has ended the SERVER span."""
+        processor = get_server_span_processor()
+        span_id: int | None = None
+        if processor is not None and is_server_span_kept() and span is not None and span.is_recording():
+            context = span.context
+            if context is not None:
+                span_id = context.span_id
+                processor.defer_export(span_id)
+        capture_body = (
+            span_id is not None and config.log_response_body and is_allowed_content_type(response.get("Content-Type"))
+        )
+        method = request.method or ""
+        status_code = response.status_code
+        consumer = get_consumer_identifier()
+        scheme = request.scheme
+        content = cast(Iterable[bytes], response.streaming_content)
+
+        def stream_wrapper() -> Iterator[bytes]:
+            bytes_sent = 0
+            body: bytearray | str | None = bytearray() if capture_body else None
+            completed = False
+            try:
+                for chunk in content:
+                    bytes_sent += len(chunk)
+                    if isinstance(body, bytearray):
+                        body += chunk
+                        if len(body) > MAX_BODY_SIZE:
+                            body = BODY_TOO_LARGE
+                    yield chunk
+                completed = True
+            finally:
+                try:
+                    response_size = bytes_sent if completed else None
+                    extra: dict[str, str | int] = {}
+                    if response_size is not None:
+                        extra["http.response.body.size"] = response_size
+                    # An abandoned iterator leaves a partial buffer; never export a truncated body
+                    if completed and body is not None and span is not None:
+                        extra["apitally.response.body"] = self.process_body(
+                            span,
+                            bytes(body) if isinstance(body, bytearray) else body,
+                            config.mask_response_body,
+                            "mask_response_body",
+                        )
+                    if processor is not None and span_id is not None:
+                        processor.finish_export(span_id, extra or None)
+                    metrics.record_request(
+                        method=method,
+                        route=route or "",
+                        status_code=status_code,
+                        consumer=consumer,
+                        duration=time.perf_counter() - start_time,
+                        request_size=request_size,
+                        response_size=response_size,
+                        scheme=scheme,
+                    )
+                except Exception:  # pragma: no cover
+                    logger.exception("Error in Apitally Django middleware")
+
+        response.streaming_content = stream_wrapper()
 
     def get_route(self, request: HttpRequest) -> str | None:
         match = request.resolver_match
