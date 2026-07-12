@@ -203,6 +203,34 @@ def test_unhandled_exception_recorded_on_server_span(
     assert unwrap(event.attributes)["exception.message"] == "boom"
 
 
+def test_unhandled_exception_with_http_middleware_recorded_unwrapped(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    # On old Starlette versions, exceptions raised behind BaseHTTPMiddleware propagate
+    # wrapped in a single-leaf ExceptionGroup
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def passthrough(request: Any, call_next: Any) -> Any:
+        return await call_next(request)
+
+    @app.get("/error")
+    def error() -> None:
+        raise ValueError("boom")
+
+    try:
+        init(app, monkeypatch)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/error")
+        assert response.status_code == 500
+        (span,) = exported_spans(exporters)
+        (event,) = [e for e in span.events if e.name == "exception"]
+        assert unwrap(event.attributes)["exception.type"] == "ValueError"
+        assert unwrap(event.attributes)["exception.message"] == "boom"
+    finally:
+        FastAPIInstrumentor.uninstrument_app(app)
+
+
 def test_unhandled_exception_response_captured(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):

@@ -1,8 +1,10 @@
 import logging
+import sys
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import lru_cache, partial
+from typing import Any
 
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
@@ -13,6 +15,16 @@ from opentelemetry.util.types import AttributeValue
 from apitally.shared.config import ApitallyConfig, get_config
 from apitally.shared.redaction import combine_patterns, compile_patterns, matches_any
 
+
+if sys.version_info >= (3, 11):
+    _exception_group_types: tuple[type[BaseExceptionGroup], ...] = (BaseExceptionGroup,)  # noqa: F821
+else:
+    try:
+        from exceptiongroup import BaseExceptionGroup as _BaseExceptionGroup
+
+        _exception_group_types = (_BaseExceptionGroup,)
+    except ImportError:  # pragma: no cover
+        _exception_group_types = ()
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +96,15 @@ def is_sampled_in(trace_id: int, bound: int) -> bool:
     return trace_id & TraceIdRatioBased.TRACE_ID_LIMIT < bound
 
 
+def record_collapsed_exception(
+    record_exception: Callable[..., None], exception: BaseException, *args: Any, **kwargs: Any
+) -> None:
+    """Unwraps single-leaf ExceptionGroups before recording the exception on the span."""
+    while isinstance(exception, _exception_group_types) and len(exception.exceptions) == 1:  # ty: ignore[unresolved-attribute]
+        exception = exception.exceptions[0]  # ty: ignore[unresolved-attribute]
+    record_exception(exception, *args, **kwargs)
+
+
 class ApitallySpanProcessor(SpanProcessor):
     """Acts as a single keep/drop mechanism in front of the wrapped export processor."""
 
@@ -111,6 +132,7 @@ class ApitallySpanProcessor(SpanProcessor):
                 if span.kind == SpanKind.SERVER:
                     server_span_var.set(span)
                     server_span_processor_var.set(self)
+                    span.record_exception = partial(record_collapsed_exception, span.record_exception)
                     keep = not self.exclude_request(span) and self.sample_request(span, span.context.trace_id)
                     server_span_kept_var.set(keep)
                     self.spans[span.context.span_id] = (keep, span.context.span_id if keep else None)

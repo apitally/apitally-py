@@ -7,6 +7,8 @@ from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.starlette import StarletteInstrumentor
 from opentelemetry.trace import SpanKind, StatusCode
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
@@ -158,6 +160,35 @@ def test_unhandled_exception_recorded_on_server_span(
     assert unwrap(event.attributes)["exception.message"] == "boom"
     (point,) = duration_data_points(reader)
     assert unwrap(point.attributes)["http.response.status_code"] == 500
+
+
+def test_unhandled_exception_with_http_middleware_recorded_unwrapped(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    # On old Starlette versions, exceptions raised behind BaseHTTPMiddleware propagate
+    # wrapped in a single-leaf ExceptionGroup
+    async def passthrough(request: Request, call_next: Any) -> Any:
+        return await call_next(request)
+
+    async def error(request: Request) -> JSONResponse:
+        raise ValueError("boom")
+
+    app = Starlette(
+        routes=[Route("/error", error)],
+        middleware=[Middleware(BaseHTTPMiddleware, dispatch=passthrough)],
+    )
+    try:
+        init(app, monkeypatch)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/error")
+        assert response.status_code == 500
+        (span,) = exported_spans(exporters)
+        assert span.status.status_code == StatusCode.ERROR
+        (event,) = [e for e in span.events if e.name == "exception"]
+        assert unwrap(event.attributes)["exception.type"] == "ValueError"
+        assert unwrap(event.attributes)["exception.message"] == "boom"
+    finally:
+        StarletteInstrumentor.uninstrument_app(app)
 
 
 def test_unhandled_exception_response_captured(
