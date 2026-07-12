@@ -127,9 +127,13 @@ def test_init_twice_does_not_stack_middleware(
     app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch)
-    user_middleware = list(app.user_middleware)
     init(app, monkeypatch)
-    assert app.user_middleware == user_middleware
+    layer = app.build_middleware_stack()
+    count = 0
+    while layer is not None:
+        count += isinstance(layer, ApitallyASGIMiddleware)
+        layer = getattr(layer, "app", None)
+    assert count == 1
 
     with TestClient(app) as client:
         assert client.get("/items/42").status_code == 200
@@ -146,15 +150,28 @@ def test_unhandled_exception_recorded_on_server_span(
         response = client.get("/error")
     assert response.status_code == 500
 
-    # The 500 response comes from ServerErrorMiddleware outside all user middleware,
-    # so the span carries the exception but no status code; metrics still record 500
     (span,) = exported_spans(exporters)
+    assert unwrap(span.attributes)["http.response.status_code"] == 500
     assert span.status.status_code == StatusCode.ERROR
     (event,) = [e for e in span.events if e.name == "exception"]
     assert unwrap(event.attributes)["exception.type"] == "ValueError"
     assert unwrap(event.attributes)["exception.message"] == "boom"
     (point,) = duration_data_points(reader)
     assert unwrap(point.attributes)["http.response.status_code"] == 500
+
+
+def test_unhandled_exception_response_captured(
+    app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch, log_response_headers=True, log_response_body=True)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/error")
+    assert response.status_code == 500
+    (span,) = exported_spans(exporters)
+    attributes = unwrap(span.attributes)
+    assert attributes["http.response.header.content-type"] == ["text/plain; charset=utf-8"]
+    assert attributes["apitally.response.body"] == "Internal Server Error"
+    assert attributes["http.response.body.size"] == len("Internal Server Error")
 
 
 def test_pre_instrumented_started_app_rebuilds_middleware_stack(

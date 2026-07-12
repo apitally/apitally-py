@@ -4,10 +4,13 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from opentelemetry import trace
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.util.http import get_excluded_urls
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.middleware.errors import ServerErrorMiddleware
 from starlette.routing import Match
 from starlette.schemas import SchemaGenerator
 
@@ -18,7 +21,7 @@ from apitally.shared.asgi import ApitallyASGIMiddleware
 if TYPE_CHECKING:
     from opentelemetry.sdk.trace import ReadableSpan
     from starlette.routing import BaseRoute
-    from starlette.types import Scope
+    from starlette.types import ASGIApp, Receive, Scope, Send
 
 
 __all__ = ["init_apitally"]
@@ -64,8 +67,9 @@ def init_apitally(
 
 
 def _instrument_app(app: Starlette) -> None:
-    if any(m.cls is ApitallyASGIMiddleware for m in app.user_middleware):
+    if getattr(app, "_is_instrumented_by_apitally", False):
         return
+    setattr(app, "_is_instrumented_by_apitally", True)
     if getattr(app, "_is_instrumented_by_opentelemetry", False):
         # Pre-instrumented app: insert the transport middleware just inside the existing
         # OpenTelemetryMiddleware so it runs inside the SERVER span
@@ -75,18 +79,49 @@ def _instrument_app(app: Starlette) -> None:
         if app.middleware_stack is not None:
             app.middleware_stack = app.build_middleware_stack()
         return
-    # add_middleware prepends, so each layer wraps the previous: shim -> OpenTelemetry -> transport
-    app.add_middleware(ApitallyASGIMiddleware, resolve_route=_resolve_route)
-    # Composed directly instead of via StarletteInstrumentor.instrument_app, which does not
-    # accept exclude_spans and would create two unwanted receive/send spans per request
-    app.add_middleware(
-        OpenTelemetryMiddleware,
-        excluded_urls=get_excluded_urls("STARLETTE"),
-        default_span_details=_get_default_span_details,
-        exclude_spans=["receive", "send"],
-    )
     setattr(app, "_is_instrumented_by_opentelemetry", True)
-    app.add_middleware(activation.ASGIActivationShim)
+
+    # Replacing build_middleware_stack puts the transport middleware outside
+    # ServerErrorMiddleware, so 500 responses to unhandled exceptions pass through it
+    build_inner = app.build_middleware_stack
+
+    def build_with_shim() -> activation.ASGIActivationShim:
+        inner = build_inner()
+        if isinstance(inner, ServerErrorMiddleware):
+            inner.app = _ExceptionRecordingMiddleware(inner.app)
+        return activation.ASGIActivationShim(
+            ApitallyASGIMiddleware(
+                # Composed directly instead of via StarletteInstrumentor.instrument_app, which
+                # does not accept exclude_spans and would create two receive/send spans per request
+                OpenTelemetryMiddleware(  # ty: ignore[invalid-argument-type]
+                    inner,
+                    excluded_urls=get_excluded_urls("STARLETTE"),
+                    default_span_details=_get_default_span_details,
+                    exclude_spans=["receive", "send"],
+                ),
+                resolve_route=_resolve_route,
+            )
+        )
+
+    app.build_middleware_stack = build_with_shim  # ty: ignore[invalid-assignment]
+
+
+class _ExceptionRecordingMiddleware:
+    """Records unhandled exceptions before ServerErrorMiddleware sends the 500 response,
+    which ends the SERVER span."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await self.app(scope, receive, send)
+        except Exception as exc:
+            span = trace.get_current_span()
+            if span.is_recording():
+                span.record_exception(exc)
+                span.set_status(Status(StatusCode.ERROR, f"{type(exc).__name__}: {exc}"))
+            raise
 
 
 def _get_default_span_details(scope: Scope) -> tuple[str, dict[str, Any]]:
