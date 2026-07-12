@@ -133,9 +133,15 @@ def _wrap_error_handler(app: Application) -> None:
 
 def _get_paths(app: Application) -> list[dict[str, str]]:
     openapi = OpenAPIHandler(info=Info(title="", version=""))
+    path_items = openapi.get_paths(app)
+    routers = list(app.router._sub_routers or [])
+    while routers:
+        router = routers.pop()
+        path_items.update(openapi.get_routes_docs(router))
+        routers.extend(router._sub_routers or [])
     methods = ("get", "put", "post", "delete", "patch")
     paths = []
-    for path, path_item in openapi.get_paths(app).items():
+    for path, path_item in path_items.items():
         for method in methods:
             operation: Operation | None = getattr(path_item, method, None)
             if operation is not None:
