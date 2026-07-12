@@ -9,7 +9,7 @@ from apitally.shared import metrics
 from apitally.shared.capture import ALLOWED_CONTENT_TYPES, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
 from apitally.shared.consumer import get_consumer_identifier, reset_consumer
 from apitally.shared.redaction import REDACTED, Redaction
-from apitally.shared.span_processor import get_server_span, is_server_span_kept
+from apitally.shared.span_processor import get_server_span, get_server_span_processor, is_server_span_kept
 
 
 logger = logging.getLogger(__name__)
@@ -136,24 +136,22 @@ class ApitallyASGIMiddleware(CaptureMixin):
                 # Partial buffers from aborted requests/responses are never exported
                 if request_too_large:
                     span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
-                elif capture_request and request_body and request_body_complete:
-                    self.set_body_attribute(
-                        span,
-                        "apitally.request.body",
-                        bytes(request_body),
-                        config.mask_request_body,
-                        "mask_request_body",
-                    )
                 if response_too_large:
                     span.set_attribute("apitally.response.body", BODY_TOO_LARGE)
-                elif capture_response and response_body and response_body_complete:
-                    self.set_body_attribute(
-                        span,
-                        "apitally.response.body",
-                        bytes(response_body),
-                        config.mask_response_body,
-                        "mask_response_body",
-                    )
+                stash_request = (
+                    bytes(request_body)
+                    if capture_request and not request_too_large and request_body and request_body_complete
+                    else None
+                )
+                stash_response = (
+                    bytes(response_body)
+                    if capture_response and not response_too_large and response_body and response_body_complete
+                    else None
+                )
+                if (stash_request is not None or stash_response is not None) and span.context is not None:
+                    processor = get_server_span_processor()
+                    if processor is not None:
+                        processor.stash_bodies(span.context.span_id, stash_request, stash_response)
             metrics.record_request(
                 method=scope.get("method", ""),
                 route=route or "",

@@ -108,19 +108,19 @@ class ApitallyWSGIMiddleware(CaptureMixin):
         span = get_server_span()
         if not kept or span is None or not span.is_recording():
             return
+        processor = get_server_span_processor()
         if not state.request_attributes_written:
             state.request_attributes_written = True
             if state.request_size is not None:
                 span.set_attribute("http.request.body.size", state.request_size)
             if config.log_request_headers:
                 self.set_header_attributes(span, "http.request.header.", environ_headers(environ))
-            if state.request_body is not None:
-                self.set_body_attribute(
-                    span, "apitally.request.body", state.request_body, config.mask_request_body, "mask_request_body"
-                )
+            if isinstance(state.request_body, str):
+                span.set_attribute("apitally.request.body", state.request_body)
+            elif state.request_body is not None and processor is not None and span.context is not None:
+                processor.stash_bodies(span.context.span_id, request_body=state.request_body)
         if config.log_response_headers:
             self.set_header_attributes(span, "http.response.header.", headers)
-        processor = get_server_span_processor()
         if processor is not None and span.context is not None:
             # The final response size is only known at finalize, which may run after the span has ended
             processor.defer_export(span.context.span_id)
@@ -139,19 +139,18 @@ class ApitallyWSGIMiddleware(CaptureMixin):
             extra: dict[str, str | int] = {}
             if state.response_size is not None:
                 extra["http.response.body.size"] = state.response_size
+            processor = get_server_span_processor() if state.deferred_span_id is not None else None
             if kept and span is not None and state.response_body is not None:
                 body = state.response_body
                 if isinstance(body, bytearray):
                     # An abandoned iterable leaves a partial buffer; never export a truncated body
                     body = bytes(body) if state.completed else None
-                if body is not None:
-                    extra["apitally.response.body"] = self.process_body(
-                        span,
-                        body,
-                        config.mask_response_body,
-                        "mask_response_body",
-                    )
-            if state.deferred_span_id is not None and (processor := get_server_span_processor()) is not None:
+                if isinstance(body, str):
+                    extra["apitally.response.body"] = body
+                elif body is not None and processor is not None and state.deferred_span_id is not None:
+                    # The deferred export guarantees process_ended_span still runs and attaches this body
+                    processor.stash_bodies(state.deferred_span_id, response_body=body)
+            if state.deferred_span_id is not None and processor is not None:
                 processor.finish_export(state.deferred_span_id, extra or None)
             route = self.get_route(environ) if self.get_route is not None else None
             metrics.record_request(

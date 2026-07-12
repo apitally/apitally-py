@@ -141,6 +141,10 @@ def should_skip_activation() -> bool:
     )
 
 
+def create_batch_span_processor(env: str) -> BatchSpanProcessor:
+    return BatchSpanProcessor(ApitallySpanExporter(providers.create_span_exporter(env)))
+
+
 def start_pipelines() -> None:
     global env, resource, span_processor, log_processor, logger_provider, inherited_span_processor
     user_provider = providers.get_user_tracer_provider()
@@ -158,9 +162,10 @@ def start_pipelines() -> None:
         span_processor.pending.clear()
         span_processor.deferred.clear()
         span_processor.held.clear()
-        span_processor.downstream = BatchSpanProcessor(ApitallySpanExporter(providers.create_span_exporter(env)))
+        span_processor.bodies.clear()
+        span_processor.downstream = create_batch_span_processor(env)
     else:
-        span_processor = ApitallySpanProcessor(BatchSpanProcessor(ApitallySpanExporter(providers.create_span_exporter(env))))
+        span_processor = ApitallySpanProcessor(create_batch_span_processor(env))
         if user_provider is not None:
             providers.attach_to_tracer_provider(user_provider, span_processor)
         else:
@@ -198,7 +203,7 @@ def after_fork_in_parent() -> None:
         if not activated or env is None:  # pragma: no cover
             return
         if span_processor is not None:
-            span_processor.downstream = BatchSpanProcessor(ApitallySpanExporter(providers.create_span_exporter(env)))
+            span_processor.downstream = create_batch_span_processor(env)
         if log_processor is not None:
             log_processor.downstream = BatchLogRecordProcessor(providers.create_log_exporter(env))
         metrics.attach_reader(env)
