@@ -11,14 +11,12 @@ from apitally.shared import metrics
 from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
 from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import get_consumer_identifier, reset_consumer
-from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import get_server_span, get_server_span_processor, is_server_span_kept
 
 
 if TYPE_CHECKING:
     from _typeshed import OptExcInfo
     from _typeshed.wsgi import StartResponse, WSGIApplication, WSGIEnvironment
-    from opentelemetry.sdk.trace import Span
 
 
 logger = logging.getLogger(__name__)
@@ -108,20 +106,28 @@ class ApitallyWSGIMiddleware(CaptureMixin):
         span = get_server_span()
         if not kept or span is None or not span.is_recording():
             return
+        processor = get_server_span_processor()
+        stash_request_headers: dict[str, list[str]] | None = None
+        stash_request_body: bytes | None = None
         if not state.request_attributes_written:
             state.request_attributes_written = True
             if state.request_size is not None:
                 span.set_attribute("http.request.body.size", state.request_size)
+            if state.request_body is BODY_TOO_LARGE:
+                span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
+            elif isinstance(state.request_body, bytes):
+                stash_request_body = state.request_body
             if config.log_request_headers:
-                self.set_header_attributes(span, "http.request.header.", environ_headers(environ))
-            if state.request_body is not None:
-                self.set_body_attribute(
-                    span, "apitally.request.body", state.request_body, config.mask_request_body, "mask_request_body"
-                )
-        if config.log_response_headers:
-            self.set_header_attributes(span, "http.response.header.", headers)
-        processor = get_server_span_processor()
+                stash_request_headers = environ_headers(environ)
+        stash_response_headers = headers if config.log_response_headers else None
         if processor is not None and span.context is not None:
+            if stash_request_headers or stash_request_body or stash_response_headers:
+                processor.update_stash(
+                    span.context.span_id,
+                    request_headers=stash_request_headers,
+                    request_body=stash_request_body,
+                    response_headers=stash_response_headers,
+                )
             # The final response size is only known at finalize, which may run after the span has ended
             processor.defer_export(span.context.span_id)
             state.deferred_span_id = span.context.span_id
@@ -139,19 +145,18 @@ class ApitallyWSGIMiddleware(CaptureMixin):
             extra: dict[str, str | int] = {}
             if state.response_size is not None:
                 extra["http.response.body.size"] = state.response_size
+            processor = get_server_span_processor() if state.deferred_span_id is not None else None
             if kept and span is not None and state.response_body is not None:
                 body = state.response_body
                 if isinstance(body, bytearray):
                     # An abandoned iterable leaves a partial buffer; never export a truncated body
                     body = bytes(body) if state.completed else None
-                if body is not None:
-                    extra["apitally.response.body"] = self.process_body(
-                        span,
-                        body,
-                        config.mask_response_body,
-                        "mask_response_body",
-                    )
-            if state.deferred_span_id is not None and (processor := get_server_span_processor()) is not None:
+                if body is BODY_TOO_LARGE:
+                    extra["apitally.response.body"] = BODY_TOO_LARGE
+                elif isinstance(body, bytes) and processor is not None and state.deferred_span_id is not None:
+                    # The deferred export guarantees process_ended_span still runs and attaches this body
+                    processor.update_stash(state.deferred_span_id, response_body=body)
+            if state.deferred_span_id is not None and processor is not None:
                 processor.finish_export(state.deferred_span_id, extra or None)
             route = self.get_route(environ) if self.get_route is not None else None
             metrics.record_request(
@@ -166,12 +171,6 @@ class ApitallyWSGIMiddleware(CaptureMixin):
             )
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally WSGI middleware")
-
-    def set_header_attributes(self, span: Span, prefix: str, headers: dict[str, list[str]]) -> None:
-        for name, values in headers.items():
-            if self.redaction.should_redact_header(name):
-                values = [REDACTED]
-            span.set_attribute(prefix + name, values)
 
 
 class ResponseWrapper:
@@ -251,7 +250,7 @@ def environ_headers(environ: WSGIEnvironment) -> dict[str, list[str]]:
     return headers
 
 
-def group_headers(headers: list[tuple[str, str]]) -> dict[str, list[str]]:
+def group_headers(headers: Iterable[tuple[str, str]]) -> dict[str, list[str]]:
     grouped: dict[str, list[str]] = {}
     for name, value in headers:
         grouped.setdefault(name.lower(), []).append(value)

@@ -212,7 +212,7 @@ def test_unhandled_exception_response_captured(
     assert response.status_code == 500
     (span,) = exported_spans(exporters)
     attributes = unwrap(span.attributes)
-    assert attributes["http.response.header.content-type"] == ("text/plain; charset=utf-8",)
+    assert attributes["http.response.header.content-type"] == ["text/plain; charset=utf-8"]
     assert attributes["apitally.response.body"] == "Internal Server Error"
     assert attributes["http.response.body.size"] == len("Internal Server Error")
 

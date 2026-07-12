@@ -3,13 +3,10 @@ import time
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
-from opentelemetry.sdk.trace import Span
-
 from apitally.shared import metrics
 from apitally.shared.capture import ALLOWED_CONTENT_TYPES, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
 from apitally.shared.consumer import get_consumer_identifier, reset_consumer
-from apitally.shared.redaction import REDACTED, Redaction
-from apitally.shared.span_processor import get_server_span, is_server_span_kept
+from apitally.shared.span_processor import get_server_span, get_server_span_processor, is_server_span_kept
 
 
 logger = logging.getLogger(__name__)
@@ -21,16 +18,11 @@ Send = Callable[[Message], Awaitable[None]]
 ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 
-def set_header_attributes(
-    span: Span, prefix: str, headers: Iterable[tuple[bytes, bytes]], redaction: Redaction
-) -> None:
+def group_headers(headers: Iterable[tuple[bytes, bytes]]) -> dict[str, list[str]]:
     grouped: dict[str, list[str]] = {}
     for name, value in headers:
         grouped.setdefault(name.decode("latin-1").lower(), []).append(value.decode("latin-1"))
-    for name, values in grouped.items():
-        if redaction.should_redact_header(name):
-            values = [REDACTED]
-        span.set_attribute(prefix + name, values)
+    return grouped
 
 
 class ApitallyASGIMiddleware(CaptureMixin):
@@ -63,6 +55,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
         response_started = False
         response_size: int | None = None
         response_size_counter = 0
+        response_headers: list[tuple[bytes, bytes]] | None = None
         response_body = bytearray()
         response_body_complete = False
         response_too_large = False
@@ -123,8 +116,6 @@ class ApitallyASGIMiddleware(CaptureMixin):
                     route = root_path[len(initial_root_path) :] + route
             span = get_server_span()
             if is_server_span_kept() and span is not None and span.is_recording():
-                if config.log_request_headers:
-                    set_header_attributes(span, "http.request.header.", request_headers, self.redaction)
                 if route:
                     # Overwrites the instrumentor's raw route so spans and metrics agree on the template
                     span.set_attribute("http.route", route)
@@ -136,24 +127,32 @@ class ApitallyASGIMiddleware(CaptureMixin):
                 # Partial buffers from aborted requests/responses are never exported
                 if request_too_large:
                     span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
-                elif capture_request and request_body and request_body_complete:
-                    self.set_body_attribute(
-                        span,
-                        "apitally.request.body",
-                        bytes(request_body),
-                        config.mask_request_body,
-                        "mask_request_body",
-                    )
                 if response_too_large:
                     span.set_attribute("apitally.response.body", BODY_TOO_LARGE)
-                elif capture_response and response_body and response_body_complete:
-                    self.set_body_attribute(
-                        span,
-                        "apitally.response.body",
-                        bytes(response_body),
-                        config.mask_response_body,
-                        "mask_response_body",
-                    )
+                stash_request_headers = group_headers(request_headers) if config.log_request_headers else None
+                stash_response_headers = group_headers(response_headers) if response_headers is not None else None
+                stash_request_body = (
+                    bytes(request_body)
+                    if capture_request and not request_too_large and request_body and request_body_complete
+                    else None
+                )
+                stash_response_body = (
+                    bytes(response_body)
+                    if capture_response and not response_too_large and response_body and response_body_complete
+                    else None
+                )
+                if (
+                    stash_request_headers or stash_request_body or stash_response_headers or stash_response_body
+                ) and span.context is not None:
+                    processor = get_server_span_processor()
+                    if processor is not None:
+                        processor.update_stash(
+                            span.context.span_id,
+                            request_headers=stash_request_headers,
+                            request_body=stash_request_body,
+                            response_headers=stash_response_headers,
+                            response_body=stash_response_body,
+                        )
             metrics.record_request(
                 method=scope.get("method", ""),
                 route=route or "",
@@ -166,28 +165,27 @@ class ApitallyASGIMiddleware(CaptureMixin):
             )
 
         async def send_wrapper(message: Message) -> None:
-            nonlocal status, response_started, response_size, response_size_counter
+            nonlocal status, response_started, response_size, response_size_counter, response_headers
             nonlocal response_body, response_body_complete, response_too_large, capture_response
             try:
                 if message["type"] == "http.response.start":
                     response_started = True
                     status = message["status"]
-                    response_headers = message.get("headers") or []
-                    content_length = parse_int(get_header(response_headers, b"content-length"))
-                    if content_length is not None and get_header(response_headers, b"transfer-encoding") != b"chunked":
+                    headers = message.get("headers") or []
+                    content_length = parse_int(get_header(headers, b"content-length"))
+                    if content_length is not None and get_header(headers, b"transfer-encoding") != b"chunked":
                         response_size = content_length
                     kept = is_server_span_kept()
                     capture_response = (
                         kept
                         and config.log_response_body
-                        and is_allowed_content_type(get_header(response_headers, b"content-type"))
+                        and is_allowed_content_type(get_header(headers, b"content-type"))
                     )
                     response_too_large = (
                         capture_response and response_size is not None and response_size > MAX_BODY_SIZE
                     )
-                    span = get_server_span()
-                    if kept and config.log_response_headers and span is not None and span.is_recording():
-                        set_header_attributes(span, "http.response.header.", response_headers, self.redaction)
+                    if kept and config.log_response_headers:
+                        response_headers = headers
                 elif message["type"] == "http.response.body":
                     body = message.get("body", b"")
                     response_size_counter += len(body)

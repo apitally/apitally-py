@@ -24,9 +24,8 @@ from apitally.shared import activation, config, metrics, startup
 from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
 from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import get_consumer_identifier, reset_consumer
-from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import get_server_span, get_server_span_processor, is_server_span_kept
-from apitally.shared.wsgi import parse_content_length
+from apitally.shared.wsgi import group_headers, parse_content_length
 
 
 if TYPE_CHECKING:
@@ -191,19 +190,27 @@ class ApitallyDjangoMiddleware(CaptureMixin):
                 span.set_attribute("http.request.body.size", request_size)
             if response_size is not None:
                 span.set_attribute("http.response.body.size", response_size)
-            if config.log_request_headers:
-                self.set_header_attributes(span, "http.request.header.", request.headers.items())
-            if config.log_response_headers:
-                self.set_header_attributes(span, "http.response.header.", response.items())
-            if request_body is not None:
-                self.set_body_attribute(
-                    span, "apitally.request.body", request_body, config.mask_request_body, "mask_request_body"
-                )
             response_body = self.capture_response_body(response, config, response_size, streaming)
-            if response_body is not None:
-                self.set_body_attribute(
-                    span, "apitally.response.body", response_body, config.mask_response_body, "mask_response_body"
-                )
+            if request_body is BODY_TOO_LARGE:
+                span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
+            if response_body is BODY_TOO_LARGE:
+                span.set_attribute("apitally.response.body", BODY_TOO_LARGE)
+            stash_request_headers = group_headers(request.headers.items()) if config.log_request_headers else None
+            stash_response_headers = group_headers(response.items()) if config.log_response_headers else None
+            stash_request_body = request_body if isinstance(request_body, bytes) else None
+            stash_response_body = response_body if isinstance(response_body, bytes) else None
+            if (
+                stash_request_headers or stash_request_body or stash_response_headers or stash_response_body
+            ) and span.context is not None:
+                processor = get_server_span_processor()
+                if processor is not None:
+                    processor.update_stash(
+                        span.context.span_id,
+                        request_headers=stash_request_headers,
+                        request_body=stash_request_body,
+                        response_headers=stash_response_headers,
+                        response_body=stash_response_body,
+                    )
         if streaming and response_size is None and not getattr(response, "is_async", False):
             self.finalize_streaming(
                 request, cast("StreamingHttpResponse", response), config, start_time, request_size, route, span
@@ -268,13 +275,12 @@ class ApitallyDjangoMiddleware(CaptureMixin):
                     if response_size is not None:
                         extra["http.response.body.size"] = response_size
                     # An abandoned iterator leaves a partial buffer; never export a truncated body
-                    if completed and body is not None and span is not None:
-                        extra["apitally.response.body"] = self.process_body(
-                            span,
-                            bytes(body) if isinstance(body, bytearray) else body,
-                            config.mask_response_body,
-                            "mask_response_body",
-                        )
+                    if completed and body is not None:
+                        if body is BODY_TOO_LARGE:
+                            extra["apitally.response.body"] = BODY_TOO_LARGE
+                        elif isinstance(body, bytearray) and processor is not None and span_id is not None:
+                            # The deferred export guarantees process_ended_span still runs and attaches this body
+                            processor.update_stash(span_id, response_body=bytes(body))
                     if processor is not None and span_id is not None:
                         processor.finish_export(span_id, extra or None)
                     metrics.record_request(
@@ -298,14 +304,8 @@ class ApitallyDjangoMiddleware(CaptureMixin):
             return _regex_to_route_template(match.route)
         return None  # pragma: no cover
 
-    def set_header_attributes(self, span: Span, prefix: str, headers: Iterable[tuple[str, str]]) -> None:
-        for name, value in headers:
-            name = name.lower()
-            values = [REDACTED] if self.redaction.should_redact_header(name) else [value]
-            span.set_attribute(prefix + name, values)
 
-
-@lru_cache(256)
+@lru_cache(1024)
 def _regex_to_route_template(path: str) -> str:
     return PATH_PARAMETER_RE.sub(r"{\g<parameter>}", simplify_regex(path))
 
