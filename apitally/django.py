@@ -196,10 +196,10 @@ class ApitallyDjangoMiddleware(CaptureMixin):
             if config.log_response_headers:
                 self.set_header_attributes(span, "http.response.header.", response.items())
             response_body = self.capture_response_body(response, config, response_size, streaming)
-            if isinstance(request_body, str):
-                span.set_attribute("apitally.request.body", request_body)
-            if isinstance(response_body, str):
-                span.set_attribute("apitally.response.body", response_body)
+            if request_body is BODY_TOO_LARGE:
+                span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
+            if response_body is BODY_TOO_LARGE:
+                span.set_attribute("apitally.response.body", BODY_TOO_LARGE)
             stash_request = request_body if isinstance(request_body, bytes) else None
             stash_response = response_body if isinstance(response_body, bytes) else None
             if (stash_request is not None or stash_response is not None) and span.context is not None:
@@ -271,9 +271,9 @@ class ApitallyDjangoMiddleware(CaptureMixin):
                         extra["http.response.body.size"] = response_size
                     # An abandoned iterator leaves a partial buffer; never export a truncated body
                     if completed and body is not None:
-                        if isinstance(body, str):
-                            extra["apitally.response.body"] = body
-                        elif processor is not None and span_id is not None:
+                        if body is BODY_TOO_LARGE:
+                            extra["apitally.response.body"] = BODY_TOO_LARGE
+                        elif isinstance(body, bytearray) and processor is not None and span_id is not None:
                             # The deferred export guarantees process_ended_span still runs and attaches this body
                             processor.stash_bodies(span_id, response_body=bytes(body))
                     if processor is not None and span_id is not None:

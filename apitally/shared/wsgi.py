@@ -115,9 +115,9 @@ class ApitallyWSGIMiddleware(CaptureMixin):
                 span.set_attribute("http.request.body.size", state.request_size)
             if config.log_request_headers:
                 self.set_header_attributes(span, "http.request.header.", environ_headers(environ))
-            if isinstance(state.request_body, str):
-                span.set_attribute("apitally.request.body", state.request_body)
-            elif state.request_body is not None and processor is not None and span.context is not None:
+            if state.request_body is BODY_TOO_LARGE:
+                span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
+            elif isinstance(state.request_body, bytes) and processor is not None and span.context is not None:
                 processor.stash_bodies(span.context.span_id, request_body=state.request_body)
         if config.log_response_headers:
             self.set_header_attributes(span, "http.response.header.", headers)
@@ -145,9 +145,9 @@ class ApitallyWSGIMiddleware(CaptureMixin):
                 if isinstance(body, bytearray):
                     # An abandoned iterable leaves a partial buffer; never export a truncated body
                     body = bytes(body) if state.completed else None
-                if isinstance(body, str):
-                    extra["apitally.response.body"] = body
-                elif body is not None and processor is not None and state.deferred_span_id is not None:
+                if body is BODY_TOO_LARGE:
+                    extra["apitally.response.body"] = BODY_TOO_LARGE
+                elif isinstance(body, bytes) and processor is not None and state.deferred_span_id is not None:
                     # The deferred export guarantees process_ended_span still runs and attaches this body
                     processor.stash_bodies(state.deferred_span_id, response_body=body)
             if state.deferred_span_id is not None and processor is not None:
