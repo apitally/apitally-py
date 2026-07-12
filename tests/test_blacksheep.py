@@ -84,6 +84,28 @@ async def test_request_exports_span_with_route_and_records_metrics(
     assert "openapi" not in payload
 
 
+async def test_startup_paths_include_sub_router_routes(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    allow_activation(monkeypatch)
+    books = Router(prefix="/books")
+
+    @books.get("/{book_id}")
+    def get_book(book_id: str) -> Response:
+        return text(f"book {book_id}")
+
+    app = Application(router=Router(sub_routers=[books]))
+    init_apitally(app, write_token=WRITE_TOKEN)
+
+    @app.router.get("/health")
+    def health() -> Response:
+        return text("ok")
+
+    await app.start()
+
+    payload = startup_payload(exporters)
+    assert {"method": "GET", "path": "/books/{book_id}"} in payload["paths"]
+    assert {"method": "GET", "path": "/health"} in payload["paths"]
+
+
 async def test_unmatched_request_has_no_route_and_no_histogram_point(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
