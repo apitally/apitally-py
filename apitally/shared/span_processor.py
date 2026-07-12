@@ -160,9 +160,7 @@ class ApitallySpanProcessor(SpanProcessor):
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally span processor")
 
-    def stash_bodies(
-        self, span_id: int, request_body: bytes | None = None, response_body: bytes | None = None
-    ) -> None:
+    def stash_bodies(self, span_id: int, request_body: bytes | None = None, response_body: bytes | None = None) -> None:
         """Hold raw bodies until process_ended_span attaches them to the exported SERVER span snapshot."""
         existing = self.bodies.get(span_id)
         if existing is not None:

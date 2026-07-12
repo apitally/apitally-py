@@ -218,6 +218,19 @@ def test_sample_on_response_keeps_errors_drops_healthy(exporter: InMemorySpanExp
     assert [s.name for s in exporter.get_finished_spans()] == ["child", "GET /b"]
 
 
+def test_sampled_out_response_releases_stashed_bodies(exporter: InMemorySpanExporter):
+    set_config(write_token=WRITE_TOKEN, sample_on_response=lambda span: False)
+    processor = ApitallySpanProcessor(SimpleSpanProcessor(exporter))
+    provider = TracerProvider(sampler=ALWAYS_ON)
+    provider.add_span_processor(processor)
+    tracer = provider.get_tracer(CONTRIB_SCOPE)
+
+    with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER) as span:
+        processor.stash_bodies(span.get_span_context().span_id, request_body=b'{"a": 1}')
+    assert exporter.get_finished_spans() == ()
+    assert processor.bodies == {}
+
+
 def test_span_buffer_cap_bounds_kept_and_dropped_requests(exporter: InMemorySpanExporter):
     set_config(
         write_token=WRITE_TOKEN,

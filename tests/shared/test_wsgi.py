@@ -196,6 +196,22 @@ def test_request_body_not_read_for_disallowed_content_type(tracer: Tracer, expor
     assert environ["wsgi.input"] is spy
 
 
+def test_request_and_response_bodies_captured_together(tracer: Tracer, exporter: InMemorySpanExporter):
+    # The bodies are stashed in separate calls (response start vs finalize), covering the merge in stash_bodies
+    set_config(write_token=WRITE_TOKEN, log_request_body=True, log_response_body=True)
+
+    def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
+        start_response("200 OK", [("Content-Type", "application/json")])
+        return [b'{"token": "abc"}']
+
+    body = b'{"password": "x", "user": "u"}'
+    environ = make_environ(method="POST", body=body, content_type="application/json", content_length=str(len(body)))
+    attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, exporter)
+
+    assert json.loads(str(attributes["apitally.request.body"])) == {"password": REDACTED, "user": "u"}
+    assert json.loads(str(attributes["apitally.response.body"])) == {"token": REDACTED}
+
+
 def test_response_body_captured_from_chunks(tracer: Tracer, exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN, log_response_body=True)
     iterable = ClosingIterable([b'{"token": "abc", ', b'"id": 1}'])
