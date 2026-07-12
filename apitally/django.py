@@ -7,6 +7,7 @@ import sys
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import suppress
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
 
 import django
@@ -304,6 +305,7 @@ class ApitallyDjangoMiddleware(CaptureMixin):
             span.set_attribute(prefix + name, values)
 
 
+@lru_cache(256)
 def _regex_to_route_template(path: str) -> str:
     return PATH_PARAMETER_RE.sub(r"{\g<parameter>}", simplify_regex(path))
 

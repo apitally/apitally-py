@@ -76,7 +76,7 @@ class Redaction:
             return [self.redact_body(item) for item in data]
         return data
 
-    @lru_cache(maxsize=100)
+    @lru_cache(maxsize=128)
     def should_redact_header(self, name: str) -> bool:
         # Also match the underscore-normalized attribute key form emitted by older instrumentors
         return matches_any(self.header_patterns, name) or matches_any(self.header_patterns, name.replace("_", "-"))
@@ -84,6 +84,10 @@ class Redaction:
 
 def compile_patterns(patterns: list[str]) -> list[re.Pattern[str]]:
     return [re.compile(pattern, re.IGNORECASE) for pattern in patterns]
+
+
+def combine_patterns(patterns: list[str]) -> re.Pattern[str]:
+    return re.compile("|".join(f"(?:{pattern})" for pattern in patterns), re.IGNORECASE)
 
 
 def matches_any(patterns: list[re.Pattern[str]], value: str) -> bool:
