@@ -15,6 +15,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from apitally.shared import config, metrics, providers, sentry
 from apitally.shared.config import TRUE_VALUES, ApitallyConfig
+from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.log_processor import ApitallyLogRecordProcessor, install_root_handler, uninstall_root_handler
 from apitally.shared.span_processor import ApitallySpanProcessor
 
@@ -157,9 +158,9 @@ def start_pipelines() -> None:
         span_processor.pending.clear()
         span_processor.deferred.clear()
         span_processor.held.clear()
-        span_processor.downstream = BatchSpanProcessor(providers.create_span_exporter(env))
+        span_processor.downstream = BatchSpanProcessor(ApitallySpanExporter(providers.create_span_exporter(env)))
     else:
-        span_processor = ApitallySpanProcessor(BatchSpanProcessor(providers.create_span_exporter(env)))
+        span_processor = ApitallySpanProcessor(BatchSpanProcessor(ApitallySpanExporter(providers.create_span_exporter(env))))
         if user_provider is not None:
             providers.attach_to_tracer_provider(user_provider, span_processor)
         else:
@@ -197,7 +198,7 @@ def after_fork_in_parent() -> None:
         if not activated or env is None:  # pragma: no cover
             return
         if span_processor is not None:
-            span_processor.downstream = BatchSpanProcessor(providers.create_span_exporter(env))
+            span_processor.downstream = BatchSpanProcessor(ApitallySpanExporter(providers.create_span_exporter(env)))
         if log_processor is not None:
             log_processor.downstream = BatchLogRecordProcessor(providers.create_log_exporter(env))
         metrics.attach_reader(env)

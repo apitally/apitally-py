@@ -1,11 +1,9 @@
 import contextvars
-from urllib.parse import parse_qsl
 
 import pytest
 from opentelemetry import trace
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
-from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, TraceIdRatioBased
@@ -13,7 +11,6 @@ from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, TraceFl
 
 from apitally.shared.config import set_config
 from apitally.shared.consumer import get_consumer_identifier, reset_consumer, set_consumer
-from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import (
     MAX_BUFFERED_SPANS,
     ApitallySpanProcessor,
@@ -379,48 +376,6 @@ def test_contrib_send_receive_spans_dropped_user_spans_kept(
         with user_tracer.start_as_current_span("my http send"):
             pass
     assert {s.name for s in exporter.get_finished_spans()} == {"GET /items", "my http send"}
-
-
-def test_forwarded_span_redacted_and_original_unmutated(tracer: Tracer, exporter: InMemorySpanExporter):
-    attributes = {
-        "url.query": "token=secret123&page=2",
-        "http.target": "/items?token=secret123&page=2",
-        "http.url": "https://example.com/items?token=secret123&page=2",
-        "http.request.header.authorization": ("Bearer secret123",),
-        "http.request.header.x_api_key": ("secret123",),
-        "http.response.header.set-cookie": ("session=abc",),
-        "http.response.header.content-type": ("application/json",),
-    }
-    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER, attributes=attributes) as span:
-        pass
-    assert isinstance(span, SDKSpan)
-
-    (exported,) = exporter.get_finished_spans()
-    assert dict(parse_qsl(str(unwrap(exported.attributes)["url.query"]))) == {"token": REDACTED, "page": "2"}
-    assert dict(parse_qsl(str(unwrap(exported.attributes)["http.target"]).partition("?")[2])) == {
-        "token": REDACTED,
-        "page": "2",
-    }
-    assert "secret123" not in str(unwrap(exported.attributes)["http.url"])
-    assert unwrap(exported.attributes)["http.request.header.authorization"] == [REDACTED]
-    assert unwrap(exported.attributes)["http.request.header.x_api_key"] == [REDACTED]
-    assert unwrap(exported.attributes)["http.response.header.set-cookie"] == [REDACTED]
-    assert unwrap(exported.attributes)["http.response.header.content-type"] == ("application/json",)
-
-    assert unwrap(span.attributes)["url.query"] == "token=secret123&page=2"
-    assert unwrap(span.attributes)["http.request.header.authorization"] == ("Bearer secret123",)
-
-
-def test_client_span_url_full_redacted(tracer: Tracer, exporter: InMemorySpanExporter):
-    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
-        with tracer.start_as_current_span(
-            "GET", kind=SpanKind.CLIENT, attributes={"url.full": "https://x.example/v1?api-key=secret&ok=1"}
-        ):
-            pass
-    client = next(s for s in exporter.get_finished_spans() if s.kind == SpanKind.CLIENT)
-    url = str(unwrap(client.attributes)["url.full"])
-    assert url.startswith("https://x.example/v1?")
-    assert dict(parse_qsl(url.partition("?")[2])) == {"api-key": REDACTED, "ok": "1"}
 
 
 def test_context_var_resolves_server_span_inside_request_only(tracer: Tracer):
