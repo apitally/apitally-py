@@ -56,7 +56,6 @@ class SpoolFile:
 
     def __init__(self, signal: str, in_memory: bool) -> None:
         self.signal = signal
-        self.created_at = time.time()
         self.first_attempt_at: float | None = None
         self.uncompressed_size = 0
         self.compressed_size = 0

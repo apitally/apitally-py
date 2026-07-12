@@ -130,7 +130,6 @@ def test_attempted_file_expires_after_send_horizon(spool: Spool, caplog: pytest.
     files = {file.signal: file for file in spool.pending_files()}
     for signal in ("traces", "metrics"):
         files[signal].first_attempt_at = time.monotonic() - SEND_HORIZON - 1
-    files["logs"].created_at = time.time() - 10 * 60 * 60
     with caplog.at_level(logging.WARNING, logger="apitally.shared.spool"):
         spool.rotate_for_export()
     assert [file.signal for file in spool.pending_files()] == ["logs"]

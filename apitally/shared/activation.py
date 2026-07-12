@@ -145,8 +145,7 @@ def should_skip_activation() -> bool:
     )
 
 
-# Batch processor parameters are passed explicitly so the OTEL_BSP_* / OTEL_BLRP_* env
-# var fallbacks in the stock constructors never apply to this private pipeline
+# All four parameters passed explicitly; see the rationale on the BATCH_* constants
 def create_batch_span_processor(spool: Spool) -> BatchSpanProcessor:
     return BatchSpanProcessor(
         ApitallySpanExporter(export.create_span_exporter(spool)),

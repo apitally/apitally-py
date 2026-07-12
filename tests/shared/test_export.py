@@ -241,7 +241,6 @@ def test_expired_attempted_file_evicted_while_never_attempted_file_delivers(
     spool.rotate_for_export()
     files = {file.signal: file for file in spool.pending_files()}
     files["traces"].first_attempt_at = time.monotonic() - SEND_HORIZON - 1
-    files["logs"].created_at = time.time() - 2 * SEND_HORIZON
     with caplog.at_level(logging.WARNING):
         worker.run_cycle(None)
     assert otlp_server.paths() == ["/v1/logs"]

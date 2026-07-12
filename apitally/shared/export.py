@@ -40,7 +40,9 @@ MAX_LOG_VALUE_LENGTH = 2048
 
 # Batch processor parameters are always passed explicitly, because the stock constructors
 # fall back to OTEL_BSP_* / OTEL_BLRP_* env vars for any parameter left as None and this
-# private pipeline must not be tuned by env vars aimed at the user's own exporters
+# private pipeline must not be tuned by env vars aimed at the user's own exporters. The
+# schedule delay is lowered so telemetry reaches the spool fast; the other values are the
+# stock defaults
 BATCH_SCHEDULE_DELAY_MILLIS = 1_000
 BATCH_MAX_QUEUE_SIZE = 2_048
 BATCH_MAX_EXPORT_BATCH_SIZE = 512
