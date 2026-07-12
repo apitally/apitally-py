@@ -44,8 +44,6 @@ EXCLUDE_USER_AGENT_PATTERN = combine_patterns(
     ]
 )
 
-RECEIVE_SEND_NAME_SUFFIXES = (" http send", " http receive", " websocket send", " websocket receive")
-CONTRIB_SCOPE_PREFIX = "opentelemetry.instrumentation."
 MAX_BUFFERED_SPANS = 1_000
 MAX_STASHED_REQUESTS = 2_048
 STASH_ATTRIBUTE = "_apitally_stash"
@@ -323,7 +321,7 @@ def copy_span_with_attributes(span: ReadableSpan, attributes: dict[str, Attribut
 def is_contrib_receive_send_span(span: Span) -> bool:
     return (
         span.kind == SpanKind.INTERNAL
-        and span.name.endswith(RECEIVE_SEND_NAME_SUFFIXES)
+        and span.name.endswith((" http send", " http receive", " websocket send", " websocket receive"))
         and span.instrumentation_scope is not None
-        and span.instrumentation_scope.name.startswith(CONTRIB_SCOPE_PREFIX)
+        and span.instrumentation_scope.name.startswith("opentelemetry.instrumentation.")
     )
