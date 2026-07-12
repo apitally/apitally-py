@@ -37,7 +37,7 @@ from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span_processor
 from apitally.shared.spool import SEND_HORIZON, Spool
-from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, StubOTLPServer, unwrap
+from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, StubOTLPServer, installed, unwrap
 
 
 @pytest.fixture(autouse=True)
@@ -333,3 +333,134 @@ def test_shutdown_performs_final_drain_and_stops_thread(
     assert unwrap(worker.thread).is_alive() is False
     assert otlp_server.paths() == ["/v1/traces"]
     assert spool.pending_files() == []
+
+
+starlette_required = pytest.mark.skipif(
+    not installed("starlette", "opentelemetry.instrumentation.starlette"),
+    reason="end-to-end tests use the Starlette adapter",
+)
+
+
+def create_starlette_client(otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> Any:
+    from starlette.applications import Starlette
+    from starlette.requests import Request
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    from apitally.starlette import init_apitally
+
+    async def get_item(request: Request) -> JSONResponse:
+        logging.getLogger("myapp").warning("handling item")
+        return JSONResponse({"item_id": request.path_params["item_id"]})
+
+    async def login(request: Request) -> JSONResponse:
+        await request.json()
+        return JSONResponse({"ok": True})
+
+    app = Starlette(routes=[Route("/items/{item_id}", get_item), Route("/login", login, methods=["POST"])])
+    monkeypatch.setenv("APITALLY_OTLP_ENDPOINT", otlp_server.url)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
+    init_apitally(app, write_token=WRITE_TOKEN, **kwargs)
+    return TestClient(app)
+
+
+def decoded_records(otlp_server: StubOTLPServer, path: str, message_type: Any) -> list[Any]:
+    return [
+        message_type.FromString(gzip.decompress(body))
+        for request_path, _, body in otlp_server.requests
+        if request_path == path
+    ]
+
+
+@starlette_required
+def test_end_to_end_request_delivers_all_three_signals_decoded(
+    otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
+
+    from apitally.shared import activation, startup
+
+    with create_starlette_client(otlp_server, monkeypatch) as client:
+        assert client.get("/items/42").status_code == 200
+        assert unwrap(activation.spool).in_memory is False
+        unwrap(activation.export_worker).run_cycle(None)
+
+    assert {"/v1/traces", "/v1/logs", "/v1/metrics"} <= set(otlp_server.paths())
+
+    (trace_request,) = decoded_records(otlp_server, "/v1/traces", ExportTraceServiceRequest)
+    (server_span,) = [
+        span
+        for rs in trace_request.resource_spans
+        for ss in rs.scope_spans
+        for span in ss.spans
+        if not span.parent_span_id
+    ]
+    attributes = {kv.key: kv.value for kv in server_span.attributes}
+    assert attributes["http.route"].string_value == "/items/{item_id}"
+    assert attributes["http.response.status_code"].int_value == 200
+
+    (log_request,) = decoded_records(otlp_server, "/v1/logs", ExportLogsServiceRequest)
+    records = [record for rl in log_request.resource_logs for sl in rl.scope_logs for record in sl.log_records]
+    assert any(record.event_name == startup.EVENT_NAME for record in records)
+    assert any(record.body.string_value == "handling item" for record in records)
+
+    (metrics_request,) = decoded_records(otlp_server, "/v1/metrics", ExportMetricsServiceRequest)
+    metric_names = {
+        metric.name for rm in metrics_request.resource_metrics for sm in rm.scope_metrics for metric in sm.metrics
+    }
+    assert "http.server.request.duration" in metric_names
+
+
+@starlette_required
+def test_end_to_end_sensitive_body_redacted_on_disk_and_wire(
+    otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from apitally.shared import activation
+
+    with create_starlette_client(otlp_server, monkeypatch, log_request_body=True) as client:
+        assert client.post("/login", json={"password": "hunter2"}).status_code == 200
+        spool = unwrap(activation.spool)
+        unwrap(activation.span_processor).downstream.force_flush()
+        spool.close_current_files()
+        disk_payloads = b"".join(
+            gzip.decompress(file.read_bytes()) for file in spool.pending_files() if file.signal == "traces"
+        )
+        assert b"hunter2" not in disk_payloads
+        assert b"apitally.request.body" in disk_payloads
+        assert REDACTED.encode() in disk_payloads
+        unwrap(activation.export_worker).run_cycle(None)
+
+    wire_payloads = b"".join(gzip.decompress(body) for _, _, body in otlp_server.requests)
+    assert b"hunter2" not in wire_payloads
+    assert b"apitally.request.body" in wire_payloads
+    assert REDACTED.encode() in wire_payloads
+
+
+@starlette_required
+def test_end_to_end_downtime_data_delivered_byte_identical_after_recovery(
+    otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from apitally.shared import activation
+
+    otlp_server.respond = lambda path: (503, {})
+    with create_starlette_client(otlp_server, monkeypatch) as client:
+        assert client.get("/items/42").status_code == 200
+        worker = unwrap(activation.export_worker)
+        worker.run_cycle(None)
+        assert unwrap(activation.spool).pending_files()
+        first_attempt_bodies = {path: body for path, _, body in otlp_server.requests}
+
+        otlp_server.respond = lambda path: (200, {})
+        worker.run_cycle(None)
+        worker.run_cycle(None)
+        assert unwrap(activation.spool).pending_files() == []
+
+    for path, body in first_attempt_bodies.items():
+        delivered = [b for p, _, b in otlp_server.requests[len(first_attempt_bodies) :] if p == path]
+        assert body in delivered
+
+    trace_request = decoded_records(otlp_server, "/v1/traces", ExportTraceServiceRequest)[-1]
+    span_names = [span.name for rs in trace_request.resource_spans for ss in rs.scope_spans for span in ss.spans]
+    assert any("/items" in name for name in span_names)
