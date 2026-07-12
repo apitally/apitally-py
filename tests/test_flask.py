@@ -204,7 +204,7 @@ def test_response_headers_include_headers_added_by_framework(
 
     (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
-    assert attributes["http.response.header.x-custom"] == ("value",)
+    assert attributes["http.response.header.x-custom"] == ["value"]
     # Content-Length is added by werkzeug after the view returns, so its presence proves
     # the headers were captured as sent, not as returned by the view
     assert "http.response.header.content-length" in attributes

@@ -197,7 +197,7 @@ def test_request_body_not_read_for_disallowed_content_type(tracer: Tracer, expor
 
 
 def test_request_and_response_bodies_captured_together(tracer: Tracer, exporter: InMemorySpanExporter):
-    # The bodies are stashed in separate calls (response start vs finalize), covering the merge in stash_bodies
+    # The bodies are stashed in separate calls (response start vs finalize), covering the merge in update_stash
     set_config(write_token=WRITE_TOKEN, log_request_body=True, log_response_body=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
@@ -256,10 +256,10 @@ def test_request_headers_redacted(tracer: Tracer, exporter: InMemorySpanExporter
     attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, exporter)
 
     assert attributes["http.request.header.authorization"] == [REDACTED]
-    assert attributes["http.request.header.accept"] == ("application/json",)
+    assert attributes["http.request.header.accept"] == ["application/json"]
     # CONTENT_TYPE and CONTENT_LENGTH live outside the HTTP_ environ namespace
-    assert attributes["http.request.header.content-type"] == ("text/plain",)
-    assert attributes["http.request.header.content-length"] == ("0",)
+    assert attributes["http.request.header.content-type"] == ["text/plain"]
+    assert attributes["http.request.header.content-length"] == ["0"]
 
 
 def test_sampled_out_request_produces_no_span(exporter: InMemorySpanExporter):

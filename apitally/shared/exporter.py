@@ -5,9 +5,10 @@ from collections.abc import Callable, Sequence
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
-from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
-from apitally.shared.redaction import REDACTED
-from apitally.shared.span_processor import BODIES_ATTRIBUTE, copy_span_with_attributes
+from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE
+from apitally.shared.config import ApitallyConfig, get_config
+from apitally.shared.redaction import REDACTED, Redaction
+from apitally.shared.span_processor import STASH_ATTRIBUTE, RequestStash, copy_span_with_attributes
 
 
 logger = logging.getLogger(__name__)
@@ -16,12 +17,16 @@ QUERY_ATTRIBUTES = ("url.query", "http.target", "http.url", "url.full")
 HEADER_ATTRIBUTE_PREFIXES = ("http.request.header.", "http.response.header.")
 
 
-class ApitallySpanExporter(SpanExporter, CaptureMixin):
-    """Applies redaction and body processing on the export thread, in front of the delegate exporter."""
+class ApitallySpanExporter(SpanExporter):
+    """Applies redaction and attaches stashed headers and bodies on the export thread,
+    in front of the delegate exporter."""
 
     def __init__(self, delegate: SpanExporter) -> None:
         self.delegate = delegate
-        self.bind_config()
+        self.config = get_config() or ApitallyConfig()
+        self.redaction = Redaction(
+            self.config.mask_query_params, self.config.mask_headers, self.config.mask_body_fields
+        )
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         processed = []
@@ -34,11 +39,10 @@ class ApitallySpanExporter(SpanExporter, CaptureMixin):
         return self.delegate.export(processed)
 
     def process_span(self, span: ReadableSpan) -> ReadableSpan:
-        """Return a copy with redaction applied and body attributes added. The copy does not
-        carry the raw bodies, and the original span is never mutated."""
-        request_body, response_body = getattr(span, BODIES_ATTRIBUTE, (None, None))
-        has_bodies = request_body is not None or response_body is not None
-        if not has_bodies and not any(
+        """Return a copy with redaction applied and stashed headers and bodies added as attributes.
+        The copy does not carry the stash, and the original span is never mutated."""
+        stash: RequestStash | None = getattr(span, STASH_ATTRIBUTE, None)
+        if stash is None and not any(
             key in QUERY_ATTRIBUTES or key.startswith(HEADER_ATTRIBUTE_PREFIXES) for key in span.attributes or {}
         ):
             return span
@@ -57,17 +61,28 @@ class ApitallySpanExporter(SpanExporter, CaptureMixin):
             if redacted != value:
                 attributes[key] = redacted
                 changed = True
-        if request_body is not None:
+        if stash is None:
+            return copy_span_with_attributes(span, attributes) if changed else span
+        for prefix, headers in (
+            ("http.request.header.", stash.request_headers),
+            ("http.response.header.", stash.response_headers),
+        ):
+            if headers:
+                for name, values in self.redaction.redact_headers(headers).items():
+                    attributes[prefix + name] = values
+        # The mask callbacks receive the span as it will be exported, minus the body attributes
+        span = copy_span_with_attributes(span, dict(attributes))
+        if stash.request_body is None and stash.response_body is None:
+            return span
+        if stash.request_body is not None:
             attributes["apitally.request.body"] = self.process_body(
-                span, request_body, self.config.mask_request_body, "mask_request_body"
+                span, stash.request_body, self.config.mask_request_body, "mask_request_body"
             )
-            changed = True
-        if response_body is not None:
+        if stash.response_body is not None:
             attributes["apitally.response.body"] = self.process_body(
-                span, response_body, self.config.mask_response_body, "mask_response_body"
+                span, stash.response_body, self.config.mask_response_body, "mask_response_body"
             )
-            changed = True
-        return copy_span_with_attributes(span, attributes) if changed else span
+        return copy_span_with_attributes(span, attributes)
 
     def process_body(
         self,

@@ -162,7 +162,7 @@ def start_pipelines() -> None:
         span_processor.pending.clear()
         span_processor.deferred.clear()
         span_processor.held.clear()
-        span_processor.bodies.clear()
+        span_processor.stash.clear()
         span_processor.downstream = create_batch_span_processor(env)
     else:
         span_processor = ApitallySpanProcessor(create_batch_span_processor(env))

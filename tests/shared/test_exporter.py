@@ -11,7 +11,7 @@ from opentelemetry.trace import SpanKind
 from apitally.shared.config import set_config
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
-from apitally.shared.span_processor import BODIES_ATTRIBUTE, ApitallySpanProcessor, get_server_span_processor
+from apitally.shared.span_processor import STASH_ATTRIBUTE, ApitallySpanProcessor, get_server_span_processor
 from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, create_trace_pipeline, unwrap
 
 
@@ -71,8 +71,8 @@ def test_span_without_sensitive_attributes_passes_through_unchanged():
     assert passed_through is span
 
 
-def test_user_attached_exporters_never_see_bodies():
-    set_config(write_token=WRITE_TOKEN, log_request_body=True)
+def test_user_attached_exporters_never_see_captured_headers_and_bodies():
+    set_config(write_token=WRITE_TOKEN, log_request_headers=True, log_request_body=True)
     user_exporter = InMemorySpanExporter()
     apitally_exporter = InMemorySpanExporter()
     provider = TracerProvider(sampler=ALWAYS_ON)
@@ -82,32 +82,47 @@ def test_user_attached_exporters_never_see_bodies():
 
     with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER) as span:
         processor = unwrap(get_server_span_processor())
-        processor.stash_bodies(span.get_span_context().span_id, request_body=b'{"password": "hunter2"}')
+        processor.update_stash(
+            span.get_span_context().span_id,
+            request_headers={"authorization": ["Bearer secret123"], "accept": ["application/json"]},
+            request_body=b'{"password": "hunter2"}',
+        )
 
     (apitally_span,) = apitally_exporter.get_finished_spans()
     assert json.loads(str(unwrap(apitally_span.attributes)["apitally.request.body"])) == {"password": REDACTED}
+    assert unwrap(apitally_span.attributes)["http.request.header.authorization"] == [REDACTED]
+    assert unwrap(apitally_span.attributes)["http.request.header.accept"] == ["application/json"]
 
     (user_span,) = user_exporter.get_finished_spans()
     attributes = dict(user_span.attributes or {})
     assert "apitally.request.body" not in attributes
+    assert not any(key.startswith("http.request.header.") for key in attributes)
     assert "hunter2" not in str(attributes)
-    assert not hasattr(user_span, BODIES_ATTRIBUTE)
+    assert "secret123" not in str(attributes)
+    assert not hasattr(user_span, STASH_ATTRIBUTE)
 
 
-def test_mask_callback_receives_ended_span():
+def test_mask_callback_receives_ended_span_with_redacted_headers():
     seen: list[ReadableSpan] = []
 
     def mask(span: ReadableSpan, body: bytes) -> bytes:
         seen.append(span)
         return body
 
-    set_config(write_token=WRITE_TOKEN, log_request_body=True, mask_request_body=mask)
+    set_config(write_token=WRITE_TOKEN, log_request_headers=True, log_request_body=True, mask_request_body=mask)
     tracer, exporter = create_trace_pipeline()
     with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER) as span:
         processor = unwrap(get_server_span_processor())
-        processor.stash_bodies(span.get_span_context().span_id, request_body=b'{"a": 1}')
+        processor.update_stash(
+            span.get_span_context().span_id,
+            request_headers={"authorization": ["Bearer secret123"], "content-type": ["application/json"]},
+            request_body=b'{"a": 1}',
+        )
 
     (exported,) = exporter.get_finished_spans()
     assert unwrap(exported.attributes)["apitally.request.body"] == '{"a":1}'
     (seen_span,) = seen
     assert seen_span.end_time is not None
+    assert unwrap(seen_span.attributes)["http.request.header.authorization"] == [REDACTED]
+    assert unwrap(seen_span.attributes)["http.request.header.content-type"] == ["application/json"]
+    assert not hasattr(seen_span, STASH_ATTRIBUTE)

@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
+from dataclasses import dataclass
 from functools import lru_cache
 
 from opentelemetry.context import Context
@@ -46,8 +47,19 @@ EXCLUDE_USER_AGENT_PATTERN = combine_patterns(
 RECEIVE_SEND_NAME_SUFFIXES = (" http send", " http receive", " websocket send", " websocket receive")
 CONTRIB_SCOPE_PREFIX = "opentelemetry.instrumentation."
 MAX_BUFFERED_SPANS = 1_000
-MAX_STASHED_BODIES = 2_048
-BODIES_ATTRIBUTE = "_apitally_bodies"
+MAX_STASHED_REQUESTS = 2_048
+STASH_ATTRIBUTE = "_apitally_stash"
+
+
+@dataclass(slots=True)
+class RequestStash:
+    """Headers and bodies captured by a transport for one request, held until the SERVER span is exported."""
+
+    request_headers: dict[str, list[str]] | None = None
+    request_body: bytes | None = None
+    response_headers: dict[str, list[str]] | None = None
+    response_body: bytes | None = None
+
 
 server_span_var: ContextVar[Span | None] = ContextVar("apitally_server_span", default=None)
 server_span_kept_var: ContextVar[bool] = ContextVar("apitally_server_span_kept", default=False)
@@ -84,7 +96,7 @@ class ApitallySpanProcessor(SpanProcessor):
         self.pending: dict[int, list[ReadableSpan]] = {}
         self.deferred: set[int] = set()
         self.held: dict[int, ReadableSpan] = {}
-        self.bodies: dict[int, tuple[bytes | None, bytes | None]] = {}
+        self.stash: dict[int, RequestStash] = {}
         # Assigned by the log processor so both buffers flush or discard on the same decision
         self.on_request_finished: Callable[[int, bool], None] | None = None
         self.config = get_config() or ApitallyConfig()
@@ -160,16 +172,30 @@ class ApitallySpanProcessor(SpanProcessor):
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally span processor")
 
-    def stash_bodies(self, span_id: int, request_body: bytes | None = None, response_body: bytes | None = None) -> None:
-        """Hold raw bodies until process_ended_span attaches them to the exported SERVER span snapshot."""
-        existing = self.bodies.get(span_id)
-        if existing is not None:
-            request_body = request_body if request_body is not None else existing[0]
-            response_body = response_body if response_body is not None else existing[1]
-        elif len(self.bodies) >= MAX_STASHED_BODIES:
-            self.bodies.pop(next(iter(self.bodies)))
-            logger.debug("Apitally body stash cap reached, dropping oldest entry")
-        self.bodies[span_id] = (request_body, response_body)
+    def update_stash(
+        self,
+        span_id: int,
+        request_headers: dict[str, list[str]] | None = None,
+        request_body: bytes | None = None,
+        response_headers: dict[str, list[str]] | None = None,
+        response_body: bytes | None = None,
+    ) -> None:
+        """Hold captured headers and bodies until process_ended_span attaches them to the exported
+        SERVER span snapshot. Fields already stashed for the span are kept unless a new value is given."""
+        entry = self.stash.get(span_id)
+        if entry is None:
+            if len(self.stash) >= MAX_STASHED_REQUESTS:
+                self.stash.pop(next(iter(self.stash)))
+                logger.debug("Apitally request stash cap reached, dropping oldest entry")
+            entry = self.stash[span_id] = RequestStash()
+        if request_headers is not None:
+            entry.request_headers = request_headers
+        if request_body is not None:
+            entry.request_body = request_body
+        if response_headers is not None:
+            entry.response_headers = response_headers
+        if response_body is not None:
+            entry.response_body = response_body
 
     def process_ended_span(self, span: ReadableSpan, context: SpanContext) -> None:
         keep, server_span_id = self.spans.pop(context.span_id, (False, None))
@@ -178,16 +204,16 @@ class ApitallySpanProcessor(SpanProcessor):
         buffer = self.pending.pop(context.span_id, None)
         if buffer is not None:
             # Pending SERVER root: the response-stage decision flushes or discards the whole request
-            bodies = self.bodies.pop(context.span_id, None)
+            stash = self.stash.pop(context.span_id, None)
             response_kept = self.sample_response(span, context.trace_id)
             if response_kept:
                 for buffered_span in buffer:
                     self.downstream.on_end(buffered_span)
-                if bodies is not None:
+                if stash is not None:
                     # A private copy, because user-attached processors receive the same shared snapshot.
-                    # If the batch queue drops the span, the bodies are freed with it.
+                    # If the batch queue drops the span, the stash is freed with it.
                     span = copy_span_with_attributes(span, dict(span.attributes or {}))
-                    setattr(span, BODIES_ATTRIBUTE, bodies)
+                    setattr(span, STASH_ATTRIBUTE, stash)
                 self.downstream.on_end(span)
             else:
                 # Mark the request's still-open spans as dropped so telemetry arriving later is discarded
@@ -218,7 +244,7 @@ class ApitallySpanProcessor(SpanProcessor):
         self.deferred.clear()
         # Pending requests' SERVER spans can never export after shutdown, so their telemetry is unreachable
         self.pending.clear()
-        self.bodies.clear()
+        self.stash.clear()
         self.downstream.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
