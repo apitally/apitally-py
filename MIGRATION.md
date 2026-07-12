@@ -112,7 +112,9 @@ Sampling decisions are deterministic per trace ID, so services sampling at the s
 
 ## Masking request and response bodies
 
-`mask_request_body_callback` and `mask_response_body_callback` are renamed to `mask_request_body` and `mask_response_body`. They no longer receive request/response dicts; the new signature is `(span, body: bytes) -> bytes | None`, where `span` is the request's SERVER span. Returning `None` replaces the captured body with `[REDACTED]`.
+`mask_request_body_callback` and `mask_response_body_callback` are renamed to `mask_request_body` and `mask_response_body`. They no longer receive request/response dicts; the new signature is `(span, body: bytes) -> bytes | None`, where `span` is the request's ended SERVER span. Returning `None` replaces the captured body with `[REDACTED]`.
+
+The callbacks run on a background export thread after the response has completed, so they must not rely on request-scoped state such as context variables or framework request globals. Everything needed for the masking decision is available on the `span` argument. Keep the callbacks fast: a slow callback delays the export of all telemetry, not just the request being masked.
 
 ```python
 def mask_request_body(span, body):
