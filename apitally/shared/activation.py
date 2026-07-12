@@ -13,11 +13,13 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from apitally.shared import config, metrics, providers, sentry
+from apitally.shared import config, export, metrics, providers, sentry
 from apitally.shared.config import TRUE_VALUES, ApitallyConfig
+from apitally.shared.export import ExportWorker
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.log_processor import ApitallyLogRecordProcessor, install_root_handler, uninstall_root_handler
 from apitally.shared.span_processor import ApitallySpanProcessor
+from apitally.shared.spool import Spool
 
 
 if TYPE_CHECKING:
@@ -37,6 +39,8 @@ resource: Resource | None = None
 span_processor: ApitallySpanProcessor | None = None
 log_processor: ApitallyLogRecordProcessor | None = None
 logger_provider: LoggerProvider | None = None
+spool: Spool | None = None
+export_worker: ExportWorker | None = None
 
 # OTel's own fork handlers hold weak references to batch processors; keep shut-down
 # instances alive so a later fork never calls a dead reference
@@ -141,18 +145,38 @@ def should_skip_activation() -> bool:
     )
 
 
-def create_batch_span_processor(env: str) -> BatchSpanProcessor:
-    return BatchSpanProcessor(ApitallySpanExporter(providers.create_span_exporter(env)))
+# Batch processor parameters are passed explicitly so the OTEL_BSP_* / OTEL_BLRP_* env
+# var fallbacks in the stock constructors never apply to this private pipeline
+def create_batch_span_processor(spool: Spool) -> BatchSpanProcessor:
+    return BatchSpanProcessor(
+        ApitallySpanExporter(export.create_span_exporter(spool)),
+        max_queue_size=export.BATCH_MAX_QUEUE_SIZE,
+        schedule_delay_millis=export.BATCH_SCHEDULE_DELAY_MILLIS,
+        max_export_batch_size=export.BATCH_MAX_EXPORT_BATCH_SIZE,
+        export_timeout_millis=export.BATCH_EXPORT_TIMEOUT_MILLIS,
+    )
+
+
+def create_batch_log_processor(spool: Spool) -> BatchLogRecordProcessor:
+    return BatchLogRecordProcessor(
+        export.create_log_exporter(spool),
+        max_queue_size=export.BATCH_MAX_QUEUE_SIZE,
+        schedule_delay_millis=export.BATCH_SCHEDULE_DELAY_MILLIS,
+        max_export_batch_size=export.BATCH_MAX_EXPORT_BATCH_SIZE,
+        export_timeout_millis=export.BATCH_EXPORT_TIMEOUT_MILLIS,
+    )
 
 
 def start_pipelines() -> None:
     global env, resource, span_processor, log_processor, logger_provider, inherited_span_processor
+    global spool, export_worker
     user_provider = providers.get_user_tracer_provider()
     env = providers.resolve_env(user_provider)
     # The resource is created here, not at configure, so every activating process mints
     # its own service.instance.id and carries the activation-resolved env
     resource = providers.create_resource(env)
     metrics.setup(resource)
+    spool = Spool()
     if inherited_span_processor is not None:
         # Forked child re-activation: swap in a fresh downstream batch processor, like
         # after_fork_in_parent, and drop the parent's in-flight and pending request state
@@ -163,19 +187,19 @@ def start_pipelines() -> None:
         span_processor.deferred.clear()
         span_processor.held.clear()
         span_processor.stash.clear()
-        span_processor.downstream = create_batch_span_processor(env)
+        span_processor.downstream = create_batch_span_processor(spool)
     else:
-        span_processor = ApitallySpanProcessor(create_batch_span_processor(env))
+        span_processor = ApitallySpanProcessor(create_batch_span_processor(spool))
         if user_provider is not None:
             providers.attach_to_tracer_provider(user_provider, span_processor)
         else:
             providers.setup_tracer_provider(resource, span_processor)
-    log_processor = ApitallyLogRecordProcessor(
-        BatchLogRecordProcessor(providers.create_log_exporter(env)), span_processor
-    )
+    log_processor = ApitallyLogRecordProcessor(create_batch_log_processor(spool), span_processor)
     logger_provider = providers.create_logger_provider(resource, [log_processor])
     install_root_handler(logger_provider, span_processor)
-    metrics.attach_reader(env)
+    metrics.attach_reader(spool)
+    export_worker = ExportWorker(spool, span_processor, log_processor, env)
+    export_worker.start()
 
 
 def before_fork() -> None:
@@ -186,6 +210,8 @@ def before_fork() -> None:
     if not activated:  # pragma: no cover
         return
     try:
+        if export_worker is not None:
+            export_worker.stop()
         metrics.detach_reader()
         if span_processor is not None:
             retired_processors.append(span_processor.downstream)
@@ -193,6 +219,11 @@ def before_fork() -> None:
         if log_processor is not None:
             retired_processors.append(log_processor.downstream)
             log_processor.downstream.shutdown()
+        if spool is not None:
+            # The processor shutdowns above drained their queues into the spool; closing
+            # the current files leaves no open gzip writer at the instant of fork, so the
+            # child cannot corrupt parent files through inherited file descriptors
+            spool.close_current_files()
     except Exception:  # pragma: no cover
         logger.exception("Error stopping Apitally threads before fork")
 
@@ -200,13 +231,18 @@ def before_fork() -> None:
 def after_fork_in_parent() -> None:
     """Re-activate by swapping fresh batch processors into the registered wrappers."""
     try:
-        if not activated or env is None:  # pragma: no cover
+        if not activated or spool is None:  # pragma: no cover
             return
         if span_processor is not None:
-            span_processor.downstream = create_batch_span_processor(env)
+            span_processor.downstream = create_batch_span_processor(spool)
         if log_processor is not None:
-            log_processor.downstream = BatchLogRecordProcessor(providers.create_log_exporter(env))
-        metrics.attach_reader(env)
+            log_processor.downstream = create_batch_log_processor(spool)
+        metrics.attach_reader(spool)
+        if export_worker is not None:
+            # Same spool, closed files intact; the next append opens a fresh current file.
+            # No re-wiring is needed because the worker resolves the repointed downstream
+            # processors and metric reader from module state each cycle
+            export_worker.start()
     except Exception:  # pragma: no cover
         logger.exception("Error re-activating Apitally after fork")
     finally:
@@ -214,9 +250,13 @@ def after_fork_in_parent() -> None:
 
 
 def after_fork_in_child() -> None:
-    """Reset to configured state. Child activates itself if it ever serves."""
+    """Reset to configured state. Child activates itself if it ever serves. The inherited
+    spool and worker are abandoned without flushing, closing or unlinking anything; the
+    spool deletes files only through explicit calls, so dropping the references can never
+    touch the parent's files."""
     global activation_lock, activation_attempted, activated, env, resource
     global span_processor, log_processor, logger_provider, inherited_span_processor
+    global spool, export_worker
     activation_lock = threading.Lock()
     if not activated:  # pragma: no cover
         return
@@ -233,19 +273,26 @@ def after_fork_in_child() -> None:
     span_processor = None
     log_processor = None
     logger_provider = None
+    spool = None
+    export_worker = None
 
 
 def reset() -> None:
     """Full teardown for tests. Shuts down and drops all pipeline state."""
     global activation_lock, activation_attempted, activated, env, resource
     global span_processor, log_processor, logger_provider, inherited_span_processor
+    global spool, export_worker
     activation_lock = threading.Lock()
     uninstall_root_handler()
     metrics.reset()
+    if export_worker is not None:
+        export_worker.stop(timeout=1.0)
     if span_processor is not None:
         span_processor.downstream.shutdown()
     if log_processor is not None:
         log_processor.downstream.shutdown()
+    if spool is not None:
+        spool.clear()
     activation_attempted = False
     activated = False
     env = None
@@ -254,4 +301,6 @@ def reset() -> None:
     log_processor = None
     logger_provider = None
     inherited_span_processor = None
+    spool = None
+    export_worker = None
     on_activate_hooks.clear()

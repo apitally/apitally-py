@@ -1,7 +1,9 @@
 import json
 import os
-from collections.abc import Iterator
+import threading
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.util import find_spec
 from typing import Any, TypeVar
 
@@ -15,9 +17,6 @@ from opentelemetry.sdk.metrics.export import (
     ExponentialHistogramDataPoint,
     InMemoryMetricReader,
     Metric,
-    MetricExporter,
-    MetricExportResult,
-    MetricsData,
 )
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter
@@ -26,7 +25,7 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler
 from opentelemetry.test.globals_test import reset_trace_globals
 from opentelemetry.trace import SpanKind, Tracer
 
-from apitally.shared import activation, config, metrics, providers, startup
+from apitally.shared import activation, config, export, metrics, providers, startup
 from apitally.shared.consumer import consumer_holder_var
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.span_processor import (
@@ -35,6 +34,7 @@ from apitally.shared.span_processor import (
     server_span_processor_var,
     server_span_var,
 )
+from apitally.shared.spool import Spool
 
 
 WRITE_TOKEN = "apt_" + "a" * 24
@@ -115,48 +115,74 @@ def reset_context_vars() -> Iterator[None]:
     consumer_holder_var.set(None)
 
 
-class InMemoryMetricExporter(MetricExporter):
-    def export(self, metrics_data: MetricsData, timeout_millis: float = 10_000, **kwargs: Any) -> MetricExportResult:
-        return MetricExportResult.SUCCESS
-
-    def shutdown(self, timeout_millis: float = 30_000, **kwargs: Any) -> None:
-        pass
-
-    def force_flush(self, timeout_millis: float = 10_000) -> bool:
-        return True
-
-
 @dataclass
 class InMemoryExporters:
     span: list[InMemorySpanExporter] = field(default_factory=list)
     log: list[InMemoryLogRecordExporter] = field(default_factory=list)
-    metric: list[InMemoryMetricExporter] = field(default_factory=list)
 
 
 @pytest.fixture
 def exporters(monkeypatch: pytest.MonkeyPatch) -> InMemoryExporters:
-    """Replace the OTLP exporter factories so activation never constructs network exporters."""
+    """Replace the spool exporter factories with in-memory exporters and keep the export
+    worker thread from starting, so activation never performs network I/O."""
     created = InMemoryExporters()
 
-    def span_exporter(env: str) -> InMemorySpanExporter:
+    def span_exporter(spool: Spool) -> InMemorySpanExporter:
         exporter = InMemorySpanExporter()
         created.span.append(exporter)
         return exporter
 
-    def log_exporter(env: str) -> InMemoryLogRecordExporter:
+    def log_exporter(spool: Spool) -> InMemoryLogRecordExporter:
         exporter = InMemoryLogRecordExporter()
         created.log.append(exporter)
         return exporter
 
-    def metric_exporter(env: str, **kwargs: Any) -> InMemoryMetricExporter:
-        exporter = InMemoryMetricExporter(**kwargs)
-        created.metric.append(exporter)
-        return exporter
-
-    monkeypatch.setattr(providers, "create_span_exporter", span_exporter)
-    monkeypatch.setattr(providers, "create_log_exporter", log_exporter)
-    monkeypatch.setattr(metrics, "create_metric_exporter", metric_exporter)
+    monkeypatch.setattr(export, "create_span_exporter", span_exporter)
+    monkeypatch.setattr(export, "create_log_exporter", log_exporter)
+    monkeypatch.setattr(export.ExportWorker, "start", lambda self: None)
     return created
+
+
+class StubOTLPServer:
+    """Local HTTP server recording POSTed requests, with scriptable responses per path."""
+
+    def __init__(self) -> None:
+        self.requests: list[tuple[str, dict[str, str], bytes]] = []
+        self.respond: Callable[[str], tuple[int, dict[str, str]]] = lambda path: (200, {})
+        stub = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                stub.requests.append((self.path, dict(self.headers), body))
+                status, headers = stub.respond(self.path)
+                self.send_response(status)
+                for key, value in headers.items():
+                    self.send_header(key, value)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, format: str, *args: Any) -> None:
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.server.server_address[1]}"
+
+    def paths(self) -> list[str]:
+        return [path for path, _, _ in self.requests]
+
+
+@pytest.fixture
+def otlp_server() -> Iterator[StubOTLPServer]:
+    stub = StubOTLPServer()
+    yield stub
+    stub.server.shutdown()
+    stub.server.server_close()
 
 
 def attach_metric_reader(provider: MeterProvider | None = None) -> InMemoryMetricReader:

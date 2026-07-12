@@ -1,11 +1,9 @@
 import gzip
 import logging
 import socket
-import threading
 import time
 from collections import deque
-from collections.abc import Callable, Iterator
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -39,7 +37,7 @@ from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span_processor
 from apitally.shared.spool import SEND_HORIZON, Spool
-from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, unwrap
+from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, StubOTLPServer, unwrap
 
 
 @pytest.fixture(autouse=True)
@@ -53,48 +51,6 @@ def spool() -> Iterator[Spool]:
     spool = Spool()
     yield spool
     spool.clear()
-
-
-class StubOTLPServer:
-    """Local HTTP server recording POSTed requests, with scriptable responses per path."""
-
-    def __init__(self) -> None:
-        self.requests: list[tuple[str, dict[str, str], bytes]] = []
-        self.respond: Callable[[str], tuple[int, dict[str, str]]] = lambda path: (200, {})
-        stub = self
-
-        class Handler(BaseHTTPRequestHandler):
-            def do_POST(self) -> None:
-                body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
-                stub.requests.append((self.path, dict(self.headers), body))
-                status, headers = stub.respond(self.path)
-                self.send_response(status)
-                for key, value in headers.items():
-                    self.send_header(key, value)
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-
-            def log_message(self, format: str, *args: Any) -> None:
-                pass
-
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
-
-    @property
-    def url(self) -> str:
-        return f"http://127.0.0.1:{self.server.server_address[1]}"
-
-    def paths(self) -> list[str]:
-        return [path for path, _, _ in self.requests]
-
-
-@pytest.fixture
-def otlp_server() -> Iterator[StubOTLPServer]:
-    stub = StubOTLPServer()
-    yield stub
-    stub.server.shutdown()
-    stub.server.server_close()
 
 
 def make_worker(spool: Spool, endpoint: str) -> ExportWorker:

@@ -148,6 +148,12 @@ class Spool:
                     self._rotate_locked(signal)
             self._evict_locked()
 
+    def close_current_files(self) -> None:
+        """Close every signal's current file so no gzip writer is open across a fork."""
+        with self.lock:
+            for signal in list(self.current):
+                self._rotate_locked(signal)
+
     def pending_files(self) -> list[SpoolFile]:
         """Closed files in send order (oldest first)."""
         with self.lock:

@@ -249,6 +249,16 @@ class ExportWorker:
             self.interval = float(min(max(seconds, MIN_EXPORT_INTERVAL), MAX_EXPORT_INTERVAL))
 
 
+# Factory seam: activation resolves these through the module so tests can substitute
+# in-memory exporters
+def create_span_exporter(spool: Spool) -> SpanExporter:
+    return SpoolSpanExporter(spool)
+
+
+def create_log_exporter(spool: Spool) -> LogRecordExporter:
+    return SpoolLogExporter(spool)
+
+
 def chunked(batch: Sequence) -> list[Sequence]:
     return [batch[i : i + ENCODE_CHUNK_SIZE] for i in range(0, len(batch), ENCODE_CHUNK_SIZE)]
 
