@@ -1,9 +1,17 @@
 import gzip
 import logging
-from collections.abc import Iterator
+import socket
+import threading
+import time
+from collections import deque
+from collections.abc import Callable, Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
+from opentelemetry.instrumentation.utils import is_instrumentation_enabled
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceRequest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.proto.logs.v1.logs_pb2 import LogRecord as PB2LogRecord
@@ -16,13 +24,28 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind
 
+from apitally.shared import export, metrics
+from apitally.shared import spool as spool_module
 from apitally.shared.config import set_config
-from apitally.shared.export import ENCODE_CHUNK_SIZE, MAX_LOG_VALUE_LENGTH, SpoolLogExporter, SpoolSpanExporter
+from apitally.shared.export import (
+    ENCODE_CHUNK_SIZE,
+    EXPORT_INTERVAL_HEADER,
+    MAX_LOG_VALUE_LENGTH,
+    ExportWorker,
+    SpoolLogExporter,
+    SpoolSpanExporter,
+)
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span_processor
-from apitally.shared.spool import Spool
+from apitally.shared.spool import SEND_HORIZON, Spool
 from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, unwrap
+
+
+@pytest.fixture(autouse=True)
+def reset_duplicate_log_filter() -> Iterator[None]:
+    spool_module.duplicate_log_filter.last_logged.clear()
+    yield
 
 
 @pytest.fixture
@@ -30,6 +53,54 @@ def spool() -> Iterator[Spool]:
     spool = Spool()
     yield spool
     spool.clear()
+
+
+class StubOTLPServer:
+    """Local HTTP server recording POSTed requests, with scriptable responses per path."""
+
+    def __init__(self) -> None:
+        self.requests: list[tuple[str, dict[str, str], bytes]] = []
+        self.respond: Callable[[str], tuple[int, dict[str, str]]] = lambda path: (200, {})
+        stub = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                stub.requests.append((self.path, dict(self.headers), body))
+                status, headers = stub.respond(self.path)
+                self.send_response(status)
+                for key, value in headers.items():
+                    self.send_header(key, value)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, format: str, *args: Any) -> None:
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.server.server_address[1]}"
+
+    def paths(self) -> list[str]:
+        return [path for path, _, _ in self.requests]
+
+
+@pytest.fixture
+def otlp_server() -> Iterator[StubOTLPServer]:
+    stub = StubOTLPServer()
+    yield stub
+    stub.server.shutdown()
+    stub.server.server_close()
+
+
+def make_worker(spool: Spool, endpoint: str) -> ExportWorker:
+    set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=endpoint)
+    processor_stub = SimpleNamespace(downstream=SimpleNamespace(force_flush=lambda timeout_millis=30_000: True))
+    return ExportWorker(spool, cast("Any", processor_stub), cast("Any", processor_stub), env="dev")
 
 
 def read_trace_request(spool: Spool) -> ExportTraceServiceRequest:
@@ -143,3 +214,166 @@ def test_apitally_scope_records_are_exempt_from_truncation(spool: Spool) -> None
     provider.get_logger("apitally").emit(body=long_body, event_name="apitally.startup")
     (record,) = read_log_records(spool)
     assert record.body.string_value == long_body
+
+
+def test_export_cycle_posts_all_three_signals_in_lockstep(spool: Spool, otlp_server: StubOTLPServer) -> None:
+    worker = make_worker(spool, otlp_server.url)
+    metrics.setup(Resource.create({}))
+    metrics.attach_reader(spool)
+    metrics.record_request("GET", "/a", 200, consumer=None, duration=0.1)
+    spool.append("traces", b"trace-payload")
+    spool.append("logs", b"log-payload")
+    worker.run_cycle(None)
+    assert sorted(otlp_server.paths()) == ["/v1/logs", "/v1/metrics", "/v1/traces"]
+    _, headers, body = next(request for request in otlp_server.requests if request[0] == "/v1/traces")
+    assert headers["Authorization"] == f"Bearer {WRITE_TOKEN}"
+    assert headers["Apitally-Env"] == "dev"
+    assert headers["Content-Type"] == "application/x-protobuf"
+    assert headers["Content-Encoding"] == "gzip"
+    assert headers["User-Agent"].startswith("apitally-py/")
+    assert gzip.decompress(body) == b"trace-payload"
+    assert spool.pending_files() == []
+
+
+def test_failed_send_retries_next_cycle_with_identical_bytes(spool: Spool, otlp_server: StubOTLPServer) -> None:
+    failures = deque([503])
+    otlp_server.respond = lambda path: (failures.popleft() if failures else 200, {})
+    worker = make_worker(spool, otlp_server.url)
+    spool.append("traces", b"trace-payload")
+    worker.run_cycle(None)
+    assert len(spool.pending_files()) == 1
+    worker.run_cycle(None)
+    assert spool.pending_files() == []
+    first_body, second_body = [body for _, _, body in otlp_server.requests]
+    assert first_body == second_body
+    assert gzip.decompress(first_body) == b"trace-payload"
+
+
+def test_connection_error_keeps_files_and_ends_cycle(spool: Spool) -> None:
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    unused_port = sock.getsockname()[1]
+    sock.close()
+    worker = make_worker(spool, f"http://127.0.0.1:{unused_port}")
+    spool.append("traces", b"trace-payload")
+    spool.rotate_for_export()
+    spool.append("logs", b"log-payload")
+    worker.run_cycle(None)
+    files = {file.signal: file for file in spool.pending_files()}
+    assert set(files) == {"traces", "logs"}
+    assert files["traces"].first_attempt_at is not None
+    assert files["logs"].first_attempt_at is None
+
+
+def test_outage_sends_one_probe_per_cycle_without_accumulating_files(spool: Spool, otlp_server: StubOTLPServer) -> None:
+    otlp_server.respond = lambda path: (503, {})
+    worker = make_worker(spool, otlp_server.url)
+    for _ in range(3):
+        spool.append("traces", b"recorded-during-outage")
+        worker.run_cycle(None)
+    assert len(spool.pending_files()) == 1
+    assert otlp_server.paths() == ["/v1/traces"] * 3
+
+
+def test_expired_attempted_file_evicted_while_never_attempted_file_delivers(
+    spool: Spool, otlp_server: StubOTLPServer, caplog: pytest.LogCaptureFixture
+) -> None:
+    worker = make_worker(spool, otlp_server.url)
+    spool.append("traces", b"attempted-once")
+    spool.append("logs", b"never-attempted")
+    spool.rotate_for_export()
+    files = {file.signal: file for file in spool.pending_files()}
+    files["traces"].first_attempt_at = time.time() - SEND_HORIZON - 1
+    files["logs"].created_at = time.time() - 2 * SEND_HORIZON
+    with caplog.at_level(logging.WARNING):
+        worker.run_cycle(None)
+    assert otlp_server.paths() == ["/v1/logs"]
+    assert spool.pending_files() == []
+    assert any("could not be delivered" in record.message for record in caplog.records)
+
+
+def test_send_site_evicts_file_past_horizon_instead_of_sending(spool: Spool, otlp_server: StubOTLPServer) -> None:
+    worker = make_worker(spool, otlp_server.url)
+    spool.append("traces", b"trace-payload")
+    spool.rotate_for_export()
+    (file,) = spool.pending_files()
+    file.first_attempt_at = time.time() - SEND_HORIZON - 1
+    worker.send_pending(None)
+    assert otlp_server.requests == []
+    assert spool.pending_files() == []
+
+
+def test_permanent_failure_drops_only_that_file_and_warns_once(
+    spool: Spool, otlp_server: StubOTLPServer, caplog: pytest.LogCaptureFixture
+) -> None:
+    otlp_server.respond = lambda path: (402, {}) if path == "/v1/traces" else (200, {})
+    worker = make_worker(spool, otlp_server.url)
+    spool.append("traces", b"trace-payload")
+    spool.append("logs", b"log-payload")
+    with caplog.at_level(logging.WARNING):
+        worker.run_cycle(None)
+        assert spool.pending_files() == []
+        assert otlp_server.paths() == ["/v1/traces", "/v1/logs"]
+        spool.append("traces", b"more-trace-payload")
+        worker.run_cycle(None)
+    assert spool.pending_files() == []
+    assert len([record for record in caplog.records if "rejected" in record.message]) == 1
+
+
+def test_interval_header_applies_with_clamping(spool: Spool, otlp_server: StubOTLPServer) -> None:
+    header_value = {"value": "5"}
+    otlp_server.respond = lambda path: (200, {EXPORT_INTERVAL_HEADER: header_value["value"]})
+    worker = make_worker(spool, otlp_server.url)
+    for value, expected_interval in (("5", 5.0), ("10000", 900.0), ("1", 5.0), ("not-a-number", 5.0)):
+        header_value["value"] = value
+        spool.append("traces", b"trace-payload")
+        worker.run_cycle(None)
+        assert worker.interval == expected_interval
+
+
+def test_first_export_fires_shortly_after_start(
+    spool: Spool, otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 0.05)
+    worker = make_worker(spool, otlp_server.url)
+    spool.append("traces", b"early-payload")
+    worker.start()
+    try:
+        assert unwrap(worker.thread).name == "ApitallyExportWorker"
+        deadline = time.time() + 5
+        while not otlp_server.requests and time.time() < deadline:
+            time.sleep(0.01)
+    finally:
+        worker.stop()
+    assert otlp_server.paths() == ["/v1/traces"]
+
+
+def test_export_cycle_suppresses_instrumentation(spool: Spool, otlp_server: StubOTLPServer) -> None:
+    set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=otlp_server.url)
+    suppressed_flags: list[bool] = []
+    processor_stub = SimpleNamespace(
+        downstream=SimpleNamespace(
+            force_flush=lambda timeout_millis=30_000: suppressed_flags.append(not is_instrumentation_enabled())
+        )
+    )
+    worker = ExportWorker(spool, cast("Any", processor_stub), cast("Any", processor_stub), env="dev")
+    worker.session.hooks["response"] = [
+        lambda response, **kwargs: suppressed_flags.append(not is_instrumentation_enabled())
+    ]
+    spool.append("traces", b"trace-payload")
+    worker.run_cycle(None)
+    assert suppressed_flags == [True, True, True]
+    assert is_instrumentation_enabled()
+
+
+def test_shutdown_performs_final_drain_and_stops_thread(
+    spool: Spool, otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
+    worker = make_worker(spool, otlp_server.url)
+    worker.start()
+    spool.append("traces", b"final-payload")
+    worker.shutdown()
+    assert unwrap(worker.thread).is_alive() is False
+    assert otlp_server.paths() == ["/v1/traces"]
+    assert spool.pending_files() == []
