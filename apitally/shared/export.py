@@ -35,7 +35,7 @@ logger.addFilter(duplicate_log_filter)
 # the spool's rotation threshold, so no single append can overshoot the file size bound
 ENCODE_CHUNK_SIZE = 32
 
-# The server caps log messages at this length; matches 0.x MAX_LOG_MSG_LENGTH
+# The server caps log messages at this length
 MAX_LOG_VALUE_LENGTH = 2048
 
 # Batch processor parameters are always passed explicitly, because the stock constructors
@@ -129,9 +129,14 @@ class ExportWorker:
         self.warned_statuses: set[int] = set()
         self.stop_event = threading.Event()
         self.thread: threading.Thread | None = None
+        # Per-instance generator: forked children inherit the module-level random state,
+        # which would make every process in a fleet draw identical jitter
+        self.random = random.Random()
 
     def start(self) -> None:
-        if self.thread is not None and self.thread.is_alive():  # pragma: no cover
+        # A thread whose stop event is set is already winding down (its join timed out,
+        # e.g. mid-POST at fork time) and must not block the restart
+        if self.thread is not None and self.thread.is_alive() and not self.stop_event.is_set():  # pragma: no cover
             return
         # A fresh Event per thread: if a previous thread outlived its join timeout, it
         # keeps observing its own set event and exits instead of racing the new thread
@@ -165,7 +170,7 @@ class ExportWorker:
             except Exception:
                 logger.warning("Error in Apitally export cycle", exc_info=True)
             # Jitter desynchronizes fleets whose processes started together in a deploy
-            delay = self.interval * random.uniform(0.9, 1.1)
+            delay = self.interval * self.random.uniform(0.9, 1.1)
 
     def run_cycle(self, stop_event: threading.Event | None) -> None:
         # The suppression key keeps our own flushes and POSTs from generating telemetry
@@ -190,14 +195,14 @@ class ExportWorker:
         for file in self.spool.pending_files():
             if sent >= MAX_SENDS_PER_CYCLE or (stop_event is not None and stop_event.is_set()):
                 return
+            if sent > 0 and stop_event is not None and stop_event.wait(self.random.uniform(0.1, 0.5)):
+                return
             if file.expired():
                 # Checked immediately before each POST: a retry landing outside the
                 # server's dedup window could double-ingest
                 logger.warning("Buffered %s could not be delivered within an hour and was dropped", file.signal)
                 self.spool.delete_file(file)
                 continue
-            if sent > 0 and stop_event is not None and stop_event.wait(random.uniform(0.1, 0.5)):
-                return
             sent += 1
             if not self.send_file(file):
                 return

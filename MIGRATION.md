@@ -134,7 +134,7 @@ If your application already has an OpenTelemetry `TracerProvider` configured (e.
 
 ## Buffering and delivery
 
-Telemetry is buffered in gzip-compressed files in the system temp directory (set `TMPDIR` to relocate them) and exported to Apitally roughly every 15 seconds. If the Apitally endpoint is unreachable, buffered data survives downtime of up to an hour (capped at 50 MB on disk) and is delivered after recovery with original timestamps. On read-only filesystems the SDK falls back to a small in-memory buffer instead. All redaction and masking is applied before data is written to the buffer, so buffered files never contain unredacted data.
+Telemetry is buffered in gzip-compressed files in the system temp directory (set `TMPDIR` to relocate them) and exported to Apitally roughly every 15 seconds. If the Apitally endpoint is unreachable, buffered data survives downtime of up to an hour (capped at 50 MB on disk) and is delivered after recovery with original timestamps. On read-only filesystems the SDK falls back to a small in-memory buffer instead. All redaction and masking of captured request and response data is applied before anything is written to the buffer; captured application log messages are stored as your application emitted them (see the warning at the top).
 
 ## Version floors
 

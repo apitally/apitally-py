@@ -35,7 +35,9 @@ class DuplicateLogFilter(logging.Filter):
         self.last_logged: dict[tuple[str, int, str], float] = {}
 
     def filter(self, record: logging.LogRecord) -> bool:
-        key = (record.module, record.levelno, record.msg)
+        # Keyed on the rendered message, not the template, so warnings that differ only
+        # in their arguments (e.g. per-signal data loss) are not swallowed
+        key = (record.module, record.levelno, record.getMessage())
         now = time.time()
         last = self.last_logged.get(key)
         if last is not None and now - last < self.window_seconds:
@@ -72,9 +74,13 @@ class SpoolFile:
         self.uncompressed_size += len(payload)
 
     def close(self) -> None:
-        # Flushes the gzip trailer; the sink stays open so the bytes remain readable even
-        # if another process sweeps the path
+        # The sink stays open so the bytes remain readable even if another process sweeps
+        # the path. The flush moves the compressed bytes out of the Python-level buffer
+        # onto disk; without it, a closed file shares its unwritten tail with a forked
+        # child through the inherited file descriptor, and both processes flushing it
+        # corrupts the file
         self.gzip_stream.close()
+        self.sink.flush()
         self.compressed_size = self.sink.tell()
 
     def read_bytes(self) -> bytes:
@@ -82,11 +88,13 @@ class SpoolFile:
         return self.sink.read()
 
     def mark_attempt(self) -> None:
+        # Monotonic clock: a wall-clock step backwards must not extend retries past the
+        # server's dedup window
         if self.first_attempt_at is None:
-            self.first_attempt_at = time.time()
+            self.first_attempt_at = time.monotonic()
 
     def expired(self) -> bool:
-        return self.first_attempt_at is not None and time.time() - self.first_attempt_at > SEND_HORIZON
+        return self.first_attempt_at is not None and time.monotonic() - self.first_attempt_at > SEND_HORIZON
 
     def touch(self) -> None:
         if self.path is not None:

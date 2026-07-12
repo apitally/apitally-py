@@ -11,6 +11,7 @@ import pytest
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
 from opentelemetry.instrumentation.utils import is_instrumentation_enabled
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceRequest
+from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.proto.logs.v1.logs_pb2 import LogRecord as PB2LogRecord
 from opentelemetry.sdk._logs import LoggerProvider
@@ -22,7 +23,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind
 
-from apitally.shared import export, metrics
+from apitally.shared import activation, export, metrics, startup
 from apitally.shared import spool as spool_module
 from apitally.shared.config import set_config
 from apitally.shared.export import (
@@ -239,7 +240,7 @@ def test_expired_attempted_file_evicted_while_never_attempted_file_delivers(
     spool.append("logs", b"never-attempted")
     spool.rotate_for_export()
     files = {file.signal: file for file in spool.pending_files()}
-    files["traces"].first_attempt_at = time.time() - SEND_HORIZON - 1
+    files["traces"].first_attempt_at = time.monotonic() - SEND_HORIZON - 1
     files["logs"].created_at = time.time() - 2 * SEND_HORIZON
     with caplog.at_level(logging.WARNING):
         worker.run_cycle(None)
@@ -253,7 +254,7 @@ def test_send_site_evicts_file_past_horizon_instead_of_sending(spool: Spool, otl
     spool.append("traces", b"trace-payload")
     spool.rotate_for_export()
     (file,) = spool.pending_files()
-    file.first_attempt_at = time.time() - SEND_HORIZON - 1
+    file.first_attempt_at = time.monotonic() - SEND_HORIZON - 1
     worker.send_pending(None)
     assert otlp_server.requests == []
     assert spool.pending_files() == []
@@ -335,6 +336,49 @@ def test_shutdown_performs_final_drain_and_stops_thread(
     assert spool.pending_files() == []
 
 
+def test_unreadable_file_is_dropped_without_blocking_the_queue(
+    spool: Spool, otlp_server: StubOTLPServer, caplog: pytest.LogCaptureFixture
+) -> None:
+    worker = make_worker(spool, otlp_server.url)
+    spool.append("traces", b"trace-payload")
+    spool.rotate_for_export()
+    spool.append("logs", b"log-payload")
+    files = {file.signal: file for file in spool.pending_files()}
+    files["traces"].sink.close()
+    with caplog.at_level(logging.WARNING, logger="apitally.shared.export"):
+        worker.run_cycle(None)
+    assert otlp_server.paths() == ["/v1/logs"]
+    assert spool.pending_files() == []
+    assert any("traces" in record.getMessage() for record in caplog.records)
+
+
+def test_start_after_timed_out_stop_replaces_stuck_thread(
+    spool: Spool, otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def slow_ok(path: str) -> tuple[int, dict[str, str]]:
+        time.sleep(1.0)
+        return (200, {})
+
+    otlp_server.respond = slow_ok
+    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 0.01)
+    worker = make_worker(spool, otlp_server.url)
+    spool.append("traces", b"trace-payload")
+    worker.start()
+    deadline = time.time() + 5
+    while not otlp_server.requests and time.time() < deadline:
+        time.sleep(0.005)
+    worker.stop(timeout=0.05)
+    stuck_thread = unwrap(worker.thread)
+    assert stuck_thread.is_alive()
+    worker.start()
+    new_thread = unwrap(worker.thread)
+    assert new_thread is not stuck_thread
+    assert new_thread.is_alive()
+    worker.stop()
+    stuck_thread.join(5)
+    assert not stuck_thread.is_alive()
+
+
 starlette_required = pytest.mark.skipif(
     not installed("starlette", "opentelemetry.instrumentation.starlette"),
     reason="end-to-end tests use the Starlette adapter",
@@ -378,10 +422,6 @@ def decoded_records(otlp_server: StubOTLPServer, path: str, message_type: Any) -
 def test_end_to_end_request_delivers_all_three_signals_decoded(
     otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
-
-    from apitally.shared import activation, startup
-
     with create_starlette_client(otlp_server, monkeypatch) as client:
         assert client.get("/items/42").status_code == 200
         assert unwrap(activation.spool).in_memory is False
@@ -417,8 +457,6 @@ def test_end_to_end_request_delivers_all_three_signals_decoded(
 def test_end_to_end_sensitive_body_redacted_on_disk_and_wire(
     otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from apitally.shared import activation
-
     with create_starlette_client(otlp_server, monkeypatch, log_request_body=True) as client:
         assert client.post("/login", json={"password": "hunter2"}).status_code == 200
         spool = unwrap(activation.spool)
@@ -442,8 +480,6 @@ def test_end_to_end_sensitive_body_redacted_on_disk_and_wire(
 def test_end_to_end_downtime_data_delivered_byte_identical_after_recovery(
     otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from apitally.shared import activation
-
     otlp_server.respond = lambda path: (503, {})
     with create_starlette_client(otlp_server, monkeypatch) as client:
         assert client.get("/items/42").status_code == 200
