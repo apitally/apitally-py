@@ -1,6 +1,7 @@
 import logging
 import logging.handlers
 from collections.abc import Generator
+from unittest import mock
 
 import pytest
 from opentelemetry._logs import LogRecord, SeverityNumber
@@ -58,9 +59,9 @@ def logger_provider(span_processor: ApitallySpanProcessor, log_exporter: InMemor
 
 
 @pytest.fixture()
-def root_handler(logger_provider: LoggerProvider) -> LoggingHandler | None:
+def root_handler(logger_provider: LoggerProvider, span_processor: ApitallySpanProcessor) -> LoggingHandler | None:
     set_config(write_token=WRITE_TOKEN)
-    return install_root_handler(logger_provider)
+    return install_root_handler(logger_provider, span_processor)
 
 
 def test_log_in_nested_span_carries_server_span_id(
@@ -89,7 +90,7 @@ def test_logs_discarded_when_sample_on_response_drops_request(log_exporter: InMe
     logger_provider.add_log_record_processor(
         ApitallyLogRecordProcessor(SimpleLogRecordProcessor(log_exporter), span_processor)
     )
-    install_root_handler(logger_provider)
+    install_root_handler(logger_provider, span_processor)
     with tracer_provider.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
         logging.getLogger("myapp").warning("inside request")
     assert log_exporter.get_finished_logs() == ()
@@ -135,10 +136,10 @@ def test_self_logs_reach_user_handlers_but_not_export(
     assert log_exporter.get_finished_logs() == ()
 
 
-def test_capture_logs_false_installs_no_handler(logger_provider: LoggerProvider):
+def test_capture_logs_false_installs_no_handler(logger_provider: LoggerProvider, span_processor: ApitallySpanProcessor):
     set_config(write_token=WRITE_TOKEN, capture_logs=False)
     handlers_before = list(logging.getLogger().handlers)
-    assert install_root_handler(logger_provider) is None
+    assert install_root_handler(logger_provider, span_processor) is None
     assert logging.getLogger().handlers == handlers_before
 
 
@@ -151,7 +152,7 @@ def test_shutdown_flushes_queued_logs(log_exporter: InMemoryLogRecordExporter):
     logger_provider.add_log_record_processor(
         ApitallyLogRecordProcessor(BatchLogRecordProcessor(log_exporter), span_processor)
     )
-    install_root_handler(logger_provider)
+    install_root_handler(logger_provider, span_processor)
     with tracer_provider.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
         logging.getLogger("myapp").warning("during request")
     assert log_exporter.get_finished_logs() == ()  # released to the batch processor, still queued
@@ -167,3 +168,12 @@ def test_excluded_request_contributes_no_logs(
     with tracer.start_as_current_span("GET /healthz", kind=SpanKind.SERVER, attributes=attributes):
         logging.getLogger("myapp").warning("inside excluded request")
     assert log_exporter.get_finished_logs() == ()
+
+
+def test_log_in_excluded_request_dropped_before_translation(tracer: Tracer, root_handler: LoggingHandler | None):
+    assert root_handler is not None
+    attributes = {"http.request.method": "GET", "url.path": "/healthz"}
+    with mock.patch.object(root_handler, "emit") as emit_mock:
+        with tracer.start_as_current_span("GET /healthz", kind=SpanKind.SERVER, attributes=attributes):
+            logging.getLogger("myapp").warning("inside excluded request")
+    emit_mock.assert_not_called()
