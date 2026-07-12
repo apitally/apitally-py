@@ -174,7 +174,7 @@ def start_pipelines() -> None:
         BatchLogRecordProcessor(providers.create_log_exporter(env)), span_processor
     )
     logger_provider = providers.create_logger_provider(resource, [log_processor])
-    install_root_handler(logger_provider)
+    install_root_handler(logger_provider, span_processor)
     metrics.attach_reader(env)
 
 

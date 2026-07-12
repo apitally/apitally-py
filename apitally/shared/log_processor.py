@@ -1,25 +1,28 @@
 import logging
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from typing import cast
 
+from opentelemetry import trace
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
 from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor, ReadWriteLogRecord
 from opentelemetry.util.types import AnyValue
 
 from apitally.shared.config import ApitallyConfig, get_config
-from apitally.shared.span_processor import ApitallySpanProcessor
+from apitally.shared.span_processor import ApitallySpanProcessor, is_server_span_kept
 
 
 logger = logging.getLogger(__name__)
 
 SERVER_SPAN_ID_ATTRIBUTE = "apitally.request.server_span_id"
-SELF_LOGGER_NAMESPACES = ("apitally", "opentelemetry")
+SDK_LOGGER_NAMESPACES = ("apitally", "opentelemetry")
 MAX_BUFFERED_LOGS = 1_000
 
 installed_handler: LoggingHandler | None = None
 
 
-def install_root_handler(logger_provider: LoggerProvider) -> LoggingHandler | None:
+def install_root_handler(
+    logger_provider: LoggerProvider, span_processor: ApitallySpanProcessor
+) -> LoggingHandler | None:
     """Bridge stdlib logging into the private LoggerProvider."""
     global installed_handler
     config = get_config() or ApitallyConfig()
@@ -27,7 +30,8 @@ def install_root_handler(logger_provider: LoggerProvider) -> LoggingHandler | No
         return None
     if installed_handler is None:
         handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider, log_code_attributes=True)
-        handler.addFilter(is_not_self_log)
+        handler.addFilter(is_application_log)
+        handler.addFilter(make_kept_request_filter(span_processor))
         logging.getLogger().addHandler(handler)
         installed_handler = handler
     return installed_handler
@@ -40,9 +44,21 @@ def uninstall_root_handler() -> None:
         installed_handler = None
 
 
-def is_not_self_log(record: logging.LogRecord) -> bool:
-    # SDK and OTel self-logs stay out of the export; they still reach the user's own handlers
-    return record.name.partition(".")[0] not in SELF_LOGGER_NAMESPACES
+def is_application_log(record: logging.LogRecord) -> bool:
+    # SDK and OTel own logs stay out of the export; they still reach the user's own handlers
+    return record.name.partition(".")[0] not in SDK_LOGGER_NAMESPACES
+
+
+def make_kept_request_filter(span_processor: ApitallySpanProcessor) -> Callable[[logging.LogRecord], bool]:
+    """Drop records that on_emit would discard anyway, before the handler translates them."""
+
+    def is_in_kept_request(record: logging.LogRecord) -> bool:
+        if is_server_span_kept():
+            return True
+        span_id = trace.get_current_span().get_span_context().span_id
+        return bool(span_id) and span_processor.resolve_server_span_id(span_id) is not None
+
+    return is_in_kept_request
 
 
 class ApitallyLogRecordProcessor(LogRecordProcessor):
