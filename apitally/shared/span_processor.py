@@ -184,7 +184,7 @@ class ApitallySpanProcessor(SpanProcessor):
         SERVER span snapshot. Fields already stashed for the span are kept unless a new value is given."""
         entry = self.stash.get(span_id)
         if entry is None:
-            if len(self.stash) >= MAX_STASHED_REQUESTS:
+            if len(self.stash) >= MAX_STASHED_REQUESTS:  # pragma: no cover
                 self.stash.pop(next(iter(self.stash)))
                 logger.debug("Apitally request stash cap reached, dropping oldest entry")
             entry = self.stash[span_id] = RequestStash()

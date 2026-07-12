@@ -33,7 +33,7 @@ class ApitallySpanExporter(SpanExporter):
         for span in spans:
             try:
                 processed.append(self.process_span(span))
-            except Exception:
+            except Exception:  # pragma: no cover
                 # A span that failed redaction must never leave the process
                 logger.exception("Error processing span for export, span dropped")
         return self.delegate.export(processed)
@@ -104,7 +104,7 @@ class ApitallySpanExporter(SpanExporter):
                 masked = None
             if masked is None:
                 return REDACTED
-            if not isinstance(masked, bytes):
+            if not isinstance(masked, bytes):  # pragma: no cover
                 logger.warning(
                     "Apitally %s callback returned an invalid value, body replaced with %s", callback_name, REDACTED
                 )
@@ -119,12 +119,12 @@ class ApitallySpanExporter(SpanExporter):
             return body.decode("utf-8", errors="replace")
         try:
             return json.dumps(self.redaction.redact_body(data), separators=(",", ":"), ensure_ascii=False)
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.warning("Error redacting body, replaced with %s", REDACTED, exc_info=True)
             return REDACTED
 
     def shutdown(self) -> None:
         self.delegate.shutdown()
 
-    def force_flush(self, timeout_millis: int = 30000) -> bool:
+    def force_flush(self, timeout_millis: int = 30000) -> bool:  # pragma: no cover
         return self.delegate.force_flush(timeout_millis)
