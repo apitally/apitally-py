@@ -305,7 +305,7 @@ class ApitallyDjangoMiddleware(CaptureMixin):
         return None  # pragma: no cover
 
 
-@lru_cache(256)
+@lru_cache(1024)
 def _regex_to_route_template(path: str) -> str:
     return PATH_PARAMETER_RE.sub(r"{\g<parameter>}", simplify_regex(path))
 
