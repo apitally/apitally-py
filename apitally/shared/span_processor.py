@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
+from functools import lru_cache
 
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
@@ -9,12 +10,12 @@ from opentelemetry.trace import SpanContext, SpanKind
 from opentelemetry.util.types import AttributeValue
 
 from apitally.shared.config import ApitallyConfig, get_config
-from apitally.shared.redaction import REDACTED, Redaction, compile_patterns, matches_any
+from apitally.shared.redaction import REDACTED, Redaction, combine_patterns, compile_patterns, matches_any
 
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_EXCLUDE_PATH_PATTERNS = compile_patterns(
+DEFAULT_EXCLUDE_PATH_PATTERN = combine_patterns(
     [
         r"/_?healthz?$",
         r"/_?health[-_]?checks?$",
@@ -33,7 +34,7 @@ DEFAULT_EXCLUDE_PATH_PATTERNS = compile_patterns(
         r"/\.well-known/",
     ]
 )
-EXCLUDE_USER_AGENT_PATTERNS = compile_patterns(
+EXCLUDE_USER_AGENT_PATTERN = combine_patterns(
     [
         r"health[-_ ]?check",
         r"microsoft-azure-application-lb",
@@ -87,7 +88,7 @@ class ApitallySpanProcessor(SpanProcessor):
         self.on_request_finished: Callable[[int, bool], None] | None = None
         self.config = get_config() or ApitallyConfig()
         self.sample_rate_bound = TraceIdRatioBased.get_bound_for_rate(self.config.sample_rate)
-        self.exclude_path_patterns = DEFAULT_EXCLUDE_PATH_PATTERNS + compile_patterns(self.config.exclude_paths)
+        self.exclude_path_patterns = compile_patterns(self.config.exclude_paths)
         self.redaction = Redaction(
             self.config.mask_query_params, self.config.mask_headers, self.config.mask_body_fields
         )
@@ -213,12 +214,20 @@ class ApitallySpanProcessor(SpanProcessor):
         if method == "OPTIONS":
             return True
         path = attributes.get("url.path") or attributes.get("http.target")
-        if path and matches_any(self.exclude_path_patterns, str(path).partition("?")[0]):
+        if path and self.should_exclude_path(str(path).partition("?")[0]):
             return True
         user_agent = attributes.get("user_agent.original") or attributes.get("http.user_agent")
-        if user_agent and matches_any(EXCLUDE_USER_AGENT_PATTERNS, str(user_agent)):
+        if user_agent and self.should_exclude_user_agent(str(user_agent)):
             return True
         return False
+
+    @lru_cache(maxsize=1024)
+    def should_exclude_path(self, path: str) -> bool:
+        return DEFAULT_EXCLUDE_PATH_PATTERN.search(path) is not None or matches_any(self.exclude_path_patterns, path)
+
+    @lru_cache(maxsize=1024)
+    def should_exclude_user_agent(self, user_agent: str) -> bool:
+        return EXCLUDE_USER_AGENT_PATTERN.search(user_agent) is not None
 
     def sample_request(self, span: Span, trace_id: int) -> bool:
         rate = self.resolve_sample_rate(self.config.sample_on_request, span, "sample_on_request")
