@@ -132,6 +132,10 @@ If your application already has an OpenTelemetry `TracerProvider` configured (e.
 - Your span attribute limits apply. A limit below 65,536 (e.g. via `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT`) can truncate captured request/response bodies. The SDK logs a warning when it detects this.
 - Headers and bodies captured by Apitally never appear on the spans your own exporters receive. They are attached, already redacted, only on Apitally's export path. Headers captured by OpenTelemetry instrumentation itself (e.g. via `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST`) remain visible to your pipeline as usual.
 
+## Buffering and delivery
+
+Telemetry is buffered in gzip-compressed files in the system temp directory (set `TMPDIR` to relocate them) and exported to Apitally roughly every 15 seconds. If the Apitally endpoint is unreachable, buffered data survives downtime of up to an hour (capped at 50 MB on disk) and is delivered after recovery with original timestamps. On read-only filesystems the SDK falls back to a small in-memory buffer instead. All redaction and masking is applied before data is written to the buffer, so buffered files never contain unredacted data.
+
 ## Version floors
 
 - The minimum supported Litestar version is now 2.24 (was 2.4).

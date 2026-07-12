@@ -34,7 +34,8 @@ requires-python = ">=3.10,<4.0"
 dependencies = [
     "opentelemetry-api>=1.43.0,<2.0.0",
     "opentelemetry-sdk>=1.43.0,<2.0.0",
-    "opentelemetry-exporter-otlp-proto-http>=1.43.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-common>=1.43.0,<2.0.0",
+    "requests>=2.26.0",
     "opentelemetry-instrumentation>=0.64b0",
     "opentelemetry-instrumentation-logging>=0.64b0",
     "opentelemetry-instrumentation-system-metrics>=0.64b0",
