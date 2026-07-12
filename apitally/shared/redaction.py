@@ -55,7 +55,7 @@ class Redaction:
             base, query = "", value
         # Treat legacy semicolon separators as pair boundaries too, so those values are also redacted
         pairs = parse_qsl(query.replace(";", "&"), keep_blank_values=True)
-        redacted = urlencode([(k, REDACTED if matches_any(self.query_param_patterns, k) else v) for k, v in pairs])
+        redacted = urlencode([(k, REDACTED if self.should_redact_query_param(k) else v) for k, v in pairs])
         return f"{base}?{redacted}" if sep else redacted
 
     def redact_headers(self, headers: Mapping[str, str | list[str]]) -> dict[str, str | list[str]]:
@@ -69,7 +69,7 @@ class Redaction:
     def redact_body(self, data: JSONValue) -> JSONValue:
         if isinstance(data, dict):
             return {
-                k: REDACTED if isinstance(v, str) and matches_any(self.body_field_patterns, k) else self.redact_body(v)
+                k: REDACTED if isinstance(v, str) and self.should_redact_body_field(k) else self.redact_body(v)
                 for k, v in data.items()
             }
         if isinstance(data, list):
@@ -80,6 +80,14 @@ class Redaction:
     def should_redact_header(self, name: str) -> bool:
         # Also match the underscore-normalized attribute key form emitted by older instrumentors
         return matches_any(self.header_patterns, name) or matches_any(self.header_patterns, name.replace("_", "-"))
+
+    @lru_cache(maxsize=1024)
+    def should_redact_query_param(self, name: str) -> bool:
+        return matches_any(self.query_param_patterns, name)
+
+    @lru_cache(maxsize=1024)
+    def should_redact_body_field(self, name: str) -> bool:
+        return matches_any(self.body_field_patterns, name)
 
 
 def compile_patterns(patterns: list[str]) -> list[re.Pattern[str]]:

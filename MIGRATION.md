@@ -85,7 +85,7 @@ The `exclude_callback(request, response)` callback is replaced by request sampli
 
 - `sample_rate` sets the static fraction of requests captured as traces with their logs (default `1.0`).
 - `sample_on_request` refines it per request at span start. Nothing about a sampled-out request is ever transmitted, and capture work such as body buffering and masking is skipped (for Flask, request bodies are still buffered because the sampling decision happens later), making this (and `sample_rate`) the lever for volume and overhead. Returning `None` falls back to `sample_rate`.
-- `sample_on_response` decides at span end, so it can see the response status and any attributes you set via `set_request_attribute(...)`. It is quota-safe: the SDK holds a request's spans and logs in memory until this decision (up to 1,000 of each per request), so a request dropped here transmits nothing and consumes no quota. Capture work still runs for such requests — use request-stage sampling to skip that overhead. Returning `None` leaves the request-stage decision standing. It also cannot rescue a request already dropped at the request stage: the overall capture probability is the minimum of the two stages, so a response-stage boost like the example below only applies to requests that survived `sample_rate` / `sample_on_request`.
+- `sample_on_response` decides at span end, so it can see the response status and any attributes you set via `set_request_attribute(...)`. It is quota-safe: the SDK holds a request's spans and logs in memory until this decision (up to 1,000 of each per request), so a request dropped here transmits nothing and consumes no quota. Capture work still runs for such requests — use request-stage sampling to skip that overhead. Returning `None` leaves the request-stage decision standing. It also cannot rescue a request already dropped at the request stage: the overall capture probability is the minimum of the two stages, so a response-stage boost like the example below only applies to requests that survived `sample_rate` / `sample_on_request`. Captured headers and bodies are not on the span at this point (they are attached during export), so the sampling decision cannot depend on them.
 
 Both callbacks operate on the OpenTelemetry attributes of the request's SERVER span:
 
@@ -112,7 +112,9 @@ Sampling decisions are deterministic per trace ID, so services sampling at the s
 
 ## Masking request and response bodies
 
-`mask_request_body_callback` and `mask_response_body_callback` are renamed to `mask_request_body` and `mask_response_body`. They no longer receive request/response dicts; the new signature is `(span, body: bytes) -> bytes | None`, where `span` is the request's SERVER span. Returning `None` replaces the captured body with `[REDACTED]`.
+`mask_request_body_callback` and `mask_response_body_callback` are renamed to `mask_request_body` and `mask_response_body`. They no longer receive request/response dicts; the new signature is `(span, body: bytes) -> bytes | None`, where `span` is the request's ended SERVER span. Returning `None` replaces the captured body with `[REDACTED]`.
+
+The callbacks run on a background export thread after the response has completed, so they must not rely on request-scoped state such as context variables or framework request globals. Everything needed for the masking decision is available on the `span` argument; captured headers appear on it with redaction already applied. Keep the callbacks fast: a slow callback delays the export of all telemetry, not just the request being masked.
 
 ```python
 def mask_request_body(span, body):
@@ -128,6 +130,7 @@ If your application already has an OpenTelemetry `TracerProvider` configured (e.
 - The order of `init_apitally(...)` and your other OpenTelemetry setup does not matter, as long as your `TracerProvider` is registered before the application starts serving requests. A provider registered after startup is not picked up.
 - Your sampler applies. If it drops requests (e.g. `TraceIdRatioBased`), request logs in Apitally follow your sampling rate; Apitally's own `sample_rate` applies on top, to the requests your sampler keeps. Metrics are recorded independently of sampling and stay complete.
 - Your span attribute limits apply. A limit below 65,536 (e.g. via `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT`) can truncate captured request/response bodies. The SDK logs a warning when it detects this.
+- Headers and bodies captured by Apitally never appear on the spans your own exporters receive. They are attached, already redacted, only on Apitally's export path. Headers captured by OpenTelemetry instrumentation itself (e.g. via `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST`) remain visible to your pipeline as usual.
 
 ## Version floors
 

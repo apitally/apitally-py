@@ -28,6 +28,7 @@ from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import activation, config, metrics, providers, startup
 from apitally.shared.consumer import consumer_holder_var
+from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.span_processor import (
     ApitallySpanProcessor,
     server_span_kept_var,
@@ -214,9 +215,9 @@ def startup_payload(exporters: InMemoryExporters) -> dict[str, Any]:
 
 
 def create_tracer(exporter: SpanExporter, sampler: Sampler = ALWAYS_ON, scope: str = CONTRIB_SCOPE) -> Tracer:
-    # The Apitally span processor binds config at construction, so build after configure()
+    # The Apitally span processor and exporter bind config at construction, so build after configure()
     provider = TracerProvider(sampler=sampler)
-    provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
+    provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(ApitallySpanExporter(exporter))))
     return provider.get_tracer(scope)
 
 

@@ -196,6 +196,22 @@ def test_request_body_not_read_for_disallowed_content_type(tracer: Tracer, expor
     assert environ["wsgi.input"] is spy
 
 
+def test_request_and_response_bodies_captured_together(tracer: Tracer, exporter: InMemorySpanExporter):
+    # The bodies are stashed in separate calls (response start vs finalize), covering the merge in update_stash
+    set_config(write_token=WRITE_TOKEN, log_request_body=True, log_response_body=True)
+
+    def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
+        start_response("200 OK", [("Content-Type", "application/json")])
+        return [b'{"token": "abc"}']
+
+    body = b'{"password": "x", "user": "u"}'
+    environ = make_environ(method="POST", body=body, content_type="application/json", content_length=str(len(body)))
+    attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, exporter)
+
+    assert json.loads(str(attributes["apitally.request.body"])) == {"password": REDACTED, "user": "u"}
+    assert json.loads(str(attributes["apitally.response.body"])) == {"token": REDACTED}
+
+
 def test_response_body_captured_from_chunks(tracer: Tracer, exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN, log_response_body=True)
     iterable = ClosingIterable([b'{"token": "abc", ', b'"id": 1}'])
@@ -240,10 +256,10 @@ def test_request_headers_redacted(tracer: Tracer, exporter: InMemorySpanExporter
     attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, exporter)
 
     assert attributes["http.request.header.authorization"] == [REDACTED]
-    assert attributes["http.request.header.accept"] == ("application/json",)
+    assert attributes["http.request.header.accept"] == ["application/json"]
     # CONTENT_TYPE and CONTENT_LENGTH live outside the HTTP_ environ namespace
-    assert attributes["http.request.header.content-type"] == ("text/plain",)
-    assert attributes["http.request.header.content-length"] == ("0",)
+    assert attributes["http.request.header.content-type"] == ["text/plain"]
+    assert attributes["http.request.header.content-length"] == ["0"]
 
 
 def test_sampled_out_request_produces_no_span(exporter: InMemorySpanExporter):

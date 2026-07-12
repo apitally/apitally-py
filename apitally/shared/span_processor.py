@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
+from dataclasses import dataclass
 from functools import lru_cache
 
 from opentelemetry.context import Context
@@ -10,7 +11,7 @@ from opentelemetry.trace import SpanContext, SpanKind
 from opentelemetry.util.types import AttributeValue
 
 from apitally.shared.config import ApitallyConfig, get_config
-from apitally.shared.redaction import REDACTED, Redaction, combine_patterns, compile_patterns, matches_any
+from apitally.shared.redaction import combine_patterns, compile_patterns, matches_any
 
 
 logger = logging.getLogger(__name__)
@@ -43,11 +44,20 @@ EXCLUDE_USER_AGENT_PATTERN = combine_patterns(
     ]
 )
 
-QUERY_ATTRIBUTES = ("url.query", "http.target", "http.url", "url.full")
-HEADER_ATTRIBUTE_PREFIXES = ("http.request.header.", "http.response.header.")
-RECEIVE_SEND_NAME_SUFFIXES = (" http send", " http receive", " websocket send", " websocket receive")
-CONTRIB_SCOPE_PREFIX = "opentelemetry.instrumentation."
 MAX_BUFFERED_SPANS = 1_000
+MAX_STASHED_REQUESTS = 2_048
+STASH_ATTRIBUTE = "_apitally_stash"
+
+
+@dataclass(slots=True)
+class RequestStash:
+    """Headers and bodies captured by a transport for one request, held until the SERVER span is exported."""
+
+    request_headers: dict[str, list[str]] | None = None
+    request_body: bytes | None = None
+    response_headers: dict[str, list[str]] | None = None
+    response_body: bytes | None = None
+
 
 server_span_var: ContextVar[Span | None] = ContextVar("apitally_server_span", default=None)
 server_span_kept_var: ContextVar[bool] = ContextVar("apitally_server_span_kept", default=False)
@@ -84,14 +94,12 @@ class ApitallySpanProcessor(SpanProcessor):
         self.pending: dict[int, list[ReadableSpan]] = {}
         self.deferred: set[int] = set()
         self.held: dict[int, ReadableSpan] = {}
+        self.stash: dict[int, RequestStash] = {}
         # Assigned by the log processor so both buffers flush or discard on the same decision
         self.on_request_finished: Callable[[int, bool], None] | None = None
         self.config = get_config() or ApitallyConfig()
         self.sample_rate_bound = TraceIdRatioBased.get_bound_for_rate(self.config.sample_rate)
         self.exclude_path_patterns = compile_patterns(self.config.exclude_paths)
-        self.redaction = Redaction(
-            self.config.mask_query_params, self.config.mask_headers, self.config.mask_body_fields
-        )
 
     def on_start(self, span: Span, parent_context: Context | None = None) -> None:
         try:
@@ -162,6 +170,31 @@ class ApitallySpanProcessor(SpanProcessor):
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally span processor")
 
+    def update_stash(
+        self,
+        span_id: int,
+        request_headers: dict[str, list[str]] | None = None,
+        request_body: bytes | None = None,
+        response_headers: dict[str, list[str]] | None = None,
+        response_body: bytes | None = None,
+    ) -> None:
+        """Hold captured headers and bodies until process_ended_span attaches them to the exported
+        SERVER span snapshot. Fields already stashed for the span are kept unless a new value is given."""
+        entry = self.stash.get(span_id)
+        if entry is None:
+            if len(self.stash) >= MAX_STASHED_REQUESTS:  # pragma: no cover
+                self.stash.pop(next(iter(self.stash)))
+                logger.debug("Apitally request stash cap reached, dropping oldest entry")
+            entry = self.stash[span_id] = RequestStash()
+        if request_headers is not None:
+            entry.request_headers = request_headers
+        if request_body is not None:
+            entry.request_body = request_body
+        if response_headers is not None:
+            entry.response_headers = response_headers
+        if response_body is not None:
+            entry.response_body = response_body
+
     def process_ended_span(self, span: ReadableSpan, context: SpanContext) -> None:
         keep, server_span_id = self.spans.pop(context.span_id, (False, None))
         if not keep:
@@ -169,11 +202,17 @@ class ApitallySpanProcessor(SpanProcessor):
         buffer = self.pending.pop(context.span_id, None)
         if buffer is not None:
             # Pending SERVER root: the response-stage decision flushes or discards the whole request
+            stash = self.stash.pop(context.span_id, None)
             response_kept = self.sample_response(span, context.trace_id)
             if response_kept:
                 for buffered_span in buffer:
-                    self.downstream.on_end(self.redact_span(buffered_span))
-                self.downstream.on_end(self.redact_span(span))
+                    self.downstream.on_end(buffered_span)
+                if stash is not None:
+                    # A private copy, because user-attached processors receive the same shared snapshot.
+                    # If the batch queue drops the span, the stash is freed with it.
+                    span = copy_span_with_attributes(span, dict(span.attributes or {}))
+                    setattr(span, STASH_ATTRIBUTE, stash)
+                self.downstream.on_end(span)
             else:
                 # Mark the request's still-open spans as dropped so telemetry arriving later is discarded
                 for span_id, entry in list(self.spans.items()):
@@ -189,7 +228,7 @@ class ApitallySpanProcessor(SpanProcessor):
             else:
                 logger.debug("Apitally span buffer cap reached for request, dropping span")
             return
-        self.downstream.on_end(self.redact_span(span))
+        self.downstream.on_end(span)
 
     def resolve_server_span_id(self, span_id: int) -> int | None:
         """Return the SERVER span id for an in-flight span, or None if the request is dropped."""
@@ -203,6 +242,7 @@ class ApitallySpanProcessor(SpanProcessor):
         self.deferred.clear()
         # Pending requests' SERVER spans can never export after shutdown, so their telemetry is unreachable
         self.pending.clear()
+        self.stash.clear()
         self.downstream.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
@@ -260,29 +300,6 @@ class ApitallySpanProcessor(SpanProcessor):
         logger.warning("Apitally %s callback returned an invalid value, request captured: %r", name, result)
         return 1.0
 
-    def redact_span(self, span: ReadableSpan) -> ReadableSpan:
-        """Return a redacted copy when redaction is needed. The original span is never mutated."""
-        if not any(
-            key in QUERY_ATTRIBUTES or key.startswith(HEADER_ATTRIBUTE_PREFIXES) for key in span.attributes or {}
-        ):
-            return span
-        attributes = dict(span.attributes or {})
-        changed = False
-        for key, value in attributes.items():
-            if key in QUERY_ATTRIBUTES and isinstance(value, str):
-                redacted = self.redaction.redact_query_params(value, assume_query=key == "url.query")
-            elif key.startswith(HEADER_ATTRIBUTE_PREFIXES):
-                header = key.removeprefix("http.request.header.").removeprefix("http.response.header.")
-                if not self.redaction.should_redact_header(header):
-                    continue
-                redacted = REDACTED if isinstance(value, str) else [REDACTED]
-            else:
-                continue
-            if redacted != value:
-                attributes[key] = redacted
-                changed = True
-        return copy_span_with_attributes(span, attributes) if changed else span
-
 
 def copy_span_with_attributes(span: ReadableSpan, attributes: dict[str, AttributeValue]) -> ReadableSpan:
     return ReadableSpan(
@@ -304,7 +321,7 @@ def copy_span_with_attributes(span: ReadableSpan, attributes: dict[str, Attribut
 def is_contrib_receive_send_span(span: Span) -> bool:
     return (
         span.kind == SpanKind.INTERNAL
-        and span.name.endswith(RECEIVE_SEND_NAME_SUFFIXES)
+        and span.name.endswith((" http send", " http receive", " websocket send", " websocket receive"))
         and span.instrumentation_scope is not None
-        and span.instrumentation_scope.name.startswith(CONTRIB_SCOPE_PREFIX)
+        and span.instrumentation_scope.name.startswith("opentelemetry.instrumentation.")
     )

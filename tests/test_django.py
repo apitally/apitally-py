@@ -98,7 +98,7 @@ def test_bodies_and_request_headers_captured_and_redacted(
     assert json.loads(str(span.attributes["apitally.request.body"])) == redacted
     assert json.loads(str(span.attributes["apitally.response.body"])) == redacted
     assert span.attributes["http.request.header.authorization"] == [REDACTED]
-    assert span.attributes["http.request.header.content-type"] == ("application/json",)
+    assert span.attributes["http.request.header.content-type"] == ["application/json"]
 
 
 def test_bodies_over_cap_replaced_with_sentinel(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
