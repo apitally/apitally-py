@@ -102,7 +102,7 @@ def test_user_attached_exporters_never_see_captured_headers_and_bodies():
     assert not hasattr(user_span, STASH_ATTRIBUTE)
 
 
-def test_mask_callback_receives_ended_span_with_redacted_headers():
+def test_mask_callback_receives_ended_span():
     seen: list[ReadableSpan] = []
 
     def mask(span: ReadableSpan, body: bytes) -> bytes:
