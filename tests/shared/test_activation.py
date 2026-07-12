@@ -177,7 +177,7 @@ def test_activation_attaches_to_existing_user_tracer_provider(
     assert span.name == "GET /items"
 
 
-def test_before_fork_quiesces_sdk_threads(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+def test_before_fork_stops_sdk_threads(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     threads_before = set(threading.enumerate())
     configure_and_activate(monkeypatch)
     started = [t for t in threading.enumerate() if t not in threads_before]

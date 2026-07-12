@@ -38,7 +38,7 @@ span_processor: ApitallySpanProcessor | None = None
 log_processor: ApitallyLogRecordProcessor | None = None
 logger_provider: LoggerProvider | None = None
 
-# OTel's own fork handlers hold weak references to batch processors; keep quiesced
+# OTel's own fork handlers hold weak references to batch processors; keep shut-down
 # instances alive so a later fork never calls a dead reference
 retired_processors: list[SpanProcessor | LogRecordProcessor] = []
 
@@ -179,7 +179,7 @@ def start_pipelines() -> None:
 
 
 def before_fork() -> None:
-    """Quiesce so the process owns no threads at the instant of fork."""
+    """Stop all SDK-owned threads so none are running at the instant of fork."""
     # Held across the fork so an in-flight activate completes first; released in both after
     # handlers (the child gets a fresh lock, since an inherited locked mutex would deadlock)
     activation_lock.acquire()
@@ -194,7 +194,7 @@ def before_fork() -> None:
             retired_processors.append(log_processor.downstream)
             log_processor.downstream.shutdown()
     except Exception:  # pragma: no cover
-        logger.exception("Error quiescing Apitally before fork")
+        logger.exception("Error stopping Apitally threads before fork")
 
 
 def after_fork_in_parent() -> None:
