@@ -28,13 +28,9 @@ from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import activation, config, export, metrics, providers, startup
 from apitally.shared.consumer import consumer_holder_var
+from apitally.shared.context import server_span_kept_var, server_span_processor_var, server_span_var
 from apitally.shared.exporter import ApitallySpanExporter
-from apitally.shared.span_processor import (
-    ApitallySpanProcessor,
-    server_span_kept_var,
-    server_span_processor_var,
-    server_span_var,
-)
+from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.spool import Spool, SpoolFile
 
 

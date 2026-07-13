@@ -5,7 +5,7 @@ from opentelemetry.trace import SpanKind, Tracer
 
 from apitally import capture_exception, set_consumer, set_request_attribute
 from apitally.shared.consumer import get_consumer_identifier, init_consumer
-from apitally.shared.span_processor import get_server_span
+from apitally.shared.context import get_server_span
 from tests.conftest import unwrap
 
 

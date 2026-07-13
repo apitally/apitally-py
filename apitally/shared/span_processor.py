@@ -1,7 +1,6 @@
 import logging
 import sys
 from collections.abc import Callable, Mapping
-from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import lru_cache, partial
 from typing import Any
@@ -13,6 +12,13 @@ from opentelemetry.trace import SpanContext, SpanKind
 from opentelemetry.util.types import AttributeValue
 
 from apitally.shared.config import ApitallyConfig, get_config
+from apitally.shared.consumer import consumer_holder_var, write_consumer_span_attributes
+from apitally.shared.context import (
+    get_server_span,
+    server_span_kept_var,
+    server_span_processor_var,
+    server_span_var,
+)
 from apitally.shared.redaction import combine_patterns, compile_patterns, matches_any
 
 
@@ -71,25 +77,6 @@ class RequestStash:
     response_body: bytes | None = None
 
 
-server_span_var: ContextVar[Span | None] = ContextVar("apitally_server_span", default=None)
-server_span_kept_var: ContextVar[bool] = ContextVar("apitally_server_span_kept", default=False)
-server_span_processor_var: ContextVar["ApitallySpanProcessor | None"] = ContextVar(
-    "apitally_server_span_processor", default=None
-)
-
-
-def get_server_span() -> Span | None:
-    return server_span_var.get()
-
-
-def is_server_span_kept() -> bool:
-    return server_span_kept_var.get()
-
-
-def get_server_span_processor() -> "ApitallySpanProcessor | None":
-    return server_span_processor_var.get()
-
-
 def is_sampled_in(trace_id: int, bound: int) -> bool:
     # TraceIdRatioBased convention: the low 64 bits of the trace ID tested against round(rate * 2**64),
     # deterministic per trace so services sampling at the same rate capture the same traces
@@ -123,9 +110,6 @@ class ApitallySpanProcessor(SpanProcessor):
         self.exclude_path_patterns = compile_patterns(self.config.exclude_paths)
 
     def on_start(self, span: Span, parent_context: Context | None = None) -> None:
-        # Imported here to break the circular import with consumer.py
-        from apitally.shared.consumer import consumer_holder_var, write_consumer_span_attributes
-
         try:
             if span.context is None:  # pragma: no cover
                 return

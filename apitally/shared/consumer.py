@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from opentelemetry.sdk.trace import Span
 
-from apitally.shared.span_processor import get_server_span
+from apitally.shared.context import get_server_span
 
 
 logger = logging.getLogger(__name__)

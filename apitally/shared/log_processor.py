@@ -8,7 +8,8 @@ from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor, ReadWrit
 from opentelemetry.util.types import AnyValue
 
 from apitally.shared.config import ApitallyConfig, get_config
-from apitally.shared.span_processor import ApitallySpanProcessor, is_server_span_kept
+from apitally.shared.context import is_server_span_kept
+from apitally.shared.span_processor import ApitallySpanProcessor
 
 
 logger = logging.getLogger(__name__)

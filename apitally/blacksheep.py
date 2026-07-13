@@ -12,8 +12,8 @@ from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 
 from apitally.shared import activation, config, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
+from apitally.shared.context import get_server_span
 from apitally.shared.helpers import capture_exception
-from apitally.shared.span_processor import get_server_span
 
 
 if TYPE_CHECKING:

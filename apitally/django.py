@@ -24,7 +24,7 @@ from apitally.shared import activation, config, metrics, startup
 from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
 from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
-from apitally.shared.span_processor import get_server_span, get_server_span_processor, is_server_span_kept
+from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
 from apitally.shared.wsgi import group_headers, parse_content_length
 
 
