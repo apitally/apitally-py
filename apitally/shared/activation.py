@@ -71,20 +71,22 @@ def activate() -> None:
     with activation_lock:
         if activation_attempted:
             return
-        activation_attempted = True
-        if should_skip_activation():
-            return
         try:
-            start_pipelines()
-            activated = True
-        except Exception:  # pragma: no cover
-            logger.exception("Apitally activation failed")
-            return
-        for hook in on_activate_hooks:
+            if should_skip_activation():
+                return
             try:
-                hook()
+                start_pipelines()
+                activated = True
             except Exception:  # pragma: no cover
-                logger.exception("Error in Apitally on-activate hook")
+                logger.exception("Apitally activation failed")
+                return
+            for hook in on_activate_hooks:
+                try:
+                    hook()
+                except Exception:  # pragma: no cover
+                    logger.exception("Error in Apitally on-activate hook")
+        finally:
+            activation_attempted = True
 
 
 def shutdown() -> None:
