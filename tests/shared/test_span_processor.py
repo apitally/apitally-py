@@ -86,6 +86,17 @@ def test_options_request_dropped(tracer: Tracer, span_exporter: InMemorySpanExpo
 
 
 @pytest.mark.parametrize(
+    "attributes", [{"url.scheme": "ws", "url.path": "/ws"}, {"http.scheme": "wss", "http.target": "/ws"}]
+)
+def test_websocket_connection_span_dropped(
+    tracer: Tracer, span_exporter: InMemorySpanExporter, attributes: dict[str, str]
+):
+    with tracer.start_as_current_span("/ws", kind=SpanKind.SERVER, attributes=attributes):
+        pass
+    assert span_exporter.get_finished_spans() == ()
+
+
+@pytest.mark.parametrize(
     "attributes",
     [
         {"http.request.method": "GET", "url.path": "/healthz"},
