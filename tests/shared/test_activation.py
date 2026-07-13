@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gc
+import gzip
 import multiprocessing
 import os
 import sys
@@ -10,16 +12,17 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 from opentelemetry import trace
+from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind
 
-from apitally.shared import activation, log_processor, metrics, providers
+from apitally.shared import activation, export, log_processor, metrics
 from apitally.shared.asgi import Message, Receive, Scope, Send
 from apitally.shared.span_processor import ApitallySpanProcessor
-from tests.conftest import WRITE_TOKEN, InMemoryExporters, exported_spans
+from tests.conftest import WRITE_TOKEN, InMemoryExporters, StubOTLPServer, exported_spans, unwrap
 
 
 if TYPE_CHECKING:
@@ -126,9 +129,8 @@ def test_wsgi_shim_activates_before_first_request_proceeds(
 @pytest.mark.parametrize("guard", ["pytest_env", "manage_py_test", "disabled_env", "disabled_kwarg"])
 def test_test_environment_guard_skips_activation(monkeypatch: pytest.MonkeyPatch, guard: str):
     exporter_calls = []
-    monkeypatch.setattr(providers, "create_span_exporter", lambda env: exporter_calls.append("span"))
-    monkeypatch.setattr(providers, "create_log_exporter", lambda env: exporter_calls.append("log"))
-    monkeypatch.setattr(metrics, "create_metric_exporter", lambda env, **kwargs: exporter_calls.append("metric"))
+    monkeypatch.setattr(export, "create_span_exporter", lambda spool: exporter_calls.append("span"))
+    monkeypatch.setattr(export, "create_log_exporter", lambda spool: exporter_calls.append("log"))
 
     activation.configure(write_token=WRITE_TOKEN, disabled=(guard == "disabled_kwarg"))
     if guard != "pytest_env":
@@ -254,6 +256,97 @@ def test_child_reactivation_clears_inherited_request_state(
     assert not activation.span_processor.pending
     span.end()
     assert exporters.span[-1].get_finished_spans() == ()
+
+
+def test_after_fork_in_parent_restarts_worker_and_delivers_prefork_files(
+    otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
+    activation.configure(write_token=WRITE_TOKEN, otlp_endpoint=otlp_server.url)
+    activation.activate()
+    with trace.get_tracer("test").start_as_current_span("GET /prefork", kind=SpanKind.SERVER):
+        pass
+
+    activation.before_fork()
+    worker = unwrap(activation.export_worker)
+    assert unwrap(worker.thread).is_alive() is False
+    spool = unwrap(activation.spool)
+    assert any(file.signal == "traces" for file in spool.pending_files())
+
+    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 0.05)
+    worker.interval = 0.2
+    activation.after_fork_in_parent()
+    assert unwrap(worker.thread).is_alive()
+    metrics.record_request("GET", "/postfork", 200, consumer=None, duration=0.1)
+
+    def postfork_metric_received() -> bool:
+        for path, _, body in otlp_server.requests:
+            if path == "/v1/metrics" and b"/postfork" in gzip.decompress(body):
+                return True
+        return False
+
+    deadline = time.time() + 10
+    while time.time() < deadline and not postfork_metric_received():
+        time.sleep(0.02)
+    assert "/v1/traces" in otlp_server.paths()
+    # Proves the worker resolves the fresh reader; the detached one's collect is a no-op
+    assert postfork_metric_received()
+    metric_bodies = [body for path, _, body in otlp_server.requests if path == "/v1/metrics"]
+    assert ExportMetricsServiceRequest.FromString(gzip.decompress(metric_bodies[-1]))
+
+
+def test_fork_in_child_abandons_inherited_spool_without_touching_parent_files(
+    otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
+    activation.configure(write_token=WRITE_TOKEN, otlp_endpoint=otlp_server.url)
+    activation.activate()
+    with trace.get_tracer("test").start_as_current_span("GET /prefork", kind=SpanKind.SERVER):
+        pass
+    parent_spool = unwrap(activation.spool)
+    try:
+        activation.before_fork()
+        files = parent_spool.pending_files()
+        assert files
+        bytes_before = {unwrap(file.path): unwrap(file.path).read_bytes() for file in files}
+
+        activation.after_fork_in_child()
+        assert activation.spool is None
+        gc.collect()
+        for path, data in bytes_before.items():
+            with open(path, "rb") as fp:
+                assert fp.read() == data
+            assert gzip.decompress(data)
+
+        activation.activate()
+        assert unwrap(activation.spool) is not parent_spool
+        worker_threads = [
+            thread for thread in threading.enumerate() if thread.name == "ApitallyExportWorker" and thread.is_alive()
+        ]
+        assert len(worker_threads) == 1
+    finally:
+        parent_spool.clear()
+
+
+def test_reset_stops_worker_and_removes_spool_files(otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch):
+    threads_before = set(threading.enumerate())
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
+    activation.configure(write_token=WRITE_TOKEN, otlp_endpoint=otlp_server.url)
+    activation.activate()
+    assert len(set(threading.enumerate()) - threads_before) == 3
+    with trace.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        pass
+    spool = unwrap(activation.spool)
+    unwrap(activation.span_processor).downstream.force_flush()
+    paths = [unwrap(file.path) for file in (*spool.current.values(), *spool.pending_files())]
+    assert paths
+
+    activation.reset()
+    assert not any(thread.name == "ApitallyExportWorker" and thread.is_alive() for thread in threading.enumerate())
+    assert not any(path.exists() for path in paths)
 
 
 def child_probe(queue: multiprocessing.Queue[dict[str, Any]]) -> None:

@@ -1,7 +1,9 @@
+import logging
+import threading
 from collections.abc import Iterator
 
 import pytest
-from opentelemetry.sdk.metrics import Histogram as SDKHistogram
+from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
 from opentelemetry.sdk.metrics.export import (
     AggregationTemporality,
     ExponentialHistogram,
@@ -9,17 +11,24 @@ from opentelemetry.sdk.metrics.export import (
     InMemoryMetricReader,
     Sum,
 )
-from opentelemetry.sdk.metrics.view import ExponentialBucketHistogramAggregation
 from opentelemetry.sdk.resources import Resource
 
 from apitally.shared import metrics
-from tests.conftest import attach_metric_reader, collect_metrics
+from apitally.shared.spool import Spool
+from tests.conftest import attach_metric_reader, collect_metrics, read_spool_payload, unwrap
 
 
 @pytest.fixture(autouse=True)
 def reset_metrics() -> Iterator[None]:
     yield
     metrics.reset()
+
+
+@pytest.fixture
+def spool() -> Iterator[Spool]:
+    spool = Spool()
+    yield spool
+    spool.clear()
 
 
 def create_pipeline() -> InMemoryMetricReader:
@@ -72,20 +81,45 @@ def test_histograms_under_apitally_scope():
     assert get_scope_names(reader)["http.server.request.duration"] == "apitally"
 
 
-def test_export_interval_ignores_env(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OTEL_METRIC_EXPORT_INTERVAL", "5000")
-    provider = metrics.setup(Resource.create({}))
-    metrics.attach_reader("prod")
-    reader = metrics.reader
-    assert reader is not None
-    assert reader in provider._all_metric_readers
-    assert reader._export_interval_millis == 60_000
-    # The reader re-keys the overrides onto internal instrument base classes
-    histogram_key = next(cls for cls in reader._instrument_class_temporality if issubclass(cls, SDKHistogram))
-    assert reader._instrument_class_temporality[histogram_key] == AggregationTemporality.DELTA
-    aggregation = reader._instrument_class_aggregation[histogram_key]
-    assert isinstance(aggregation, ExponentialBucketHistogramAggregation)
-    assert aggregation._max_scale == 3
+def test_collect_appends_delta_payloads_to_spool(spool: Spool):
+    metrics.setup(Resource.create({}))
+    metrics.attach_reader(spool)
+    metrics.record_request("GET", "/a", 200, consumer=None, duration=1.0)
+    unwrap(metrics.reader).collect()
+    metrics.record_request("GET", "/a", 200, consumer=None, duration=2.0)
+    unwrap(metrics.reader).collect()
+    spool.rotate_for_export()
+    (file,) = [file for file in spool.pending_files() if file.signal == "metrics"]
+    request = ExportMetricsServiceRequest.FromString(read_spool_payload(file))
+    assert len(request.resource_metrics) == 2
+    points = [
+        point
+        for rm in request.resource_metrics
+        for sm in rm.scope_metrics
+        for metric in sm.metrics
+        if metric.name == "http.server.request.duration"
+        for point in metric.exponential_histogram.data_points
+    ]
+    assert [point.count for point in points] == [1, 1]
+    assert sum(point.sum for point in points) == pytest.approx(3.0)
+
+
+def test_no_timer_thread_after_attach(spool: Spool):
+    threads_before = {thread.ident for thread in threading.enumerate()}
+    metrics.setup(Resource.create({}))
+    metrics.attach_reader(spool)
+    assert {thread.ident for thread in threading.enumerate()} == threads_before
+
+
+def test_detach_then_collect_is_a_noop_without_warnings(spool: Spool, caplog: pytest.LogCaptureFixture):
+    metrics.setup(Resource.create({}))
+    metrics.attach_reader(spool)
+    reader = unwrap(metrics.reader)
+    metrics.detach_reader()
+    with caplog.at_level(logging.WARNING):
+        reader.collect()
+    assert not caplog.records
+    assert not spool.pending_files()
 
 
 def test_consumer_identifier_attribute():
