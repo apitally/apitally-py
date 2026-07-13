@@ -22,7 +22,14 @@ from opentelemetry.trace import SpanKind
 from apitally.shared import activation, export, log_processor, metrics
 from apitally.shared.asgi import Message, Receive, Scope, Send
 from apitally.shared.span_processor import ApitallySpanProcessor
-from tests.conftest import WRITE_TOKEN, InMemoryExporters, StubOTLPServer, exported_spans, unwrap
+from tests.conftest import (
+    WRITE_TOKEN,
+    InMemoryExporters,
+    StubOTLPServer,
+    configure_and_activate,
+    exported_spans,
+    unwrap,
+)
 
 
 if TYPE_CHECKING:
@@ -30,13 +37,6 @@ if TYPE_CHECKING:
 
 
 linux_only = pytest.mark.skipif(sys.platform != "linux", reason="real-fork tests run on Linux CI only")
-
-
-def configure_and_activate(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    activation.configure(write_token=WRITE_TOKEN)
-    activation.activate()
-    assert activation.is_activated()
 
 
 async def drive_lifespan(shim: activation.ASGIActivationShim) -> None:

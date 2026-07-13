@@ -368,11 +368,13 @@ def test_unreadable_file_is_dropped_without_blocking_the_queue(
 def test_start_after_timed_out_stop_replaces_stuck_thread(
     spool: Spool, otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def slow_ok(path: str) -> tuple[int, dict[str, str]]:
-        time.sleep(1.0)
+    release = threading.Event()
+
+    def blocked_ok(path: str) -> tuple[int, dict[str, str]]:
+        release.wait(10)
         return (200, {})
 
-    otlp_server.respond = slow_ok
+    otlp_server.respond = blocked_ok
     monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 0.01)
     worker = make_worker(spool, otlp_server.url)
     spool.append("traces", b"trace-payload")
@@ -387,6 +389,7 @@ def test_start_after_timed_out_stop_replaces_stuck_thread(
     new_thread = unwrap(worker.thread)
     assert new_thread is not stuck_thread
     assert new_thread.is_alive()
+    release.set()
     worker.stop()
     stuck_thread.join(5)
     assert not stuck_thread.is_alive()
