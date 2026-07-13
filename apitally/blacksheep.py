@@ -81,7 +81,11 @@ def init_apitally(
         async def activate_on_start(application: Application) -> None:
             activation.activate()
 
+        async def shutdown_on_stop(application: Application) -> None:
+            activation.shutdown()
+
         app.on_start += activate_on_start
+        app.on_stop += shutdown_on_stop
 
         startup.set_app_info(
             framework="blacksheep",

@@ -104,6 +104,38 @@ async def test_asgi_shim_startup_failed_defers_to_first_request(
     assert activated_during_request == [True]
 
 
+async def test_asgi_shim_sends_buffered_telemetry_on_lifespan_shutdown(
+    otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
+    activation.configure(write_token=WRITE_TOKEN, otlp_endpoint=otlp_server.url)
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        assert (await receive())["type"] == "lifespan.startup"
+        await send({"type": "lifespan.startup.complete"})
+        with trace.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
+            pass
+        assert (await receive())["type"] == "lifespan.shutdown"
+        await send({"type": "lifespan.shutdown.complete"})
+
+    messages = iter([{"type": "lifespan.startup"}, {"type": "lifespan.shutdown"}])
+
+    async def receive() -> Message:
+        return next(messages)
+
+    async def send(message: MutableMapping[str, Any]) -> None:
+        pass
+
+    shim = activation.ASGIActivationShim(app)
+    await shim({"type": "lifespan"}, receive, send)
+
+    worker = unwrap(activation.export_worker)
+    assert unwrap(worker.thread).is_alive() is False
+    assert "/v1/traces" in otlp_server.paths()
+    assert unwrap(activation.spool).pending_files() == []
+
+
 def test_wsgi_shim_activates_before_first_request_proceeds(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
