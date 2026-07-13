@@ -110,10 +110,15 @@ async def _before_send(message: Message, scope: Scope) -> None:
             return
         path_template = scope.get("path_template")
         span = get_server_span()
-        if path_template and span is not None and span.is_recording():
-            # The bare template per semconv; the method prefix belongs only in the span name
-            span.set_attribute("http.route", str(path_template))
-            span.update_name(f"{scope.get('method', '')} {path_template}".strip())
+        if span is not None and span.is_recording():
+            if path_template:
+                # The bare template per semconv; the method prefix belongs only in the span name
+                span.set_attribute("http.route", str(path_template))
+                span.update_name(f"{scope.get('method', '')} {path_template}".strip())
+            else:
+                # Litestar's OTel extractor sets http.route to the raw method + path even when
+                # no route matched; clear it so unmatched requests are not aggregated by raw path
+                span.set_attribute("http.route", "")
     except Exception:  # pragma: no cover
         logger.exception("Error in Apitally before_send hook")
 
