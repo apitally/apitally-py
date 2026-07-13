@@ -4,7 +4,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally import capture_exception, set_consumer, set_request_attribute
-from apitally.shared.consumer import get_consumer_identifier, reset_consumer
+from apitally.shared.consumer import get_consumer_identifier, init_consumer
 from apitally.shared.span_processor import get_server_span
 from tests.conftest import unwrap
 
@@ -33,7 +33,7 @@ def test_set_consumer_truncates_identifier_name_and_group(tracer: Tracer, span_e
 def test_consumer_set_in_copied_context_without_span_visible_from_parent_context():
     # Sync endpoints (anyio threadpool) and BaseHTTPMiddleware child tasks run in copied
     # contexts; the shared holder must carry the identifier back even with no recording span
-    reset_consumer()
+    init_consumer()
     copy_context().run(set_consumer, "acme-corp")
     assert get_server_span() is None
     assert get_consumer_identifier() == "acme-corp"

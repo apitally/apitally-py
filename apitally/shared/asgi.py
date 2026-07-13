@@ -5,7 +5,7 @@ from typing import Any
 
 from apitally.shared import metrics
 from apitally.shared.capture import ALLOWED_CONTENT_TYPES, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
-from apitally.shared.consumer import get_consumer_identifier, reset_consumer
+from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
 from apitally.shared.span_processor import get_server_span, get_server_span_processor, is_server_span_kept
 
 
@@ -64,7 +64,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
         deferred_span_id: int | None = None
 
         try:
-            reset_consumer()
+            init_consumer()
             request_size = parse_int(get_header(request_headers, b"content-length"))
             capture_request = config.log_request_body and is_allowed_content_type(
                 get_header(request_headers, b"content-type")
@@ -174,6 +174,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
                 response_size=final_response_size,
                 scheme=scope.get("scheme"),
             )
+            reset_consumer()
 
         async def send_wrapper(message: Message) -> None:
             nonlocal status, response_started, response_size, response_size_counter, response_headers

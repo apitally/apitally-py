@@ -23,7 +23,7 @@ from opentelemetry.instrumentation.django import DjangoInstrumentor
 from apitally.shared import activation, config, metrics, startup
 from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
 from apitally.shared.config import ApitallyConfig
-from apitally.shared.consumer import get_consumer_identifier, reset_consumer
+from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
 from apitally.shared.span_processor import get_server_span, get_server_span_processor, is_server_span_kept
 from apitally.shared.wsgi import group_headers, parse_content_length
 
@@ -129,7 +129,7 @@ class ApitallyDjangoMiddleware(CaptureMixin):
         request_size: int | None = None
         request_body: bytes | str | None = None
         try:
-            reset_consumer()
+            init_consumer()
             request_size = parse_content_length(request.headers.get("Content-Length"))
             request_body = self.capture_request_body(request, config, request_size)
         except Exception:  # pragma: no cover
@@ -139,6 +139,9 @@ class ApitallyDjangoMiddleware(CaptureMixin):
             self.finalize(request, response, config, start_time, request_size, request_body)
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally Django middleware")
+        finally:
+            # finalize_streaming has already snapshotted the consumer for streaming responses
+            reset_consumer()
         return response
 
     def capture_request_body(

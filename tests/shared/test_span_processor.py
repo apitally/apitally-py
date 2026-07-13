@@ -367,7 +367,7 @@ def test_request_context_helpers_return_current_request_state(span_exporter: InM
         span_id = kept_span.get_span_context().span_id
         assert processor.resolve_server_span_id(span_id) == span_id
 
-    reset_consumer()  # the transport middleware does this at request entry
+    reset_consumer()  # the transport middleware does this at request completion
     with tracer.start_as_current_span(
         "GET /items", kind=SpanKind.SERVER, context=remote_parent_context(BOUND_HALF)
     ) as dropped_span:

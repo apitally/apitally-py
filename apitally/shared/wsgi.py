@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from apitally.shared import metrics
 from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
 from apitally.shared.config import ApitallyConfig
-from apitally.shared.consumer import get_consumer_identifier, reset_consumer
+from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
 from apitally.shared.span_processor import get_server_span, get_server_span_processor, is_server_span_kept
 
 
@@ -40,7 +40,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
         config = self.config
         state = RequestState()
         try:
-            reset_consumer()
+            init_consumer()
             state.request_size = parse_content_length(environ.get("CONTENT_LENGTH"))
             state.request_body = self.capture_request_body(environ, config, state.request_size)
         except Exception:  # pragma: no cover
@@ -170,6 +170,9 @@ class ApitallyWSGIMiddleware(CaptureMixin):
             )
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally WSGI middleware")
+        finally:
+            # A reused worker thread keeps its context; the holder must not survive into the next request
+            reset_consumer()
 
 
 class ResponseWrapper:
