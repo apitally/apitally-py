@@ -64,8 +64,8 @@ django_rest_framework = [
     "inflection>=0.5.1",                     # required for schema generation
 ]
 fastapi = [
-    "fastapi>=0.94.1",
-    "starlette>=0.26.1,<2.0.0",
+    "fastapi>=0.108.0",
+    "starlette>=0.29.0,<2.0.0",
     "opentelemetry-instrumentation-fastapi>=0.64b0",
 ]
 flask = [
@@ -77,7 +77,7 @@ litestar = [
     "opentelemetry-instrumentation-asgi>=0.64b0",
 ]
 starlette = [
-    "starlette>=0.26.1,<2.0.0",
+    "starlette>=0.29.0,<2.0.0",
     "opentelemetry-instrumentation-asgi>=0.64b0",
 ]
 
