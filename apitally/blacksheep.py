@@ -12,6 +12,7 @@ from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 
 from apitally.shared import activation, config, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
+from apitally.shared.helpers import capture_exception
 from apitally.shared.span_processor import get_server_span
 
 
@@ -120,12 +121,7 @@ def _wrap_error_handler(app: Application) -> None:
     original = app.handle_internal_server_error
 
     async def handle_internal_server_error(request: Request, exc: Exception) -> Response:
-        try:
-            span = get_server_span()
-            if span is not None and span.is_recording():
-                span.record_exception(exc)
-        except Exception:  # pragma: no cover
-            logger.exception("Error recording exception in Apitally BlackSheep integration")
+        capture_exception(exc)
         return await original(request, exc)
 
     app.handle_internal_server_error = handle_internal_server_error  # ty: ignore[invalid-assignment]
