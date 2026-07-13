@@ -66,11 +66,11 @@ email, Slack and Microsoft Teams.
 
 | Framework                                                                    | Supported versions | Setup guide                                                         |
 | ---------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------- |
-| [**FastAPI**](https://github.com/fastapi/fastapi) \*                         | `>=0.94.1`         | [Link](https://docs.apitally.io/setup-guides/fastapi)               |
+| [**FastAPI**](https://github.com/fastapi/fastapi) \*                         | `>=0.108.0`        | [Link](https://docs.apitally.io/setup-guides/fastapi)               |
 | [**Flask**](https://github.com/pallets/flask)                                | `>=2.0.0`          | [Link](https://docs.apitally.io/setup-guides/flask)                 |
 | [**Django REST Framework**](https://github.com/encode/django-rest-framework) | `>=3.10.0`         | [Link](https://docs.apitally.io/setup-guides/django-rest-framework) |
 | [**Django Ninja**](https://github.com/vitalik/django-ninja)                  | `>=1.0.0`          | [Link](https://docs.apitally.io/setup-guides/django-ninja)          |
-| [**Starlette**](https://github.com/encode/starlette)                         | `>=0.26.1`         | [Link](https://docs.apitally.io/setup-guides/starlette)             |
+| [**Starlette**](https://github.com/encode/starlette)                         | `>=0.29.0`         | [Link](https://docs.apitally.io/setup-guides/starlette)             |
 | [**Litestar**](https://github.com/litestar-org/litestar)                     | `>=2.24.0`         | [Link](https://docs.apitally.io/setup-guides/litestar)              |
 | [**BlackSheep**](https://github.com/Neoteroi/blacksheep)                     | `>=2.0.0`          | [Link](https://docs.apitally.io/setup-guides/blacksheep)            |
 
