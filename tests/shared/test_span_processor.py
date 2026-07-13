@@ -103,6 +103,7 @@ def test_websocket_connection_span_dropped(
         {"http.request.method": "GET", "url.path": "/", "user_agent.original": "kube-probe/1.30"},
         {"http.method": "GET", "http.target": "/healthz?full=1"},
         {"http.method": "GET", "http.target": "/", "http.user_agent": "kube-probe/1.30"},
+        {"http.method": "GET", "http.url": "http://127.0.0.1:8000/healthz"},
     ],
 )
 def test_default_excluded_requests_dropped(
@@ -111,6 +112,19 @@ def test_default_excluded_requests_dropped(
     with tracer.start_as_current_span("GET", kind=SpanKind.SERVER, attributes=attributes):
         pass
     assert span_exporter.get_finished_spans() == ()
+
+
+def test_url_attributes_derived_from_http_url_when_server_omits_request_uri(
+    tracer: Tracer, span_exporter: InMemorySpanExporter
+):
+    attributes = {"http.method": "GET", "http.url": "http://127.0.0.1:8000/items?category=books"}
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER, attributes=attributes):
+        pass
+    (span,) = span_exporter.get_finished_spans()
+    assert span.attributes is not None
+    assert span.attributes["url.path"] == "/items"
+    assert span.attributes["url.query"] == "category=books"
+    assert span.attributes["http.target"] == "/items?category=books"
 
 
 def test_user_exclude_paths_add_to_defaults(span_exporter: InMemorySpanExporter):

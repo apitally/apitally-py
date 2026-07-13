@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import lru_cache, partial
 from typing import Any
+from urllib.parse import urlsplit
 
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
@@ -124,6 +125,7 @@ class ApitallySpanProcessor(SpanProcessor):
                     if holder is not None and holder.identifier:
                         # Consumer set by middleware outside the transport middleware, before this span existed
                         write_consumer_span_attributes(span, holder)
+                    write_url_attributes_from_http_url(span)
                     keep = not self.exclude_request(span) and self.sample_request(span, span.context.trace_id)
                     server_span_kept_var.set(keep)
                     self.spans[span.context.span_id] = (keep, span.context.span_id if keep else None)
@@ -315,6 +317,24 @@ class ApitallySpanProcessor(SpanProcessor):
             return float(result)
         logger.warning("Apitally %s callback returned an invalid value, request captured: %r", name, result)
         return 1.0
+
+
+def write_url_attributes_from_http_url(span: Span) -> None:
+    """Derive url.path, url.query and http.target from http.url when absent, since WSGI servers
+    that omit REQUEST_URI from the environ (e.g. Django's runserver) yield spans with only http.url."""
+    attributes = span.attributes or {}
+    if "url.path" in attributes or "http.target" in attributes:
+        return
+    url = attributes.get("http.url") or attributes.get("url.full")
+    if not isinstance(url, str):
+        return
+    parsed = urlsplit(url)
+    if not parsed.path:
+        return
+    span.set_attribute("url.path", parsed.path)
+    if parsed.query:
+        span.set_attribute("url.query", parsed.query)
+    span.set_attribute("http.target", f"{parsed.path}?{parsed.query}" if parsed.query else parsed.path)
 
 
 def copy_span_with_attributes(span: ReadableSpan, attributes: dict[str, AttributeValue]) -> ReadableSpan:
