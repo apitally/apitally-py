@@ -123,6 +123,9 @@ class ApitallySpanProcessor(SpanProcessor):
         self.exclude_path_patterns = compile_patterns(self.config.exclude_paths)
 
     def on_start(self, span: Span, parent_context: Context | None = None) -> None:
+        # Imported here to break the circular import with consumer.py
+        from apitally.shared.consumer import consumer_holder_var, write_consumer_span_attributes
+
         try:
             if span.context is None:  # pragma: no cover
                 return
@@ -133,6 +136,10 @@ class ApitallySpanProcessor(SpanProcessor):
                     server_span_var.set(span)
                     server_span_processor_var.set(self)
                     span.record_exception = partial(record_collapsed_exception, span.record_exception)
+                    holder = consumer_holder_var.get()
+                    if holder is not None and holder.identifier:
+                        # Consumer set by middleware outside the transport middleware, before this span existed
+                        write_consumer_span_attributes(span, holder)
                     keep = not self.exclude_request(span) and self.sample_request(span, span.context.trace_id)
                     server_span_kept_var.set(keep)
                     self.spans[span.context.span_id] = (keep, span.context.span_id if keep else None)

@@ -148,6 +148,8 @@ A second ContextVar records the keep decision for the current request (set along
 
 Two documented caveats: in cooperative mode a user sampler that drops the request means the SERVER span never starts recording, the ContextVar stays empty, and these APIs no-op — the same coverage limitation §2 already owns. And the var can leak into post-response background tasks; writes to the ended span are dropped by the SDK with a warning, which is the intended outcome. Apitally's own sampling (§3) carries neither caveat: the span of a sampled-out request still records locally, so `set_consumer` and friends keep working and the consumer dimension still reaches metrics.
 
+`set_consumer` works regardless of where the calling middleware sits relative to the Apitally transport middleware. The identifier, name, and group live in a request-scoped holder: the transport middleware installs it at request entry, adopting values a middleware outside it set earlier, and clears it at request completion; `ApitallySpanProcessor.on_start` writes pre-set values onto the SERVER span when it starts, and `set_consumer` writes them directly when the span already exists. Two edges of this: a consumer set outside any request is adopted once by the first request in that context and then cleared, and `set_consumer` after the response has completed is not captured.
+
 ### Removed
 
 - All of `apitally.client.*` (Hub transport, threading/asyncio variants, message queues, validation/server error capture, sentry bridge).

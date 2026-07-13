@@ -370,6 +370,56 @@ async def test_consumer_set_in_copied_context_still_reaches_metrics(metric_reade
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tenant-1"
 
 
+async def test_consumer_set_in_outer_middleware_reaches_span_and_metrics(metric_reader: InMemoryMetricReader):
+    set_config(write_token=WRITE_TOKEN)
+    tracer, exporter = create_trace_pipeline()
+    app = EchoApp()
+
+    async def instrumented_app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        # SERVER span starts inside the transport middleware, as with instrumentors that wrap the app
+        with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+            await app(scope, receive, send)
+
+    middleware = ApitallyASGIMiddleware(instrumented_app)
+
+    async def run_request_with_outer_consumer(identifier: str) -> None:
+        set_consumer(identifier, name="Tenant", group="tenants")  # before the transport middleware runs
+        messages = [{"type": "http.request", "body": b"", "more_body": False}]
+
+        async def receive() -> dict[str, Any]:
+            return messages.pop(0)
+
+        async def send(message: dict[str, Any]) -> None:
+            pass
+
+        await middleware(make_scope(method="GET"), receive, send)
+
+    # The second request pins that a completed request does not swallow the next request's consumer
+    await run_request_with_outer_consumer("tenant-1")
+    await run_request_with_outer_consumer("tenant-2")
+
+    spans = exporter.get_finished_spans()
+    assert [(span.attributes or {})["apitally.consumer.identifier"] for span in spans] == ["tenant-1", "tenant-2"]
+    assert (spans[0].attributes or {})["apitally.consumer.name"] == "Tenant"
+    assert (spans[0].attributes or {})["apitally.consumer.group"] == "tenants"
+    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
+    assert isinstance(duration_metric.data, ExponentialHistogram)
+    consumers = {(p.attributes or {}).get("apitally.consumer.identifier") for p in duration_metric.data.data_points}
+    assert consumers == {"tenant-1", "tenant-2"}
+
+
+async def test_consumer_not_carried_over_to_next_request_in_same_context(metric_reader: InMemoryMetricReader):
+    set_config(write_token=WRITE_TOKEN)
+    tracer, _ = create_trace_pipeline()
+    await send_request(tracer, EchoApp(on_request=lambda: set_consumer("tenant-1")), method="GET")
+    await send_request(tracer, EchoApp(), method="GET")
+
+    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
+    assert isinstance(duration_metric.data, ExponentialHistogram)
+    consumers = {(p.attributes or {}).get("apitally.consumer.identifier") for p in duration_metric.data.data_points}
+    assert consumers == {"tenant-1", None}
+
+
 async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricReader):
     mask_calls: list[bytes] = []
 
