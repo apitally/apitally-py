@@ -38,22 +38,23 @@ def get_user_tracer_provider() -> TracerProvider | None:
 
 def resolve_env(user_provider: TracerProvider | None) -> str:
     config = get_config() or ApitallyConfig()
-    if user_provider is not None:
-        resource_env = user_provider.resource.attributes.get("deployment.environment.name")
-        if resource_env:
-            if config.env not in (resource_env, ApitallyConfig.env):
-                logger.warning(
-                    "Configured Apitally env '%s' conflicts with the existing OpenTelemetry resource attribute "
-                    "deployment.environment.name='%s'; using '%s'. To resolve this, either remove the env argument "
-                    "from init_apitally() or set the deployment.environment.name resource attribute to '%s' in "
-                    "your OpenTelemetry setup.",
-                    config.env,
-                    resource_env,
-                    resource_env,
-                    config.env,
-                )
-            return str(resource_env)
-    return config.env
+    if user_provider is None:
+        return config.env
+    resource_env = user_provider.resource.attributes.get("deployment.environment.name")
+    if not resource_env:
+        return config.env
+    if config.env not in (resource_env, ApitallyConfig.env):
+        logger.warning(
+            "Configured Apitally env '%s' conflicts with the existing OpenTelemetry resource attribute "
+            "deployment.environment.name='%s'; using '%s'. To resolve this, either remove the env argument "
+            "from init_apitally() or set the deployment.environment.name resource attribute to '%s' in "
+            "your OpenTelemetry setup.",
+            config.env,
+            resource_env,
+            resource_env,
+            config.env,
+        )
+    return str(resource_env)
 
 
 def create_resource(env: str) -> Resource:

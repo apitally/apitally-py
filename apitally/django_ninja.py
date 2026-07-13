@@ -46,16 +46,19 @@ def _get_ninja_api_instances(
             patterns.extend(get_resolver(urlconf).url_patterns)
     apis: set[NinjaAPI] = set()
     for p in patterns:
-        if isinstance(p, URLResolver):
-            if p.app_name != "ninja":
-                apis.update(_get_ninja_api_instances(patterns=p.url_patterns))
-            else:
-                for pattern in p.url_patterns:
-                    if isinstance(pattern, URLPattern) and pattern.lookup_str.startswith("ninja."):
-                        callback_keywords = getattr(pattern.callback, "keywords", {})
-                        if isinstance(callback_keywords, dict):
-                            api = callback_keywords.get("api")
-                            if isinstance(api, NinjaAPI):
-                                apis.add(api)
-                                break
+        if not isinstance(p, URLResolver):
+            continue
+        if p.app_name != "ninja":
+            apis.update(_get_ninja_api_instances(patterns=p.url_patterns))
+            continue
+        for pattern in p.url_patterns:
+            if not isinstance(pattern, URLPattern) or not pattern.lookup_str.startswith("ninja."):
+                continue
+            callback_keywords = getattr(pattern.callback, "keywords", {})
+            if not isinstance(callback_keywords, dict):
+                continue
+            api = callback_keywords.get("api")
+            if isinstance(api, NinjaAPI):
+                apis.add(api)
+                break
     return apis

@@ -17,6 +17,7 @@ from litestar.routes import HTTPRoute
 
 from apitally.shared import activation, config, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
+from apitally.shared.helpers import capture_exception
 from apitally.shared.span_processor import get_server_span
 
 
@@ -119,14 +120,9 @@ async def _before_send(message: Message, scope: Scope) -> None:
 
 def _after_exception(exception: Exception, scope: Scope) -> None:
     """Litestar turns handler exceptions into responses before the OTel middleware sees anything raised."""
-    try:
-        if isinstance(exception, HTTPException) and exception.status_code < 500:
-            return
-        span = get_server_span()
-        if span is not None and span.is_recording():
-            span.record_exception(exception)
-    except Exception:  # pragma: no cover
-        logger.exception("Error in Apitally after_exception hook")
+    if isinstance(exception, HTTPException) and exception.status_code < 500:
+        return
+    capture_exception(exception)
 
 
 def _resolve_route(scope: Scope) -> str | None:

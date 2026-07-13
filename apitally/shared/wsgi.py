@@ -62,7 +62,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
             if state.deferred_span_id is not None and (processor := get_server_span_processor()) is not None:
                 processor.finish_export(state.deferred_span_id)
             raise
-        return ResponseWrapper(response, self, environ, config, state)
+        return ResponseWrapper(response, self, environ, state)
 
     def capture_request_body(
         self, environ: WSGIEnvironment, config: ApitallyConfig, content_length: int | None
@@ -90,15 +90,14 @@ class ApitallyWSGIMiddleware(CaptureMixin):
         environ: WSGIEnvironment,
     ) -> None:
         state.status_code = int(status.split(" ", 1)[0])
-        headers = group_headers(response_headers)
-        content_length = parse_content_length(next(iter(headers.get("content-length", [])), None))
+        content_length = parse_content_length(get_header(response_headers, "content-length"))
         state.response_size = content_length
         kept = is_server_span_kept()
         if (
             kept
             and self.capture_response_body
             and config.log_response_body
-            and is_allowed_content_type(next(iter(headers.get("content-type", [])), None))
+            and is_allowed_content_type(get_header(response_headers, "content-type"))
         ):
             over_cap = content_length is not None and content_length > MAX_BODY_SIZE
             state.response_body = BODY_TOO_LARGE if over_cap else bytearray()
@@ -119,7 +118,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
                 stash_request_body = state.request_body
             if config.log_request_headers:
                 stash_request_headers = environ_headers(environ)
-        stash_response_headers = headers if config.log_response_headers else None
+        stash_response_headers = group_headers(response_headers) if config.log_response_headers else None
         if processor is not None and span.context is not None:
             if stash_request_headers or stash_request_body or stash_response_headers:
                 processor.update_stash(
@@ -132,7 +131,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
             processor.defer_export(span.context.span_id)
             state.deferred_span_id = span.context.span_id
 
-    def finalize(self, environ: WSGIEnvironment, config: ApitallyConfig, state: RequestState) -> None:
+    def finalize(self, environ: WSGIEnvironment, state: RequestState) -> None:
         if state.finalized:
             return
         state.finalized = True
@@ -179,14 +178,12 @@ class ResponseWrapper:
         response: Iterable[bytes],
         middleware: ApitallyWSGIMiddleware,
         environ: WSGIEnvironment,
-        config: ApitallyConfig,
         state: RequestState,
     ) -> None:
         self.response = response
         self.iterator = iter(response)
         self.middleware = middleware
         self.environ = environ
-        self.config = config
         self.state = state
 
     def __iter__(self) -> Iterator[bytes]:
@@ -197,7 +194,7 @@ class ResponseWrapper:
             chunk = next(self.iterator)
         except StopIteration:
             self.state.completed = True
-            self.middleware.finalize(self.environ, self.config, self.state)
+            self.middleware.finalize(self.environ, self.state)
             raise
         try:
             self.state.bytes_sent += len(chunk)
@@ -210,7 +207,7 @@ class ResponseWrapper:
         return chunk
 
     def close(self) -> None:
-        self.middleware.finalize(self.environ, self.config, self.state)
+        self.middleware.finalize(self.environ, self.state)
         close = getattr(self.response, "close", None)
         if close is not None:
             close()
@@ -255,3 +252,10 @@ def group_headers(headers: Iterable[tuple[str, str]]) -> dict[str, list[str]]:
     for name, value in headers:
         grouped.setdefault(name.lower(), []).append(value)
     return grouped
+
+
+def get_header(headers: Iterable[tuple[str, str]], name: str) -> str | None:
+    for key, value in headers:
+        if key.lower() == name:
+            return value
+    return None
