@@ -93,6 +93,8 @@ class ExportWorker:
         self.log_processor = log_processor
         self.interval: float = DEFAULT_EXPORT_INTERVAL
         self.session = requests.Session()
+        # Environment lookups per request would call macOS's _scproxy in forked workers, which crashes the process
+        self.session.trust_env = False
         self.headers = {
             **export_headers(env),
             "Content-Type": "application/x-protobuf",
