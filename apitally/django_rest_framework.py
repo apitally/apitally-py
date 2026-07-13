@@ -2,8 +2,6 @@ from collections.abc import Mapping
 from contextlib import suppress
 from typing import Any
 
-from rest_framework.schemas.generators import EndpointEnumerator
-
 from apitally.django import init_apitally
 
 
@@ -11,6 +9,8 @@ __all__ = ["init_apitally"]
 
 
 def _get_drf_paths(urlconfs: list[str | None]) -> list[dict[str, str]]:
+    from rest_framework.schemas.generators import EndpointEnumerator
+
     enumerators = [EndpointEnumerator(urlconf=urlconf) for urlconf in urlconfs]
     return [
         {"method": method.upper(), "path": path}
