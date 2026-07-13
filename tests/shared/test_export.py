@@ -1,6 +1,7 @@
 import gzip
 import logging
 import socket
+import threading
 import time
 from collections import deque
 from collections.abc import Iterator
@@ -30,6 +31,7 @@ from apitally.shared.export import (
     EXPORT_INTERVAL_HEADER,
     MAX_EXPORT_INTERVAL,
     MAX_LOG_VALUE_LENGTH,
+    MAX_SENDS_PER_CYCLE,
     MIN_EXPORT_INTERVAL,
     ExportWorker,
     SpoolLogExporter,
@@ -38,7 +40,7 @@ from apitally.shared.export import (
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span_processor
-from apitally.shared.spool import MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT, Spool
+from apitally.shared.spool import MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT, MAX_UNCOMPRESSED_FILE_SIZE, Spool
 from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, StubOTLPServer, installed, read_spool_file, unwrap
 
 
@@ -225,6 +227,29 @@ def test_outage_sends_one_probe_per_cycle_without_accumulating_files(spool: Spoo
         worker.run_cycle(None)
     assert len(spool.pending_files()) == 1
     assert otlp_server.paths() == ["/v1/traces"] * 3
+
+
+def test_sends_per_cycle_are_capped(spool: Spool, otlp_server: StubOTLPServer) -> None:
+    worker = make_worker(spool, otlp_server.url)
+    for _ in range(MAX_SENDS_PER_CYCLE + 2):
+        spool.append("traces", b"x" * MAX_UNCOMPRESSED_FILE_SIZE)
+    worker.send_pending(None)
+    assert len(otlp_server.paths()) == MAX_SENDS_PER_CYCLE
+    assert len(spool.pending_files()) == 1
+
+
+def test_stop_during_pacing_wait_ends_drain(
+    spool: Spool, otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker = make_worker(spool, otlp_server.url)
+    spool.append("traces", b"trace-payload")
+    spool.append("logs", b"log-payload")
+    spool.rotate_for_export()
+    stop_event = threading.Event()
+    monkeypatch.setattr(stop_event, "wait", lambda timeout=None: True)
+    worker.send_pending(stop_event)
+    assert len(otlp_server.paths()) == 1
+    assert len(spool.pending_files()) == 1
 
 
 def test_expired_file_dropped_before_sending_while_never_attempted_file_delivers(

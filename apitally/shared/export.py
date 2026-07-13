@@ -60,9 +60,6 @@ class SpoolSpanExporter(SpanExporter):
         # The spool's lifecycle is owned by activation
         pass
 
-    def force_flush(self, timeout_millis: int = 30000) -> bool:
-        return True
-
 
 class SpoolLogExporter(LogRecordExporter):
     """Truncates oversized log records, encodes to protobuf and appends them to the spool."""
@@ -79,9 +76,6 @@ class SpoolLogExporter(LogRecordExporter):
 
     def shutdown(self) -> None:
         pass
-
-    def force_flush(self, timeout_millis: int = 30000) -> bool:
-        return True
 
 
 class ExportWorker:
@@ -141,7 +135,7 @@ class ExportWorker:
         while not stop_event.wait(delay):
             try:
                 self.run_cycle(stop_event)
-            except Exception:
+            except Exception:  # pragma: no cover
                 logger.debug("Error in Apitally export cycle", exc_info=True)
             # Jitter desynchronizes deployments whose processes started together
             delay = self.interval * self.random.uniform(0.9, 1.1)

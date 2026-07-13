@@ -148,9 +148,7 @@ class Spool:
             self.closed.clear()
 
     def rotate_locked(self, signal: str) -> None:
-        current = self.current.pop(signal, None)
-        if current is None:
-            return
+        current = self.current.pop(signal)
         try:
             current.close()
         except OSError:

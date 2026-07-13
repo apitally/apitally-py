@@ -127,12 +127,18 @@ def test_size_cap_evicts_oldest_non_metrics_first(spool: Spool) -> None:
     spool.max_size = sum(file.compressed_size for file in files) - 1
     spool.rotate_for_export()
     assert [file.signal for file in spool.pending_files()] == ["metrics", "logs"]
+    spool.max_size = 0
+    spool.rotate_for_export()
+    assert [file.signal for file in spool.pending_files()] == ["metrics"]
 
 
 def test_unwritable_temp_dir_falls_back_to_memory(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    monkeypatch.setattr(spool_module, "is_temp_dir_writable", lambda: False)
+    def raise_oserror(*args: object, **kwargs: object) -> None:
+        raise OSError("read-only file system")
+
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", raise_oserror)
     with caplog.at_level(logging.WARNING, logger="apitally.shared.spool"):
         spool = Spool()
     assert spool.in_memory
