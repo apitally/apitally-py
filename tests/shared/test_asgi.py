@@ -237,15 +237,20 @@ async def test_mask_request_body_result_over_cap_yields_too_large():
     assert span.attributes["apitally.request.body"] == BODY_TOO_LARGE
 
 
-async def test_aborted_response_body_not_exported():
-    set_config(write_token=WRITE_TOKEN, log_response_body=True)
+async def test_aborted_response_exports_headers_and_size_but_not_body():
+    set_config(write_token=WRITE_TOKEN, log_request_headers=True, log_response_headers=True, log_response_body=True)
     tracer, exporter = create_trace_pipeline()
 
     async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
-        await receive()
-        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"application/json")]})
-        await send({"type": "http.response.body", "body": b'{"a":', "more_body": True})
-        raise RuntimeError("aborted mid-stream")
+        # The span starts and ends inside the app, mirroring the instrumentor ending the SERVER span
+        # before the exception reaches the middleware's finally
+        with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER):
+            await receive()
+            await send(
+                {"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"application/json")]}
+            )
+            await send({"type": "http.response.body", "body": b'{"a":', "more_body": True})
+            raise RuntimeError("aborted mid-stream")
 
     middleware = ApitallyASGIMiddleware(app)
 
@@ -255,12 +260,15 @@ async def test_aborted_response_body_not_exported():
     async def send(message: dict[str, Any]) -> None:
         pass
 
-    with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER):
-        with pytest.raises(RuntimeError):
-            await middleware(make_scope(), receive, send)
+    with pytest.raises(RuntimeError):
+        await middleware(make_scope(headers=[("User-Agent", "test")]), receive, send)
 
     (span,) = exporter.get_finished_spans()
-    assert "apitally.response.body" not in (span.attributes or {})
+    assert span.attributes is not None
+    assert span.attributes["http.response.body.size"] == 5
+    assert header_values(span, "http.request.header.user-agent") == ("test",)
+    assert header_values(span, "http.response.header.content-type") == ("application/json",)
+    assert "apitally.response.body" not in span.attributes
 
 
 async def test_invalid_user_pattern_dropped_and_request_succeeds():
