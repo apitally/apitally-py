@@ -131,6 +131,21 @@ def test_request_and_response_bodies_captured_and_redacted(
     assert json.loads(str(attributes["apitally.response.body"])) == {"user": "u", "password": REDACTED}
 
 
+def test_headers_captured_for_unmatched_requests(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    app = make_app(monkeypatch, log_request_headers=True, log_response_headers=True)
+    with TestClient(app=app) as client:
+        assert client.get("/nonexistent", headers={"X-Test": "1"}).status_code == 404
+        assert client.head("/users/123", headers={"X-Test": "1"}).status_code == 405
+
+    spans = exported_spans(exporters)
+    assert len(spans) == 2
+    for span in spans:
+        attributes = span.attributes or {}
+        assert attributes["http.route"] == ""
+        assert attributes["http.request.header.x-test"] == ["1"]
+        assert attributes["http.response.header.content-type"] == ["application/json"]
+
+
 def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     app = Litestar(route_handlers=[error_route], plugins=[ApitallyPlugin(write_token=WRITE_TOKEN)])

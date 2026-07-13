@@ -65,14 +65,8 @@ class ApitallyPlugin(InitPluginProtocol):
             if cfg.disabled:
                 return app_config
             if not _has_otel_instrumentation(app_config):
-                # Install via the plugin registry, never the middleware list: with two
-                # OpenTelemetry configs in the middleware list only the last one takes effect,
-                # so a user's existing config would be silently discarded
                 otel_plugin = OpenTelemetryPlugin(OpenTelemetryConfig(exclude_spans=["receive", "send"]))
                 app_config.plugins = [*app_config.plugins, otel_plugin]
-            app_config.middleware.append(
-                DefineMiddleware(ApitallyASGIMiddleware, resolve_route=_resolve_route)  # ty: ignore[invalid-argument-type]
-            )
             app_config.before_send.append(_before_send)
             app_config.after_exception.append(_after_exception)
             app_config.on_startup.append(self.on_startup)
@@ -82,6 +76,10 @@ class ApitallyPlugin(InitPluginProtocol):
 
     def on_startup(self, app: Litestar) -> None:
         try:
+            # Litestar runs app middleware only for matched routes, so the transport middleware
+            # wraps the ASGI handler instead to also cover routing failures (404/405 responses)
+            if not isinstance(app.asgi_handler, ApitallyASGIMiddleware):
+                app.asgi_handler = ApitallyASGIMiddleware(app.asgi_handler, resolve_route=_resolve_route)  # ty: ignore[invalid-argument-type, invalid-assignment]
             startup.set_app_info(
                 framework="litestar",
                 paths=lambda: _get_paths(app),
