@@ -18,6 +18,18 @@ DEFAULT_OTLP_ENDPOINT = "https://otlp.apitally.io"
 WRITE_TOKEN_FORMAT = re.compile(r"^apt_[a-zA-Z0-9]{24}$")
 TRUE_VALUES = frozenset({"1", "true", "yes"})
 
+MAX_BODY_SIZE = 50_000
+BODY_TOO_LARGE = "[BODY_TOO_LARGE]"
+ALLOWED_CONTENT_TYPES = (
+    "application/json",
+    "application/problem+json",
+    "application/vnd.api+json",
+    "application/ld+json",
+    "application/x-ndjson",
+    "text/markdown",
+    "text/plain",
+)
+
 
 @dataclass
 class ApitallyConfig:
@@ -66,8 +78,12 @@ def set_config(**kwargs: Any) -> ApitallyConfig:
     return config
 
 
-def get_config() -> ApitallyConfig | None:
-    return current_config
+def get_config() -> ApitallyConfig:
+    return current_config if current_config is not None else ApitallyConfig()
+
+
+def is_configured() -> bool:
+    return current_config is not None
 
 
 def reset() -> None:
@@ -118,3 +134,11 @@ def resolve_config(kwargs: dict[str, Any]) -> tuple[ApitallyConfig, str | None]:
         if error:
             config.disabled = True
     return config, error
+
+
+def is_allowed_content_type(content_type: str | bytes | None) -> bool:
+    if content_type is None:
+        return False
+    if isinstance(content_type, bytes):
+        content_type = content_type.decode("latin-1")
+    return content_type.strip().lower().startswith(ALLOWED_CONTENT_TYPES)

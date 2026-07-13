@@ -15,8 +15,7 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import metrics
-from apitally.shared.capture import BODY_TOO_LARGE
-from apitally.shared.config import set_config
+from apitally.shared.config import BODY_TOO_LARGE, set_config
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.wsgi import ApitallyWSGIMiddleware

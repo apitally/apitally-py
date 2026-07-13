@@ -4,7 +4,12 @@ from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
 from apitally.shared import metrics
-from apitally.shared.capture import ALLOWED_CONTENT_TYPES, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
+from apitally.shared.config import (
+    BODY_TOO_LARGE,
+    MAX_BODY_SIZE,
+    get_config,
+    is_allowed_content_type,
+)
 from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
 from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
 
@@ -25,14 +30,14 @@ def group_headers(headers: Iterable[tuple[bytes, bytes]]) -> dict[str, list[str]
     return grouped
 
 
-class ApitallyASGIMiddleware(CaptureMixin):
+class ApitallyASGIMiddleware:
     """Transport middleware. Accesses the SERVER span only in the receive/send/finish callbacks,
     so it works both inside the instrumentor's span and wrapped around the instrumented stack."""
 
     def __init__(self, app: ASGIApp, resolve_route: Callable[[Scope], str | None] | None = None) -> None:
         self.app = app
         self.resolve_route = resolve_route or resolve_route_from_scope
-        self.bind_config()
+        self.config = get_config()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -239,10 +244,6 @@ def resolve_route_from_scope(scope: Scope) -> str | None:
     route = scope.get("route")
     path = getattr(route, "path", route)
     return path if isinstance(path, str) else None
-
-
-def is_allowed_content_type(content_type: bytes | None) -> bool:
-    return content_type is not None and content_type.decode("latin-1").strip().lower().startswith(ALLOWED_CONTENT_TYPES)
 
 
 def get_header(headers: Iterable[tuple[bytes, bytes]], name: bytes) -> bytes | None:

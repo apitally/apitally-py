@@ -8,8 +8,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from apitally.shared import metrics
-from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin, is_allowed_content_type
-from apitally.shared.config import ApitallyConfig
+from apitally.shared.config import (
+    BODY_TOO_LARGE,
+    MAX_BODY_SIZE,
+    ApitallyConfig,
+    get_config,
+    is_allowed_content_type,
+)
 from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
 from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
 
@@ -22,7 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ApitallyWSGIMiddleware(CaptureMixin):
+class ApitallyWSGIMiddleware:
     """Transport-level capture middleware. Must run inside the instrumentor's middleware."""
 
     def __init__(
@@ -34,7 +39,7 @@ class ApitallyWSGIMiddleware(CaptureMixin):
         self.app = app
         self.get_route = get_route
         self.capture_response_body = capture_response_body
-        self.bind_config()
+        self.config = get_config()
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
         config = self.config

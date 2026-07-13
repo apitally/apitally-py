@@ -37,7 +37,7 @@ def get_user_tracer_provider() -> TracerProvider | None:
 
 
 def resolve_env(user_provider: TracerProvider | None) -> str:
-    config = get_config() or ApitallyConfig()
+    config = get_config()
     if user_provider is None:
         return config.env
     resource_env = user_provider.resource.attributes.get("deployment.environment.name")
@@ -130,7 +130,7 @@ def warn_if_sampler_drops_spans(sampler: Sampler) -> None:
 
 def warn_if_attribute_length_limit_too_low(user_provider: TracerProvider) -> None:
     global span_limits_warned
-    config = get_config() or ApitallyConfig()
+    config = get_config()
     capture_enabled = (
         config.log_request_headers or config.log_request_body or config.log_response_headers or config.log_response_body
     )
@@ -150,10 +150,10 @@ def warn_if_attribute_length_limit_too_low(user_provider: TracerProvider) -> Non
 
 
 def endpoint_url(path: str) -> str:
-    config = get_config() or ApitallyConfig()
+    config = get_config()
     return config.otlp_endpoint.rstrip("/") + path
 
 
 def export_headers(env: str) -> dict[str, str]:
-    config = get_config() or ApitallyConfig()
+    config = get_config()
     return {"Authorization": f"Bearer {config.write_token}", "Apitally-Env": env}

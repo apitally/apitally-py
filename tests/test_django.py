@@ -12,7 +12,7 @@ from opentelemetry.trace import SpanKind
 
 from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, _convert_proxy_objects, init_apitally
 from apitally.shared import activation, config
-from apitally.shared.capture import BODY_TOO_LARGE
+from apitally.shared.config import BODY_TOO_LARGE
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
     WRITE_TOKEN,
@@ -70,7 +70,7 @@ def test_management_command_configures_but_never_activates(
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(sys, "argv", ["manage.py", "migrate"])
     init_apitally(write_token=WRITE_TOKEN)
-    assert config.get_config() is not None
+    assert config.is_configured()
     assert not activation.is_activated()
     assert exporters.span == []
 

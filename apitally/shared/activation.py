@@ -134,10 +134,9 @@ class WSGIActivationShim:
 
 
 def should_skip_activation() -> bool:
-    cfg = config.get_config()
     return (
-        cfg is None
-        or cfg.disabled
+        not config.is_configured()
+        or config.get_config().disabled
         or bool(os.environ.get("PYTEST_CURRENT_TEST"))
         or sys.argv[1:2] == ["test"]  # detects Django's "manage.py test"
         or (os.environ.get("APITALLY_DISABLED") or "").strip().lower() in TRUE_VALUES

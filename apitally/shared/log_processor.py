@@ -7,7 +7,7 @@ from opentelemetry.instrumentation.logging.handler import LoggingHandler
 from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor, ReadWriteLogRecord
 from opentelemetry.util.types import AnyValue
 
-from apitally.shared.config import ApitallyConfig, get_config
+from apitally.shared.config import get_config
 from apitally.shared.context import is_server_span_kept
 from apitally.shared.span_processor import ApitallySpanProcessor
 
@@ -26,7 +26,7 @@ def install_root_handler(
 ) -> LoggingHandler | None:
     """Bridge stdlib logging into the private LoggerProvider."""
     global installed_handler
-    config = get_config() or ApitallyConfig()
+    config = get_config()
     if not config.capture_logs:
         return None
     if installed_handler is None:
