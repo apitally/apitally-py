@@ -60,6 +60,13 @@ def read_spool_payload(file: SpoolFile) -> bytes:
     return gzip.decompress(file.sink.read())
 
 
+def configure_and_activate(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    activation.configure(write_token=WRITE_TOKEN)
+    activation.activate()
+    assert activation.is_activated()
+
+
 # Skip collection of framework test modules whose framework or instrumentor is not installed,
 # so the CI test matrix can run with a single framework at a time
 collect_ignore = []
@@ -148,6 +155,20 @@ def exporters(monkeypatch: pytest.MonkeyPatch) -> InMemoryExporters:
     monkeypatch.setattr(export, "create_log_exporter", log_exporter)
     monkeypatch.setattr(export.ExportWorker, "start", lambda self: None)
     return created
+
+
+@pytest.fixture()
+def span_exporter() -> InMemorySpanExporter:
+    return InMemorySpanExporter()
+
+
+@pytest.fixture()
+def tracer(span_exporter: InMemorySpanExporter) -> Tracer:
+    """Tracer with the Apitally span processor attached directly to the in-memory exporter,
+    skipping the Apitally exporter so tests observe processed spans without redaction."""
+    provider = TracerProvider()
+    provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(span_exporter)))
+    return provider.get_tracer(CONTRIB_SCOPE)
 
 
 class StubOTLPServer:

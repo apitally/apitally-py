@@ -15,6 +15,7 @@ from apitally.shared import activation, config
 from apitally.shared.capture import BODY_TOO_LARGE
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
+    WRITE_TOKEN,
     InMemoryExporters,
     attach_metric_reader,
     collect_metrics,
@@ -68,7 +69,7 @@ def test_management_command_configures_but_never_activates(
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(sys, "argv", ["manage.py", "migrate"])
-    init_apitally(write_token="apt_" + "a" * 24)
+    init_apitally(write_token=WRITE_TOKEN)
     assert config.get_config() is not None
     assert not activation.is_activated()
     assert exporters.span == []

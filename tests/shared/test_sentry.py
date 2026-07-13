@@ -3,13 +3,10 @@ from collections.abc import Generator
 from typing import TYPE_CHECKING
 
 import pytest
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import activation, sentry
-from apitally.shared.span_processor import ApitallySpanProcessor
 from tests.conftest import WRITE_TOKEN
 
 
@@ -47,18 +44,6 @@ def sentry_initialized() -> Generator[None]:
     sentry_sdk.get_client().close()
 
 
-@pytest.fixture()
-def exporter() -> InMemorySpanExporter:
-    return InMemorySpanExporter()
-
-
-@pytest.fixture()
-def tracer(exporter: InMemorySpanExporter) -> Tracer:
-    provider = TracerProvider()
-    provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(exporter)))
-    return provider.get_tracer("test")
-
-
 def capture_exception_in_server_span(tracer: Tracer) -> str | None:
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
         try:
@@ -68,7 +53,7 @@ def capture_exception_in_server_span(tracer: Tracer) -> str | None:
 
 
 def test_sentry_event_id_written_to_server_span(
-    sentry_initialized: None, tracer: Tracer, exporter: InMemorySpanExporter
+    sentry_initialized: None, tracer: Tracer, span_exporter: InMemorySpanExporter
 ):
     activation.configure(write_token=WRITE_TOKEN)
     activation.configure(write_token=WRITE_TOKEN)
@@ -77,7 +62,7 @@ def test_sentry_event_id_written_to_server_span(
     event_id = capture_exception_in_server_span(tracer)
 
     assert event_id is not None
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].attributes is not None
     assert spans[0].attributes["apitally.exception.sentry_event_id"] == event_id

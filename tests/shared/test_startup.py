@@ -5,17 +5,10 @@ import pytest
 from opentelemetry.sdk._logs import ReadableLogRecord
 
 from apitally.shared import activation, startup
-from tests.conftest import WRITE_TOKEN, InMemoryExporters
+from tests.conftest import WRITE_TOKEN, InMemoryExporters, configure_and_activate
 
 
 PATHS = [{"method": "GET", "path": "/users"}, {"method": "POST", "path": "/users"}]
-
-
-def activate(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    activation.configure(write_token=WRITE_TOKEN)
-    activation.activate()
-    assert activation.is_activated()
 
 
 def startup_records(exporters: InMemoryExporters) -> list[ReadableLogRecord]:
@@ -36,7 +29,7 @@ def test_startup_event_record_and_payload(exporters: InMemoryExporters, monkeypa
         versions={"fastapi": "0.115.0", "app": "2.3.1"},
         openapi='{"openapi": "3.1.0"}',
     )
-    activate(monkeypatch)
+    configure_and_activate(monkeypatch)
 
     (exported,) = startup_records(exporters)
     record = exported.log_record
@@ -57,7 +50,7 @@ def test_startup_event_record_and_payload(exporters: InMemoryExporters, monkeypa
 def test_openapi_over_4mb_omitted_paths_remain(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     openapi = '{"openapi": "3.1.0", "padding": "' + "x" * 4_000_000 + '"}'
     startup.set_app_info(framework="fastapi", paths=PATHS, openapi=openapi)
-    activate(monkeypatch)
+    configure_and_activate(monkeypatch)
 
     (exported,) = startup_records(exporters)
     assert isinstance(exported.log_record.body, str)
@@ -68,7 +61,7 @@ def test_openapi_over_4mb_omitted_paths_remain(exporters: InMemoryExporters, mon
 
 def test_emitted_once_across_activation_lifecycle(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     startup.set_app_info(framework="flask", paths=PATHS)
-    activate(monkeypatch)
+    configure_and_activate(monkeypatch)
 
     # Ignored re-call (adapter re-init) and simulated after-fork-in-parent re-activation
     activation.configure(write_token=WRITE_TOKEN, env="dev")
