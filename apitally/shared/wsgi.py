@@ -58,9 +58,9 @@ class ApitallyWSGIMiddleware(CaptureMixin):
         try:
             response = self.app(environ, wrapped_start_response)
         except BaseException:
-            # The app raised after start_response; finalize never runs, so release the deferral
-            if state.deferred_span_id is not None and (processor := get_server_span_processor()) is not None:
-                processor.finish_export(state.deferred_span_id)
+            # No ResponseWrapper is created, so finalize here to release the deferral and record metrics
+            state.status_code = state.status_code or 500
+            self.finalize(environ, state)
             raise
         return ResponseWrapper(response, self, environ, state)
 

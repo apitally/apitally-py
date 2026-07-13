@@ -61,6 +61,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
         response_too_large = False
         capture_response = False
         completed = False
+        deferred_span_id: int | None = None
 
         try:
             reset_consumer()
@@ -115,20 +116,29 @@ class ApitallyASGIMiddleware(CaptureMixin):
                 if root_path.startswith(initial_root_path):
                     route = root_path[len(initial_root_path) :] + route
             span = get_server_span()
-            if is_server_span_kept() and span is not None and span.is_recording():
+            processor = get_server_span_processor()
+            if (
+                is_server_span_kept()
+                and span is not None
+                and span.context is not None
+                and processor is not None
+                and (span.is_recording() or deferred_span_id is not None)
+            ):
+                extra_attributes: dict[str, str | int] = {}
                 if route:
                     # Overwrites the instrumentor's raw route so spans and metrics agree on the template
-                    span.set_attribute("http.route", route)
-                    span.update_name(f"{scope.get('method', '')} {route}".strip())
+                    extra_attributes["http.route"] = route
+                    if span.is_recording():
+                        span.update_name(f"{scope.get('method', '')} {route}".strip())
                 if final_request_size is not None:
-                    span.set_attribute("http.request.body.size", final_request_size)
+                    extra_attributes["http.request.body.size"] = final_request_size
                 if final_response_size is not None:
-                    span.set_attribute("http.response.body.size", final_response_size)
+                    extra_attributes["http.response.body.size"] = final_response_size
                 # Partial buffers from aborted requests/responses are never exported
                 if request_too_large:
-                    span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
+                    extra_attributes["apitally.request.body"] = BODY_TOO_LARGE
                 if response_too_large:
-                    span.set_attribute("apitally.response.body", BODY_TOO_LARGE)
+                    extra_attributes["apitally.response.body"] = BODY_TOO_LARGE
                 stash_request_headers = group_headers(request_headers) if config.log_request_headers else None
                 stash_response_headers = group_headers(response_headers) if response_headers is not None else None
                 stash_request_body = (
@@ -141,18 +151,19 @@ class ApitallyASGIMiddleware(CaptureMixin):
                     if capture_response and not response_too_large and response_body and response_body_complete
                     else None
                 )
-                if (
-                    stash_request_headers or stash_request_body or stash_response_headers or stash_response_body
-                ) and span.context is not None:
-                    processor = get_server_span_processor()
-                    if processor is not None:
-                        processor.update_stash(
-                            span.context.span_id,
-                            request_headers=stash_request_headers,
-                            request_body=stash_request_body,
-                            response_headers=stash_response_headers,
-                            response_body=stash_response_body,
-                        )
+                if stash_request_headers or stash_request_body or stash_response_headers or stash_response_body:
+                    processor.update_stash(
+                        span.context.span_id,
+                        request_headers=stash_request_headers,
+                        request_body=stash_request_body,
+                        response_headers=stash_response_headers,
+                        response_body=stash_response_body,
+                    )
+                if deferred_span_id is not None:
+                    processor.finish_export(deferred_span_id, extra_attributes or None)
+                else:
+                    for key, value in extra_attributes.items():
+                        span.set_attribute(key, value)
             metrics.record_request(
                 method=scope.get("method", ""),
                 route=route or "",
@@ -166,7 +177,7 @@ class ApitallyASGIMiddleware(CaptureMixin):
 
         async def send_wrapper(message: Message) -> None:
             nonlocal status, response_started, response_size, response_size_counter, response_headers
-            nonlocal response_body, response_body_complete, response_too_large, capture_response
+            nonlocal response_body, response_body_complete, response_too_large, capture_response, deferred_span_id
             try:
                 if message["type"] == "http.response.start":
                     response_started = True
@@ -186,6 +197,14 @@ class ApitallyASGIMiddleware(CaptureMixin):
                     )
                     if kept and config.log_response_headers:
                         response_headers = headers
+                    if kept:
+                        # The instrumentor may end the span before finish runs on the exception path,
+                        # so commit to a finish_export that can attach attributes after the span has ended
+                        span = get_server_span()
+                        processor = get_server_span_processor()
+                        if span is not None and span.context is not None and processor is not None:
+                            deferred_span_id = span.context.span_id
+                            processor.defer_export(deferred_span_id)
                 elif message["type"] == "http.response.body":
                     body = message.get("body", b"")
                     response_size_counter += len(body)
@@ -195,7 +214,6 @@ class ApitallyASGIMiddleware(CaptureMixin):
                             response_too_large = True
                             response_body = bytearray()
                     if not message.get("more_body", False):
-                        # Final message: write size attributes and record metrics while the span is still recording
                         response_body_complete = True
                         finish()
             except Exception:  # pragma: no cover

@@ -6,18 +6,21 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind, Tracer
 
+from apitally.shared import metrics
 from apitally.shared.capture import BODY_TOO_LARGE
 from apitally.shared.config import set_config
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.wsgi import ApitallyWSGIMiddleware
-from tests.conftest import WRITE_TOKEN, create_tracer
+from tests.conftest import WRITE_TOKEN, attach_metric_reader, collect_metrics, create_tracer
 
 
 if TYPE_CHECKING:
@@ -49,6 +52,13 @@ class ClosingIterable:
 @pytest.fixture()
 def tracer(span_exporter: InMemorySpanExporter) -> Tracer:
     return create_tracer(span_exporter, scope="test")
+
+
+@pytest.fixture()
+def metric_reader() -> Iterator[InMemoryMetricReader]:
+    reader = attach_metric_reader(metrics.setup(Resource.create({})))
+    yield reader
+    metrics.reset()
 
 
 def make_environ(
@@ -315,3 +325,30 @@ def test_no_response_size_when_client_stops_reading_mid_stream(tracer: Tracer, s
     attributes = run_request(ApitallyWSGIMiddleware(app), make_environ(), tracer, span_exporter, consume_chunks=1)
 
     assert "http.response.body.size" not in attributes
+
+
+def test_exception_after_response_start_records_metrics(
+    tracer: Tracer, span_exporter: InMemorySpanExporter, metric_reader: InMemoryMetricReader
+):
+    set_config(write_token=WRITE_TOKEN, log_request_headers=True)
+
+    def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
+        start_response("200 OK", [("Content-Type", "text/plain")])
+        raise RuntimeError("failed after response start")
+
+    def start_response(status: str, headers: list[tuple[str, str]], exc_info: Any = None) -> Any:
+        pass
+
+    environ = make_environ(HTTP_ACCEPT="application/json")
+    middleware = ApitallyWSGIMiddleware(app, get_route=lambda environ: "/items")
+    with tracer.start_as_current_span("request", kind=SpanKind.SERVER):
+        with pytest.raises(RuntimeError):
+            middleware(environ, start_response)
+
+    (span,) = span_exporter.get_finished_spans()
+    assert dict(span.attributes or {})["http.request.header.accept"] == ["application/json"]
+    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
+    assert isinstance(duration_metric.data, ExponentialHistogram)
+    (point,) = duration_metric.data.data_points
+    assert point.count == 1
+    assert (point.attributes or {})["http.response.status_code"] == 200
