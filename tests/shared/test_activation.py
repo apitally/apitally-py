@@ -22,7 +22,7 @@ from opentelemetry.trace import SpanKind
 from apitally.shared import activation, export, log_processor, metrics
 from apitally.shared.asgi import Message, Receive, Scope, Send
 from apitally.shared.span_processor import ApitallySpanProcessor
-from tests.conftest import WRITE_TOKEN, InMemoryExporters, StubOTLPServer, exported_spans, unwrap
+from tests.conftest import WRITE_TOKEN, InMemoryExporters, StubOTLPServer, exported_spans, read_spool_file, unwrap
 
 
 if TYPE_CHECKING:
@@ -290,8 +290,7 @@ def test_after_fork_in_parent_restarts_worker_and_delivers_prefork_files(
     while time.time() < deadline and not postfork_metric_received():
         time.sleep(0.02)
     assert "/v1/traces" in otlp_server.paths()
-    # A post-fork metrics payload proves the worker resolves the fresh reader, not the
-    # detached one, whose collect would be a no-op
+    # Proves the worker resolves the fresh reader; the detached one's collect is a no-op
     assert postfork_metric_received()
     metric_bodies = [body for path, _, body in otlp_server.requests if path == "/v1/metrics"]
     assert ExportMetricsServiceRequest.FromString(gzip.decompress(metric_bodies[-1]))
@@ -311,7 +310,7 @@ def test_fork_in_child_abandons_inherited_spool_without_touching_parent_files(
         activation.before_fork()
         files = parent_spool.pending_files()
         assert files
-        bytes_before = {unwrap(file.path): file.read_bytes() for file in files}
+        bytes_before = {unwrap(file.path): read_spool_file(file) for file in files}
 
         activation.after_fork_in_child()
         assert activation.spool is None

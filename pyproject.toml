@@ -144,7 +144,7 @@ build-backend = "hatchling.build"
 source = "vcs"
 
 [tool.uv]
-default-groups = ["dev", "test", "types"]
+default-groups = "all"
 
 [tool.ruff]
 line-length = 120

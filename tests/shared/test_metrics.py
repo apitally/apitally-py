@@ -5,7 +5,6 @@ from collections.abc import Iterator
 
 import pytest
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
-from opentelemetry.sdk.metrics import Histogram as SDKHistogram
 from opentelemetry.sdk.metrics.export import (
     AggregationTemporality,
     ExponentialHistogram,
@@ -13,12 +12,11 @@ from opentelemetry.sdk.metrics.export import (
     InMemoryMetricReader,
     Sum,
 )
-from opentelemetry.sdk.metrics.view import ExponentialBucketHistogramAggregation
 from opentelemetry.sdk.resources import Resource
 
 from apitally.shared import metrics
 from apitally.shared.spool import Spool
-from tests.conftest import attach_metric_reader, collect_metrics, unwrap
+from tests.conftest import attach_metric_reader, collect_metrics, read_spool_file, unwrap
 
 
 @pytest.fixture(autouse=True)
@@ -84,20 +82,6 @@ def test_histograms_under_apitally_scope():
     assert get_scope_names(reader)["http.server.request.duration"] == "apitally"
 
 
-def test_reader_keeps_histogram_temporality_and_aggregation(spool: Spool):
-    provider = metrics.setup(Resource.create({}))
-    metrics.attach_reader(spool)
-    reader = metrics.reader
-    assert reader is not None
-    assert reader in provider._all_metric_readers
-    # The reader re-keys the overrides onto internal instrument base classes
-    histogram_key = next(cls for cls in reader._instrument_class_temporality if issubclass(cls, SDKHistogram))
-    assert reader._instrument_class_temporality[histogram_key] == AggregationTemporality.DELTA
-    aggregation = reader._instrument_class_aggregation[histogram_key]
-    assert isinstance(aggregation, ExponentialBucketHistogramAggregation)
-    assert aggregation._max_scale == 3
-
-
 def test_collect_appends_delta_payloads_to_spool(spool: Spool):
     metrics.setup(Resource.create({}))
     metrics.attach_reader(spool)
@@ -107,7 +91,7 @@ def test_collect_appends_delta_payloads_to_spool(spool: Spool):
     unwrap(metrics.reader).collect()
     spool.rotate_for_export()
     (file,) = [file for file in spool.pending_files() if file.signal == "metrics"]
-    request = ExportMetricsServiceRequest.FromString(gzip.decompress(file.read_bytes()))
+    request = ExportMetricsServiceRequest.FromString(gzip.decompress(read_spool_file(file)))
     assert len(request.resource_metrics) == 2
     points = [
         point

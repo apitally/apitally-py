@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import gzip
 import logging
 import os
@@ -16,38 +14,11 @@ logger = logging.getLogger(__name__)
 
 SIGNALS = ("traces", "logs", "metrics")
 
-ROTATE_AT_UNCOMPRESSED_SIZE = 4_000_000
+MAX_UNCOMPRESSED_FILE_SIZE = 4_000_000
 MAX_SPOOL_SIZE_DISK = 50_000_000
 MAX_SPOOL_SIZE_MEMORY = 10_000_000
-# A file whose first send attempt might have been published server-side must not be re-sent
-# after the server's 1h dedup window; one minute of margin covers transit time and timeouts
-SEND_HORIZON = 59 * 60
-ORPHAN_MAX_AGE = 2 * 60 * 60
-
-
-class DuplicateLogFilter(logging.Filter):
-    """Drops repeats of the same message within a time window, so a persistently failing
-    export path cannot log endlessly."""
-
-    def __init__(self, window_seconds: float = 60.0) -> None:
-        super().__init__()
-        self.window_seconds = window_seconds
-        self.last_logged: dict[tuple[str, int, str], float] = {}
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        # Keyed on the rendered message, not the template, so warnings that differ only
-        # in their arguments (e.g. per-signal data loss) are not swallowed
-        key = (record.module, record.levelno, record.getMessage())
-        now = time.time()
-        last = self.last_logged.get(key)
-        if last is not None and now - last < self.window_seconds:
-            return False
-        self.last_logged[key] = now
-        return True
-
-
-duplicate_log_filter = DuplicateLogFilter()
-logger.addFilter(duplicate_log_filter)
+MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT = 59 * 60
+MAX_UNTOUCHED_FILE_AGE = 2 * 60 * 60
 
 
 class SpoolFile:
@@ -64,7 +35,7 @@ class SpoolFile:
             self.sink: IO[bytes] = BytesIO()
         else:
             file = tempfile.NamedTemporaryFile(prefix="apitally-", suffix=".gz", delete=False)
-            self.sink = cast("IO[bytes]", file)
+            self.sink = cast(IO[bytes], file)
             self.path = Path(file.name)
         self.gzip_stream = gzip.GzipFile(fileobj=self.sink, mode="wb")
 
@@ -73,27 +44,19 @@ class SpoolFile:
         self.uncompressed_size += len(payload)
 
     def close(self) -> None:
-        # The sink stays open so the bytes remain readable even if another process sweeps
-        # the path. The flush moves the compressed bytes out of the Python-level buffer
-        # onto disk; without it, a closed file shares its unwritten tail with a forked
-        # child through the inherited file descriptor, and both processes flushing it
-        # corrupts the file
         self.gzip_stream.close()
         self.sink.flush()
         self.compressed_size = self.sink.tell()
 
-    def read_bytes(self) -> bytes:
-        self.sink.seek(0)
-        return self.sink.read()
-
     def mark_attempt(self) -> None:
-        # Monotonic clock: a wall-clock step backwards must not extend retries past the
-        # server's dedup window
         if self.first_attempt_at is None:
             self.first_attempt_at = time.monotonic()
 
-    def expired(self) -> bool:
-        return self.first_attempt_at is not None and time.monotonic() - self.first_attempt_at > SEND_HORIZON
+    def is_expired(self) -> bool:
+        return (
+            self.first_attempt_at is not None
+            and time.monotonic() - self.first_attempt_at > MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT
+        )
 
     def touch(self) -> None:
         if self.path is not None:
@@ -111,12 +74,11 @@ class SpoolFile:
 
 
 class Spool:
-    """Byte spool between the batch processors and the export worker: accepts serialized
-    payloads per signal, manages file rotation, caps and eviction. Thread-safe; appends
+    """Byte spool between the batch processors and the export worker. Thread-safe: appends
     come from the batch worker threads, rotation and sending from the export worker."""
 
     def __init__(self) -> None:
-        self.in_memory = not check_writable_fs()
+        self.in_memory = not is_temp_dir_writable()
         if self.in_memory:
             logger.warning(
                 "Unable to create temporary files, buffering telemetry in memory (max %d MB)",
@@ -132,8 +94,8 @@ class Spool:
     def append(self, signal: str, payload: bytes) -> None:
         with self.lock:
             current = self.current.get(signal)
-            if current is not None and current.uncompressed_size + len(payload) > ROTATE_AT_UNCOMPRESSED_SIZE:
-                self._rotate_locked(signal)
+            if current is not None and current.uncompressed_size + len(payload) > MAX_UNCOMPRESSED_FILE_SIZE:
+                self.rotate_locked(signal)
                 current = None
             try:
                 if current is None:
@@ -142,24 +104,22 @@ class Spool:
                 current.write(payload)
             except OSError:
                 logger.warning("Error writing telemetry to disk, dropping buffered %s", signal, exc_info=True)
-                self._discard_current_locked(signal)
-            self._evict_locked()
+                self.discard_current_locked(signal)
+            self.evict_locked()
 
     def rotate_for_export(self) -> None:
-        """Close each signal's current file so it becomes sendable, unless the signal
-        already has closed files waiting (during a backlog the current file keeps growing
-        instead of adding one small file per cycle)."""
+        """Close each signal's current file so it becomes sendable, unless closed files are
+        already waiting (a backlog grows the current file instead of adding one per cycle)."""
         with self.lock:
             for signal in SIGNALS:
                 if signal in self.current and not any(file.signal == signal for file in self.closed):
-                    self._rotate_locked(signal)
-            self._evict_locked()
+                    self.rotate_locked(signal)
+            self.evict_locked()
 
     def close_current_files(self) -> None:
-        """Close every signal's current file so no gzip writer is open across a fork."""
         with self.lock:
             for signal in list(self.current):
-                self._rotate_locked(signal)
+                self.rotate_locked(signal)
 
     def pending_files(self) -> list[SpoolFile]:
         """Closed files in send order (oldest first)."""
@@ -173,22 +133,21 @@ class Spool:
             file.delete()
 
     def touch_files(self) -> None:
-        """Refresh mtimes so sibling processes' orphan sweeps never touch live files."""
+        """Refresh mtimes so cleanup_orphaned_files in a sibling process never removes live files."""
         with self.lock:
             for file in (*self.current.values(), *self.closed):
                 file.touch()
 
     def clear(self) -> None:
-        """Teardown for tests and reset. The spool never deletes files from a finalizer,
-        so a forked child can safely abandon an inherited instance."""
+        """Teardown for tests and reset."""
         with self.lock:
             for signal in list(self.current):
-                self._discard_current_locked(signal)
+                self.discard_current_locked(signal)
             for file in self.closed:
                 file.delete()
             self.closed.clear()
 
-    def _rotate_locked(self, signal: str) -> None:
+    def rotate_locked(self, signal: str) -> None:
         current = self.current.pop(signal, None)
         if current is None:
             return
@@ -200,33 +159,32 @@ class Spool:
             return
         self.closed.append(current)
 
-    def _discard_current_locked(self, signal: str) -> None:
+    def discard_current_locked(self, signal: str) -> None:
         current = self.current.pop(signal, None)
         if current is not None:
             current.delete()
 
-    def _evict_locked(self) -> None:
-        for file in [file for file in self.closed if file.expired()]:
+    def evict_locked(self) -> None:
+        for file in [file for file in self.closed if file.is_expired()]:
             logger.warning("Buffered %s could not be delivered within an hour and was dropped", file.signal)
             self.closed.remove(file)
             file.delete()
-        while self._total_size_locked() > self.max_size:
-            # Metrics files are exempt: a full hour of metric payloads is small, and the
-            # aggregate data is the primary value that must survive an outage
+        while self.total_size_locked() > self.max_size:
+            # Metrics are exempt: an hour of them is small and they must survive an outage
             oldest = next((file for file in self.closed if file.signal != "metrics"), None)
             if oldest is None:
                 break
-            logger.warning("Apitally buffer size limit reached, dropping oldest buffered %s", oldest.signal)
+            logger.warning("Buffer size limit reached, dropping oldest buffered %s", oldest.signal)
             self.closed.remove(oldest)
             oldest.delete()
 
-    def _total_size_locked(self) -> int:
+    def total_size_locked(self) -> int:
         return sum(file.compressed_size for file in self.closed) + sum(
             file.sink.tell() for file in self.current.values()
         )
 
 
-def check_writable_fs() -> bool:
+def is_temp_dir_writable() -> bool:
     try:
         with tempfile.NamedTemporaryFile(prefix="apitally-"):
             return True
@@ -236,8 +194,8 @@ def check_writable_fs() -> bool:
 
 def cleanup_orphaned_files() -> None:
     """Best-effort removal of spool files left behind by crashed processes. Live processes
-    shield their files by touching them every export cycle."""
-    cutoff = time.time() - ORPHAN_MAX_AGE
+    refresh their files' mtimes every export cycle, keeping them newer than the cutoff."""
+    cutoff = time.time() - MAX_UNTOUCHED_FILE_AGE
     with suppress(OSError):
         for path in Path(tempfile.gettempdir()).glob("apitally-*.gz"):
             with suppress(OSError):

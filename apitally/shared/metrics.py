@@ -31,8 +31,7 @@ SYSTEM_METRICS_CONFIG: dict[str, list[str] | None] = {
 
 class ApitallyMetricReader(MetricReader):
     """Non-periodic reader without a timer thread: the export worker drives collection
-    every export cycle, so all three signals leave in lockstep. Collected metrics are
-    encoded to protobuf and appended to the spool."""
+    every export cycle, so all three signals export in lockstep."""
 
     def __init__(self, spool: Spool) -> None:
         super().__init__(
@@ -42,8 +41,6 @@ class ApitallyMetricReader(MetricReader):
         self.spool = spool
 
     def collect(self, timeout_millis: float = 10_000) -> None:  # ty: ignore[override-of-final-method]
-        # After the reader is detached, _collect is None; a collect must do nothing
-        # instead of logging a not-registered warning
         if self._collect is not None:
             super().collect(timeout_millis=timeout_millis)
 

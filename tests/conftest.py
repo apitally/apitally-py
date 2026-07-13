@@ -34,7 +34,7 @@ from apitally.shared.span_processor import (
     server_span_processor_var,
     server_span_var,
 )
-from apitally.shared.spool import Spool
+from apitally.shared.spool import Spool, SpoolFile
 
 
 WRITE_TOKEN = "apt_" + "a" * 24
@@ -51,6 +51,11 @@ _T = TypeVar("_T")
 def unwrap(value: _T | None) -> _T:
     assert value is not None
     return value
+
+
+def read_spool_file(file: SpoolFile) -> bytes:
+    file.sink.seek(0)
+    return file.sink.read()
 
 
 # Skip collection of framework test modules whose framework or instrumentor is not installed,

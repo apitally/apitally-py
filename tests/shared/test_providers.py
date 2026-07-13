@@ -113,8 +113,6 @@ def test_endpoint_override_ignores_otel_env_vars(monkeypatch: pytest.MonkeyPatch
 
 
 def test_pipeline_delivers_to_otlp_endpoint(otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch):
-    # Runs the real pipeline against a local HTTP server: spans, logs and metrics reach
-    # the spool and one export cycle delivers them as gzipped protobuf
     monkeypatch.setenv("APITALLY_OTLP_ENDPOINT", otlp_server.url)
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)

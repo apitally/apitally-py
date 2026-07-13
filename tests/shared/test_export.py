@@ -24,12 +24,13 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind
 
 from apitally.shared import activation, export, metrics, startup
-from apitally.shared import spool as spool_module
 from apitally.shared.config import set_config
 from apitally.shared.export import (
     ENCODE_CHUNK_SIZE,
     EXPORT_INTERVAL_HEADER,
+    MAX_EXPORT_INTERVAL,
     MAX_LOG_VALUE_LENGTH,
+    MIN_EXPORT_INTERVAL,
     ExportWorker,
     SpoolLogExporter,
     SpoolSpanExporter,
@@ -37,14 +38,8 @@ from apitally.shared.export import (
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span_processor
-from apitally.shared.spool import SEND_HORIZON, Spool
-from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, StubOTLPServer, installed, unwrap
-
-
-@pytest.fixture(autouse=True)
-def reset_duplicate_log_filter() -> Iterator[None]:
-    spool_module.duplicate_log_filter.last_logged.clear()
-    yield
+from apitally.shared.spool import MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT, Spool
+from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, StubOTLPServer, installed, read_spool_file, unwrap
 
 
 @pytest.fixture
@@ -63,13 +58,13 @@ def make_worker(spool: Spool, endpoint: str) -> ExportWorker:
 def read_trace_request(spool: Spool) -> ExportTraceServiceRequest:
     spool.rotate_for_export()
     (file,) = [file for file in spool.pending_files() if file.signal == "traces"]
-    return ExportTraceServiceRequest.FromString(gzip.decompress(file.read_bytes()))
+    return ExportTraceServiceRequest.FromString(gzip.decompress(read_spool_file(file)))
 
 
 def read_log_request(spool: Spool) -> ExportLogsServiceRequest:
     spool.rotate_for_export()
     (file,) = [file for file in spool.pending_files() if file.signal == "logs"]
-    return ExportLogsServiceRequest.FromString(gzip.decompress(file.read_bytes()))
+    return ExportLogsServiceRequest.FromString(gzip.decompress(read_spool_file(file)))
 
 
 def read_log_records(spool: Spool) -> list[PB2LogRecord]:
@@ -92,7 +87,7 @@ def emit_log(spool: Spool, msg: str) -> None:
     )
 
 
-def test_span_batch_lands_in_spool_as_parseable_payload(spool: Spool) -> None:
+def test_span_batch_is_written_to_spool_as_parseable_payload(spool: Spool) -> None:
     provider = TracerProvider(sampler=ALWAYS_ON)
     provider.add_span_processor(SimpleSpanProcessor(ApitallySpanExporter(SpoolSpanExporter(spool))))
     with provider.get_tracer(CONTRIB_SCOPE).start_as_current_span("GET /items", kind=SpanKind.SERVER):
@@ -119,14 +114,14 @@ def test_stashed_body_and_headers_reach_spool_redacted(spool: Spool) -> None:
         )
     spool.rotate_for_export()
     (file,) = spool.pending_files()
-    payload = gzip.decompress(file.read_bytes())
+    payload = gzip.decompress(read_spool_file(file))
     assert b"secret123" not in payload
     assert b"hunter2" not in payload
     assert REDACTED.encode() in payload
     assert b"application/json" in payload
 
 
-def test_log_batch_lands_in_spool_as_parseable_payload(spool: Spool) -> None:
+def test_log_batch_is_written_to_spool_as_parseable_payload(spool: Spool) -> None:
     emit_log(spool, "something happened")
     (record,) = read_log_records(spool)
     assert record.body.string_value == "something happened"
@@ -148,7 +143,7 @@ def test_large_batch_appends_multiple_payloads_without_loss(spool: Spool) -> Non
     assert sorted(exported_names) == sorted(span_names)
 
 
-def test_oversized_log_body_is_truncated_at_encode_time(spool: Spool) -> None:
+def test_oversized_log_body_is_truncated(spool: Spool) -> None:
     emit_log(spool, "x" * (MAX_LOG_VALUE_LENGTH + 1000))
     (record,) = read_log_records(spool)
     assert record.body.string_value == "x" * MAX_LOG_VALUE_LENGTH
@@ -156,7 +151,7 @@ def test_oversized_log_body_is_truncated_at_encode_time(spool: Spool) -> None:
     assert any(kv.key == "code.file.path" for kv in record.attributes)
 
 
-def test_oversized_log_attribute_value_is_truncated_at_encode_time(spool: Spool) -> None:
+def test_oversized_log_attribute_value_is_truncated(spool: Spool) -> None:
     provider = make_log_provider(spool)
     provider.get_logger("app").emit(body="hello", attributes={"detail": "y" * (MAX_LOG_VALUE_LENGTH + 1000)})
     (record,) = read_log_records(spool)
@@ -232,7 +227,7 @@ def test_outage_sends_one_probe_per_cycle_without_accumulating_files(spool: Spoo
     assert otlp_server.paths() == ["/v1/traces"] * 3
 
 
-def test_expired_attempted_file_evicted_while_never_attempted_file_delivers(
+def test_expired_file_dropped_before_sending_while_never_attempted_file_delivers(
     spool: Spool, otlp_server: StubOTLPServer, caplog: pytest.LogCaptureFixture
 ) -> None:
     worker = make_worker(spool, otlp_server.url)
@@ -240,23 +235,12 @@ def test_expired_attempted_file_evicted_while_never_attempted_file_delivers(
     spool.append("logs", b"never-attempted")
     spool.rotate_for_export()
     files = {file.signal: file for file in spool.pending_files()}
-    files["traces"].first_attempt_at = time.monotonic() - SEND_HORIZON - 1
+    files["traces"].first_attempt_at = time.monotonic() - MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT - 1
     with caplog.at_level(logging.WARNING):
-        worker.run_cycle(None)
+        worker.send_pending(None)
     assert otlp_server.paths() == ["/v1/logs"]
     assert spool.pending_files() == []
     assert any("could not be delivered" in record.message for record in caplog.records)
-
-
-def test_send_site_evicts_file_past_horizon_instead_of_sending(spool: Spool, otlp_server: StubOTLPServer) -> None:
-    worker = make_worker(spool, otlp_server.url)
-    spool.append("traces", b"trace-payload")
-    spool.rotate_for_export()
-    (file,) = spool.pending_files()
-    file.first_attempt_at = time.monotonic() - SEND_HORIZON - 1
-    worker.send_pending(None)
-    assert otlp_server.requests == []
-    assert spool.pending_files() == []
 
 
 def test_permanent_failure_drops_only_that_file_and_warns_once(
@@ -280,7 +264,12 @@ def test_interval_header_applies_with_clamping(spool: Spool, otlp_server: StubOT
     header_value = {"value": "5"}
     otlp_server.respond = lambda path: (200, {EXPORT_INTERVAL_HEADER: header_value["value"]})
     worker = make_worker(spool, otlp_server.url)
-    for value, expected_interval in (("5", 5.0), ("10000", 900.0), ("1", 5.0), ("not-a-number", 5.0)):
+    for value, expected_interval in (
+        ("5", 5.0),
+        ("10000", float(MAX_EXPORT_INTERVAL)),
+        ("1", float(MIN_EXPORT_INTERVAL)),
+        ("not-a-number", float(MIN_EXPORT_INTERVAL)),
+    ):
         header_value["value"] = value
         spool.append("traces", b"trace-payload")
         worker.run_cycle(None)
@@ -462,7 +451,7 @@ def test_end_to_end_sensitive_body_redacted_on_disk_and_wire(
         unwrap(activation.span_processor).downstream.force_flush()
         spool.close_current_files()
         disk_payloads = b"".join(
-            gzip.decompress(file.read_bytes()) for file in spool.pending_files() if file.signal == "traces"
+            gzip.decompress(read_spool_file(file)) for file in spool.pending_files() if file.signal == "traces"
         )
         assert b"hunter2" not in disk_payloads
         assert b"apitally.request.body" in disk_payloads
