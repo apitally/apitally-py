@@ -263,6 +263,9 @@ class ApitallySpanProcessor(SpanProcessor):
 
     def exclude_request(self, span: Span) -> bool:
         attributes = span.attributes or {}
+        scheme = attributes.get("url.scheme") or attributes.get("http.scheme")
+        if scheme in ("ws", "wss"):
+            return True
         method = attributes.get("http.request.method") or attributes.get("http.method")
         if method == "OPTIONS":
             return True
