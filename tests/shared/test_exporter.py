@@ -9,9 +9,10 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind
 
 from apitally.shared.config import set_config
+from apitally.shared.context import get_server_span_processor
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
-from apitally.shared.span_processor import STASH_ATTRIBUTE, ApitallySpanProcessor, get_server_span_processor
+from apitally.shared.span_processor import STASH_ATTRIBUTE, ApitallySpanProcessor
 from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, create_trace_pipeline, unwrap
 
 

@@ -6,7 +6,7 @@ from typing import Any
 from apitally.shared import metrics
 from apitally.shared.capture import ALLOWED_CONTENT_TYPES, BODY_TOO_LARGE, MAX_BODY_SIZE, CaptureMixin
 from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
-from apitally.shared.span_processor import get_server_span, get_server_span_processor, is_server_span_kept
+from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
 
 
 logger = logging.getLogger(__name__)

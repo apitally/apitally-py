@@ -2,7 +2,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally import capture_exception, set_request_attribute
-from apitally.shared.span_processor import get_server_span
+from apitally.shared.context import get_server_span
 from tests.conftest import unwrap
 
 

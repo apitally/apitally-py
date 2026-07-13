@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from apitally.shared.span_processor import get_server_span
+from apitally.shared.context import get_server_span
 
 
 if TYPE_CHECKING:

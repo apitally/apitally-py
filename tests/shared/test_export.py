@@ -26,6 +26,7 @@ from opentelemetry.trace import SpanKind
 
 from apitally.shared import activation, export, metrics, startup
 from apitally.shared.config import set_config
+from apitally.shared.context import get_server_span_processor
 from apitally.shared.export import (
     ENCODE_CHUNK_SIZE,
     EXPORT_INTERVAL_HEADER,
@@ -39,7 +40,7 @@ from apitally.shared.export import (
 )
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
-from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span_processor
+from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.spool import MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT, MAX_UNCOMPRESSED_FILE_SIZE, Spool
 from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, StubOTLPServer, installed, read_spool_payload, unwrap
 

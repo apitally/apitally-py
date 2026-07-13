@@ -11,12 +11,8 @@ from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, TraceFl
 
 from apitally.shared.config import set_config
 from apitally.shared.consumer import get_consumer_identifier, reset_consumer, set_consumer
-from apitally.shared.span_processor import (
-    MAX_BUFFERED_SPANS,
-    ApitallySpanProcessor,
-    get_server_span,
-    is_server_span_kept,
-)
+from apitally.shared.context import get_server_span, is_server_span_kept
+from apitally.shared.span_processor import MAX_BUFFERED_SPANS, ApitallySpanProcessor
 from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, create_tracer, unwrap
 
 
