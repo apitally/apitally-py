@@ -1,9 +1,14 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from django.urls import URLPattern, URLResolver, get_resolver
-from ninja import NinjaAPI
 
 from apitally.django import init_apitally
+
+
+if TYPE_CHECKING:
+    from ninja import NinjaAPI
 
 
 __all__ = ["init_apitally"]
@@ -38,6 +43,8 @@ def _get_ninja_schema(urlconfs: list[str | None]) -> dict[str, Any] | None:
 def _get_ninja_api_instances(
     urlconfs: list[str | None] | None = None, patterns: list[Any] | None = None
 ) -> set[NinjaAPI]:
+    from ninja import NinjaAPI
+
     if urlconfs is None:
         urlconfs = [None]
     if patterns is None:
