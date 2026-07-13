@@ -5,8 +5,7 @@ from collections.abc import Callable, Sequence
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
-from apitally.shared.capture import BODY_TOO_LARGE, MAX_BODY_SIZE
-from apitally.shared.config import ApitallyConfig, get_config
+from apitally.shared.config import BODY_TOO_LARGE, MAX_BODY_SIZE, get_config
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import STASH_ATTRIBUTE, RequestStash, copy_span_with_attributes
 
@@ -23,7 +22,7 @@ class ApitallySpanExporter(SpanExporter):
 
     def __init__(self, delegate: SpanExporter) -> None:
         self.delegate = delegate
-        self.config = get_config() or ApitallyConfig()
+        self.config = get_config()
         self.redaction = Redaction(
             self.config.mask_query_params, self.config.mask_headers, self.config.mask_body_fields
         )

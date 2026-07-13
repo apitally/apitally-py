@@ -11,7 +11,7 @@ from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 from opentelemetry.trace import SpanContext, SpanKind
 from opentelemetry.util.types import AttributeValue
 
-from apitally.shared.config import ApitallyConfig, get_config
+from apitally.shared.config import get_config
 from apitally.shared.consumer import consumer_holder_var, write_consumer_span_attributes
 from apitally.shared.context import (
     get_server_span,
@@ -105,7 +105,7 @@ class ApitallySpanProcessor(SpanProcessor):
         self.stash: dict[int, RequestStash] = {}
         # Assigned by the log processor so both buffers flush or discard on the same decision
         self.on_request_finished: Callable[[int, bool], None] | None = None
-        self.config = get_config() or ApitallyConfig()
+        self.config = get_config()
         self.sample_rate_bound = TraceIdRatioBased.get_bound_for_rate(self.config.sample_rate)
         self.exclude_path_patterns = compile_patterns(self.config.exclude_paths)
 

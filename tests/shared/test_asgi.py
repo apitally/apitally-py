@@ -12,8 +12,7 @@ from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import config, metrics
 from apitally.shared.asgi import ApitallyASGIMiddleware
-from apitally.shared.capture import BODY_TOO_LARGE
-from apitally.shared.config import set_config
+from apitally.shared.config import BODY_TOO_LARGE, set_config
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
 from tests.conftest import WRITE_TOKEN, attach_metric_reader, collect_metrics, create_trace_pipeline
