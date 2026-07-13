@@ -134,7 +134,8 @@ class InMemoryExporters:
 @pytest.fixture
 def exporters(monkeypatch: pytest.MonkeyPatch) -> InMemoryExporters:
     """Replace the spool exporter factories with in-memory exporters and keep the export
-    worker thread from starting, so activation never performs network I/O."""
+    worker from starting its thread or sending, so activation and shutdown never perform
+    network I/O."""
     created = InMemoryExporters()
 
     def span_exporter(spool: Spool) -> InMemorySpanExporter:
@@ -150,6 +151,7 @@ def exporters(monkeypatch: pytest.MonkeyPatch) -> InMemoryExporters:
     monkeypatch.setattr(export, "create_span_exporter", span_exporter)
     monkeypatch.setattr(export, "create_log_exporter", log_exporter)
     monkeypatch.setattr(export.ExportWorker, "start", lambda self: None)
+    monkeypatch.setattr(export.ExportWorker, "send_pending", lambda self, stop_event: None)
     return created
 
 

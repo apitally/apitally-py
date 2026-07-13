@@ -208,6 +208,15 @@ def test_on_startup_activates_and_emits_startup_event(exporters: InMemoryExporte
     assert "/users/{user_id}" in json.loads(payload["openapi"])["paths"]
 
 
+def test_buffered_telemetry_flushed_on_lifespan_shutdown(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    with TestClient(app=make_app(monkeypatch)) as client:
+        assert client.get("/users/123").status_code == 200
+
+    worker = activation.export_worker
+    assert worker is not None and worker.stop_event.is_set()
+    assert exporters.span[0].get_finished_spans()
+
+
 def test_plugin_reconstruction_same_kwargs_is_noop(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     make_app(monkeypatch, env="dev")
     first_config = config.get_config()

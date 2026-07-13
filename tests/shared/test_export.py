@@ -442,8 +442,9 @@ def test_end_to_end_request_delivers_all_three_signals_decoded(
     with create_starlette_client(otlp_server, monkeypatch) as client:
         assert client.get("/items/42").status_code == 200
         assert unwrap(activation.spool).in_memory is False
-        unwrap(activation.export_worker).run_cycle(None)
+        assert otlp_server.requests == []
 
+    # Client exit runs lifespan shutdown, which flushes and sends all buffered telemetry
     assert {"/v1/traces", "/v1/logs", "/v1/metrics"} <= set(otlp_server.paths())
 
     (trace_request,) = decoded_records(otlp_server, "/v1/traces", ExportTraceServiceRequest)
@@ -471,7 +472,7 @@ def test_end_to_end_request_delivers_all_three_signals_decoded(
 
 
 @starlette_required
-def test_end_to_end_sensitive_body_redacted_on_disk_and_wire(
+def test_end_to_end_sensitive_body_redacted_in_spool_files_and_sent_payloads(
     otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with create_starlette_client(otlp_server, monkeypatch, log_request_body=True) as client:
@@ -479,16 +480,16 @@ def test_end_to_end_sensitive_body_redacted_on_disk_and_wire(
         spool = unwrap(activation.spool)
         unwrap(activation.span_processor).downstream.force_flush()
         spool.close_current_files()
-        disk_payloads = b"".join(read_spool_payload(file) for file in spool.pending_files() if file.signal == "traces")
-        assert b"hunter2" not in disk_payloads
-        assert b"apitally.request.body" in disk_payloads
-        assert REDACTED.encode() in disk_payloads
-        unwrap(activation.export_worker).run_cycle(None)
+        spool_payloads = b"".join(read_spool_payload(file) for file in spool.pending_files() if file.signal == "traces")
+        assert b"hunter2" not in spool_payloads
+        assert b"apitally.request.body" in spool_payloads
+        assert REDACTED.encode() in spool_payloads
 
-    wire_payloads = b"".join(gzip.decompress(body) for _, _, body in otlp_server.requests)
-    assert b"hunter2" not in wire_payloads
-    assert b"apitally.request.body" in wire_payloads
-    assert REDACTED.encode() in wire_payloads
+    sent_payloads = b"".join(gzip.decompress(body) for _, _, body in otlp_server.requests)
+    assert sent_payloads
+    assert b"hunter2" not in sent_payloads
+    assert b"apitally.request.body" in sent_payloads
+    assert REDACTED.encode() in sent_payloads
 
 
 @starlette_required

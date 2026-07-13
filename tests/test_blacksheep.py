@@ -145,6 +145,22 @@ async def test_first_request_activates_and_records_without_lifespan(
     assert span.name == "GET /items/{id}"
 
 
+async def test_buffered_telemetry_flushed_on_lifespan_shutdown(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    allow_activation(monkeypatch)
+    app = create_app()
+    await app.start()
+
+    async with create_client(app) as client:
+        assert (await client.get("/items/123")).status_code == 200
+    await app.stop()
+
+    worker = activation.export_worker
+    assert worker is not None and worker.stop_event.is_set()
+    assert exporters.span[0].get_finished_spans()
+
+
 async def test_pre_instrumented_app_adapts_without_duplicate_spans(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):

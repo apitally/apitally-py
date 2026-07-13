@@ -70,6 +70,7 @@ class ApitallyPlugin(InitPluginProtocol):
             app_config.before_send.append(_before_send)
             app_config.after_exception.append(_after_exception)
             app_config.on_startup.append(self.on_startup)
+            app_config.on_shutdown.append(activation.shutdown)
         except Exception:  # pragma: no cover
             logger.exception("Error initializing Apitally for Litestar")
         return app_config

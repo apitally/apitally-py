@@ -87,6 +87,12 @@ def activate() -> None:
                 logger.exception("Error in Apitally on-activate hook")
 
 
+def shutdown() -> None:
+    """Final flush and send of all buffered telemetry on graceful shutdown."""
+    if export_worker is not None:
+        export_worker.shutdown()
+
+
 def is_activated() -> bool:
     return activated
 
@@ -96,7 +102,8 @@ def register_on_activate_hook(hook: Callable[[], None]) -> None:
 
 
 class ASGIActivationShim:
-    """Outermost ASGI layer. Activates on lifespan startup completion or on the first request."""
+    """Outermost ASGI layer. Activates on lifespan startup completion or on the first request,
+    and flushes on lifespan shutdown."""
 
     def __init__(self, app: Callable[..., Awaitable[Any]]) -> None:
         self.app = app
@@ -112,6 +119,8 @@ class ASGIActivationShim:
             async def send_wrapper(message: MutableMapping[str, Any]) -> None:
                 if message["type"] == "lifespan.startup.complete":
                     activate()
+                elif message["type"] in ("lifespan.shutdown.complete", "lifespan.shutdown.failed"):
+                    shutdown()
                 await send(message)
 
             await self.app(scope, receive, send_wrapper)
