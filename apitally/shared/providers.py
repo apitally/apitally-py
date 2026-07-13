@@ -5,13 +5,9 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import cast
 
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import AggregationTemporality, MetricReader
-from opentelemetry.sdk.metrics.view import Aggregation
+from opentelemetry.sdk.metrics.export import MetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanLimits, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.sampling import ALWAYS_OFF, ALWAYS_ON, ParentBased, Sampler, TraceIdRatioBased
@@ -108,27 +104,6 @@ def create_logger_provider(resource: Resource, processors: Sequence[LogRecordPro
     for processor in processors:
         provider.add_log_record_processor(processor)
     return provider
-
-
-def create_span_exporter(env: str) -> OTLPSpanExporter:
-    return OTLPSpanExporter(endpoint=endpoint_url("/v1/traces"), headers=export_headers(env))
-
-
-def create_metric_exporter(
-    env: str,
-    preferred_temporality: dict[type, AggregationTemporality] | None = None,
-    preferred_aggregation: dict[type, Aggregation] | None = None,
-) -> OTLPMetricExporter:
-    return OTLPMetricExporter(
-        endpoint=endpoint_url("/v1/metrics"),
-        headers=export_headers(env),
-        preferred_temporality=preferred_temporality,
-        preferred_aggregation=preferred_aggregation,
-    )
-
-
-def create_log_exporter(env: str) -> OTLPLogExporter:
-    return OTLPLogExporter(endpoint=endpoint_url("/v1/logs"), headers=export_headers(env))
 
 
 def reset() -> None:

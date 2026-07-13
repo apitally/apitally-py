@@ -1,20 +1,19 @@
-import atexit
 import time
 from collections.abc import Iterable
 from typing import Any
 
+from opentelemetry.exporter.otlp.proto.common.metrics_encoder import encode_metrics
 from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
 from opentelemetry.metrics import CallbackOptions, Histogram, Observation
 from opentelemetry.sdk.metrics import Histogram as SDKHistogram
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import AggregationTemporality, MetricExporter, PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.export import AggregationTemporality, MetricReader, MetricsData
 from opentelemetry.sdk.metrics.view import Aggregation, ExponentialBucketHistogramAggregation
 from opentelemetry.sdk.resources import Resource
 
-from apitally.shared.providers import create_meter_provider, create_metric_exporter
+from apitally.shared.providers import create_meter_provider
+from apitally.shared.spool import Spool
 
-
-EXPORT_INTERVAL_MILLIS = 60_000
 
 # Keyed on the SDK instrument class (the API class raises at reader construction), so the
 # process gauges keep their default aggregation and temporality
@@ -30,21 +29,28 @@ SYSTEM_METRICS_CONFIG: dict[str, list[str] | None] = {
 }
 
 
-class ApitallyMetricReader(PeriodicExportingMetricReader):
-    def __init__(self, exporter: MetricExporter, export_interval_millis: float | None = None) -> None:
-        super().__init__(exporter, export_interval_millis=export_interval_millis)
-        # MeterProvider's atexit hook misses readers added via add_metric_reader
-        atexit.register(self.shutdown)
+class ApitallyMetricReader(MetricReader):
+    """Non-periodic reader without a timer thread: the export worker drives collection
+    every export cycle, so all three signals export in lockstep."""
+
+    def __init__(self, spool: Spool) -> None:
+        super().__init__(
+            preferred_temporality=HISTOGRAM_PREFERRED_TEMPORALITY,
+            preferred_aggregation=HISTOGRAM_PREFERRED_AGGREGATION,
+        )
+        self.spool = spool
 
     def collect(self, timeout_millis: float = 10_000) -> None:  # ty: ignore[override-of-final-method]
-        # After the reader is detached, _collect is None; a last collect from the reader's
-        # export timer thread must do nothing instead of logging a not-registered warning
         if self._collect is not None:
             super().collect(timeout_millis=timeout_millis)
 
+    def _receive_metrics(self, metrics_data: MetricsData, timeout_millis: float = 10_000, **kwargs: Any) -> None:
+        if metrics_data is None or not metrics_data.resource_metrics:  # pragma: no cover
+            return
+        self.spool.append("metrics", encode_metrics(metrics_data).SerializeToString())
+
     def shutdown(self, timeout_millis: float = 30_000, **kwargs: Any) -> None:
-        atexit.unregister(self.shutdown)
-        super().shutdown(timeout_millis=timeout_millis, **kwargs)
+        pass
 
 
 meter_provider: MeterProvider | None = None
@@ -53,10 +59,6 @@ request_duration: Histogram | None = None
 request_body_size: Histogram | None = None
 response_body_size: Histogram | None = None
 start_time: float = 0.0
-
-# OTel's fork handlers hold weak references to readers; keep detached instances
-# alive to avoid unraisable noise on a later fork
-detached_readers: list[ApitallyMetricReader] = []
 
 
 def setup(resource: Resource) -> MeterProvider:
@@ -108,17 +110,12 @@ def record_request(
         response_body_size.record(response_size, attributes)
 
 
-def attach_reader(env: str) -> None:
+def attach_reader(spool: Spool) -> None:
     global reader
     if meter_provider is None:  # pragma: no cover
         return
     detach_reader()
-    exporter = create_metric_exporter(
-        env,
-        preferred_temporality=HISTOGRAM_PREFERRED_TEMPORALITY,
-        preferred_aggregation=HISTOGRAM_PREFERRED_AGGREGATION,
-    )
-    reader = ApitallyMetricReader(exporter, export_interval_millis=EXPORT_INTERVAL_MILLIS)
+    reader = ApitallyMetricReader(spool)
     meter_provider.add_metric_reader(reader)
 
 
@@ -126,7 +123,6 @@ def detach_reader() -> None:
     global reader
     if meter_provider is not None and reader is not None:
         meter_provider.remove_metric_reader(reader)
-        detached_readers.append(reader)
         reader = None
 
 

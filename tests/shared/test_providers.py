@@ -1,8 +1,6 @@
+import gzip
 import logging
-import threading
 import uuid
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
 
 import pytest
 from opentelemetry import metrics, trace
@@ -17,10 +15,10 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind
 
-from apitally.shared import activation, providers
+from apitally.shared import activation, export, providers
 from apitally.shared import metrics as apitally_metrics
 from apitally.shared.config import set_config
-from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, unwrap
+from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, StubOTLPServer, unwrap
 
 
 def test_user_tracer_provider_detection():
@@ -86,76 +84,54 @@ def test_env_conflict_uses_user_resource_value():
     assert env == "production"
 
 
-def test_apitally_env_header_matches_resource_with_and_without_user_provider():
+def test_export_headers_match_resource_env_with_and_without_user_provider():
     set_config(write_token=WRITE_TOKEN, env="staging")
 
     env = providers.resolve_env(None)
     resource = providers.create_resource(env)
-    exporter = providers.create_span_exporter(env)
-    assert exporter._headers["Apitally-Env"] == resource.attributes["deployment.environment.name"] == "staging"
-    assert exporter._headers["Authorization"] == f"Bearer {WRITE_TOKEN}"
-    assert exporter._endpoint == "https://otlp.apitally.io/v1/traces"
+    headers = providers.export_headers(env)
+    assert headers["Apitally-Env"] == resource.attributes["deployment.environment.name"] == "staging"
+    assert headers["Authorization"] == f"Bearer {WRITE_TOKEN}"
+    assert providers.endpoint_url("/v1/traces") == "https://otlp.apitally.io/v1/traces"
 
     user_provider = TracerProvider(resource=Resource.create({"deployment.environment.name": "production"}))
     env = providers.resolve_env(user_provider)
-    log_exporter = providers.create_log_exporter(env)
-    assert log_exporter._headers["Apitally-Env"] == "production"
+    assert providers.export_headers(env)["Apitally-Env"] == "production"
 
 
-def test_exporter_endpoint_override(monkeypatch: pytest.MonkeyPatch):
+def test_endpoint_override_ignores_otel_env_vars(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("APITALLY_OTLP_ENDPOINT", "http://localhost:4318")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.example.com")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "https://collector.example.com/v1/traces")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "x-other=1")
     set_config(write_token=WRITE_TOKEN)
 
-    span_exporter = providers.create_span_exporter("prod")
-    metric_exporter = providers.create_metric_exporter("prod")
-    log_exporter = providers.create_log_exporter("prod")
-    assert span_exporter._endpoint == "http://localhost:4318/v1/traces"
-    assert metric_exporter._endpoint == "http://localhost:4318/v1/metrics"
-    assert log_exporter._endpoint == "http://localhost:4318/v1/logs"
-    assert "x-other" not in span_exporter._headers
+    assert providers.endpoint_url("/v1/traces") == "http://localhost:4318/v1/traces"
+    assert providers.endpoint_url("/v1/metrics") == "http://localhost:4318/v1/metrics"
+    assert providers.endpoint_url("/v1/logs") == "http://localhost:4318/v1/logs"
+    assert "x-other" not in providers.export_headers("prod")
 
 
-def test_exporters_deliver_to_otlp_endpoint(monkeypatch: pytest.MonkeyPatch):
-    # The endpoint/header assertions above read private exporter attributes; this test runs
-    # real exporters posting protobuf over HTTP, so it catches changes in the OTel SDK
-    received: dict[str, tuple[Any, bytes]] = {}
+def test_pipeline_delivers_to_otlp_endpoint(otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("APITALLY_OTLP_ENDPOINT", otlp_server.url)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
+    activation.configure(write_token=WRITE_TOKEN, env="ci")
+    activation.activate()
 
-    class Handler(BaseHTTPRequestHandler):
-        def do_POST(self) -> None:
-            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
-            received[self.path] = (self.headers, body)
-            self.send_response(200)
-            self.end_headers()
+    with trace.get_tracer(CONTRIB_SCOPE).start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        logging.getLogger("myapp").warning("hello")
+    apitally_metrics.record_request(method="GET", route="/items", status_code=200, consumer=None, duration=0.1)
+    unwrap(activation.export_worker).run_cycle(None)
 
-        def log_message(self, format: str, *args: Any) -> None:
-            pass
-
-    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        monkeypatch.setenv("APITALLY_OTLP_ENDPOINT", f"http://127.0.0.1:{server.server_port}")
-        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-        activation.configure(write_token=WRITE_TOKEN, env="ci")
-        activation.activate()
-
-        with trace.get_tracer(CONTRIB_SCOPE).start_as_current_span("GET /items", kind=SpanKind.SERVER):
-            logging.getLogger("myapp").warning("hello")
-        apitally_metrics.record_request(method="GET", route="/items", status_code=200, consumer=None, duration=0.1)
-
-        unwrap(activation.span_processor).force_flush()
-        unwrap(activation.log_processor).force_flush()
-        unwrap(apitally_metrics.reader).force_flush()
-        server.shutdown()
-
-    assert set(received) == {"/v1/traces", "/v1/metrics", "/v1/logs"}
-    for headers, _ in received.values():
+    assert set(otlp_server.paths()) == {"/v1/traces", "/v1/metrics", "/v1/logs"}
+    for _, headers, _ in otlp_server.requests:
         assert headers["Authorization"] == f"Bearer {WRITE_TOKEN}"
         assert headers["Apitally-Env"] == "ci"
+        assert headers["Content-Encoding"] == "gzip"
 
-    trace_request = ExportTraceServiceRequest()
-    trace_request.ParseFromString(received["/v1/traces"][1])
+    (trace_body,) = [body for path, _, body in otlp_server.requests if path == "/v1/traces"]
+    trace_request = ExportTraceServiceRequest.FromString(gzip.decompress(trace_body))
     (span,) = [s for rs in trace_request.resource_spans for ss in rs.scope_spans for s in ss.spans]
     assert span.name == "GET /items"
 

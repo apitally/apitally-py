@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from apitally.shared.config import ApitallyConfig, get_config
 
 

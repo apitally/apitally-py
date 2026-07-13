@@ -316,7 +316,7 @@ def test_init_without_write_token_exports_nothing(
     with TestClient(app) as client:
         assert client.get("/items/42").status_code == 200
     assert not activation.is_activated()
-    assert exporters.span == exporters.log == exporters.metric == []
+    assert exporters.span == exporters.log == []
 
 
 def test_init_disabled_skips_instrumentation(app: FastAPI):
