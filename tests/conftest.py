@@ -1,3 +1,4 @@
+import gzip
 import json
 import os
 import threading
@@ -53,9 +54,10 @@ def unwrap(value: _T | None) -> _T:
     return value
 
 
-def read_spool_file(file: SpoolFile) -> bytes:
+def read_spool_payload(file: SpoolFile) -> bytes:
+    """Decompressed concatenation of the OTLP payloads appended to a spool file."""
     file.sink.seek(0)
-    return file.sink.read()
+    return gzip.decompress(file.sink.read())
 
 
 # Skip collection of framework test modules whose framework or instrumentor is not installed,

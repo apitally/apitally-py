@@ -41,7 +41,7 @@ from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor, get_server_span_processor
 from apitally.shared.spool import MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT, MAX_UNCOMPRESSED_FILE_SIZE, Spool
-from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, StubOTLPServer, installed, read_spool_file, unwrap
+from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, StubOTLPServer, installed, read_spool_payload, unwrap
 
 
 @pytest.fixture
@@ -60,13 +60,13 @@ def make_worker(spool: Spool, endpoint: str) -> ExportWorker:
 def read_trace_request(spool: Spool) -> ExportTraceServiceRequest:
     spool.rotate_for_export()
     (file,) = [file for file in spool.pending_files() if file.signal == "traces"]
-    return ExportTraceServiceRequest.FromString(gzip.decompress(read_spool_file(file)))
+    return ExportTraceServiceRequest.FromString(read_spool_payload(file))
 
 
 def read_log_request(spool: Spool) -> ExportLogsServiceRequest:
     spool.rotate_for_export()
     (file,) = [file for file in spool.pending_files() if file.signal == "logs"]
-    return ExportLogsServiceRequest.FromString(gzip.decompress(read_spool_file(file)))
+    return ExportLogsServiceRequest.FromString(read_spool_payload(file))
 
 
 def read_log_records(spool: Spool) -> list[PB2LogRecord]:
@@ -116,7 +116,7 @@ def test_stashed_body_and_headers_reach_spool_redacted(spool: Spool) -> None:
         )
     spool.rotate_for_export()
     (file,) = spool.pending_files()
-    payload = gzip.decompress(read_spool_file(file))
+    payload = read_spool_payload(file)
     assert b"secret123" not in payload
     assert b"hunter2" not in payload
     assert REDACTED.encode() in payload
@@ -475,9 +475,7 @@ def test_end_to_end_sensitive_body_redacted_on_disk_and_wire(
         spool = unwrap(activation.spool)
         unwrap(activation.span_processor).downstream.force_flush()
         spool.close_current_files()
-        disk_payloads = b"".join(
-            gzip.decompress(read_spool_file(file)) for file in spool.pending_files() if file.signal == "traces"
-        )
+        disk_payloads = b"".join(read_spool_payload(file) for file in spool.pending_files() if file.signal == "traces")
         assert b"hunter2" not in disk_payloads
         assert b"apitally.request.body" in disk_payloads
         assert REDACTED.encode() in disk_payloads

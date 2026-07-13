@@ -22,7 +22,7 @@ from opentelemetry.trace import SpanKind
 from apitally.shared import activation, export, log_processor, metrics
 from apitally.shared.asgi import Message, Receive, Scope, Send
 from apitally.shared.span_processor import ApitallySpanProcessor
-from tests.conftest import WRITE_TOKEN, InMemoryExporters, StubOTLPServer, exported_spans, read_spool_file, unwrap
+from tests.conftest import WRITE_TOKEN, InMemoryExporters, StubOTLPServer, exported_spans, unwrap
 
 
 if TYPE_CHECKING:
@@ -310,7 +310,7 @@ def test_fork_in_child_abandons_inherited_spool_without_touching_parent_files(
         activation.before_fork()
         files = parent_spool.pending_files()
         assert files
-        bytes_before = {unwrap(file.path): read_spool_file(file) for file in files}
+        bytes_before = {unwrap(file.path): unwrap(file.path).read_bytes() for file in files}
 
         activation.after_fork_in_child()
         assert activation.spool is None

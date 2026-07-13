@@ -1,4 +1,3 @@
-import gzip
 import logging
 import threading
 from collections.abc import Iterator
@@ -16,7 +15,7 @@ from opentelemetry.sdk.resources import Resource
 
 from apitally.shared import metrics
 from apitally.shared.spool import Spool
-from tests.conftest import attach_metric_reader, collect_metrics, read_spool_file, unwrap
+from tests.conftest import attach_metric_reader, collect_metrics, read_spool_payload, unwrap
 
 
 @pytest.fixture(autouse=True)
@@ -91,7 +90,7 @@ def test_collect_appends_delta_payloads_to_spool(spool: Spool):
     unwrap(metrics.reader).collect()
     spool.rotate_for_export()
     (file,) = [file for file in spool.pending_files() if file.signal == "metrics"]
-    request = ExportMetricsServiceRequest.FromString(gzip.decompress(read_spool_file(file)))
+    request = ExportMetricsServiceRequest.FromString(read_spool_payload(file))
     assert len(request.resource_metrics) == 2
     points = [
         point

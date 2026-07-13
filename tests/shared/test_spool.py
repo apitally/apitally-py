@@ -18,7 +18,7 @@ from apitally.shared.spool import (
     SpoolFile,
     cleanup_orphaned_files,
 )
-from tests.conftest import read_spool_file
+from tests.conftest import read_spool_payload
 
 
 @pytest.fixture(params=["disk", "memory"])
@@ -37,7 +37,7 @@ def serialized_trace_request(span_name: str) -> bytes:
 
 
 def parse_file(file: SpoolFile) -> ExportTraceServiceRequest:
-    return ExportTraceServiceRequest.FromString(gzip.decompress(read_spool_file(file)))
+    return ExportTraceServiceRequest.FromString(read_spool_payload(file))
 
 
 def test_concatenated_payloads_parse_as_one_merged_request(spool: Spool) -> None:
@@ -85,7 +85,7 @@ def test_rotation_error_discards_current_file_and_recovers(
     spool.append("traces", b"second")
     spool.rotate_for_export()
     (file,) = spool.pending_files()
-    assert gzip.decompress(read_spool_file(file)) == b"second"
+    assert read_spool_payload(file) == b"second"
 
 
 def test_append_rotates_before_crossing_size_threshold(spool: Spool) -> None:
@@ -93,7 +93,7 @@ def test_append_rotates_before_crossing_size_threshold(spool: Spool) -> None:
     spool.append("traces", b"b" * 2_000_000)
     (file,) = spool.pending_files()
     assert file.uncompressed_size <= MAX_UNCOMPRESSED_FILE_SIZE
-    assert gzip.decompress(read_spool_file(file)) == b"a" * 3_000_000
+    assert read_spool_payload(file) == b"a" * 3_000_000
     assert spool.current["traces"].uncompressed_size == 2_000_000
 
 
@@ -148,7 +148,7 @@ def test_unwritable_temp_dir_falls_back_to_memory(
     spool.rotate_for_export()
     (file,) = spool.pending_files()
     assert file.path is None
-    assert gzip.decompress(read_spool_file(file)) == b"payload"
+    assert read_spool_payload(file) == b"payload"
     spool.clear()
 
 
@@ -171,7 +171,7 @@ def test_append_error_discards_current_file_and_recovers(
     spool.append("traces", b"third")
     spool.rotate_for_export()
     (file,) = spool.pending_files()
-    assert gzip.decompress(read_spool_file(file)) == b"third"
+    assert read_spool_payload(file) == b"third"
 
 
 def test_orphan_cleanup_removes_untouched_stale_files_only() -> None:
