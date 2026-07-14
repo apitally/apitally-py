@@ -13,7 +13,8 @@ from litestar.plugins.opentelemetry import (
     OpenTelemetryInstrumentationMiddleware,
     OpenTelemetryPlugin,
 )
-from litestar.testing import TestClient
+from litestar.testing import AsyncTestClient, TestClient
+from opentelemetry import context as otel_context
 from opentelemetry.trace import SpanKind, StatusCode
 
 from apitally.litestar import ApitallyPlugin
@@ -23,6 +24,7 @@ from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
     attach_metric_reader,
+    attach_stale_server_span,
     duration_data_points,
     exported_spans,
     startup_payload,
@@ -227,3 +229,18 @@ def test_plugin_reconstruction_same_kwargs_is_noop(exporters: InMemoryExporters,
         assert client.get("/users/123").status_code == 200
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
+
+
+async def test_request_with_leaked_context_still_exports_server_span(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    async with AsyncTestClient(app=make_app(monkeypatch)) as client:
+        _, token = attach_stale_server_span()
+        try:
+            assert (await client.get("/users/123")).status_code == 200
+        finally:
+            otel_context.detach(token)
+
+    (span,) = exported_spans(exporters)
+    assert span.kind == SpanKind.SERVER
+    assert span.parent is None

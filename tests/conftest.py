@@ -6,9 +6,11 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.util import find_spec
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import pytest
+from opentelemetry import context as otel_context
+from opentelemetry import trace
 from opentelemetry._logs import LogRecord
 from opentelemetry.instrumentation._semconv import _OpenTelemetrySemanticConventionStability
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
@@ -19,7 +21,7 @@ from opentelemetry.sdk.metrics.export import (
     InMemoryMetricReader,
     Metric,
 )
-from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace import ReadableSpan, Span, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler
@@ -54,6 +56,14 @@ def read_spool_payload(file: SpoolFile) -> bytes:
     """Decompressed concatenation of the OTLP payloads appended to a spool file."""
     file.sink.seek(0)
     return gzip.decompress(file.sink.read())
+
+
+def attach_stale_server_span() -> tuple[Span, Any]:
+    """Mimics a pipelined request's task with the previous request's OTel context still attached."""
+    stale_span = TracerProvider().get_tracer("test").start_span("GET /previous", kind=SpanKind.SERVER)
+    stale_span.end()
+    token = otel_context.attach(trace.set_span_in_context(stale_span))
+    return cast(Span, stale_span), token
 
 
 def configure_and_activate(monkeypatch: pytest.MonkeyPatch) -> None:

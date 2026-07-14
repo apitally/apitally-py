@@ -2,7 +2,9 @@ import json
 import logging
 from typing import Any, Iterator, cast
 
+import httpx
 import pytest
+from opentelemetry import context as otel_context
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.starlette import StarletteInstrumentor
 from opentelemetry.trace import SpanKind, StatusCode
@@ -22,6 +24,7 @@ from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
     attach_metric_reader,
+    attach_stale_server_span,
     duration_data_points,
     exported_log_records,
     exported_spans,
@@ -240,3 +243,23 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     assert isinstance(response_body_size, int) and response_body_size > 0
     (point,) = duration_data_points(reader)
     assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
+
+
+@pytest.mark.parametrize("pre_instrumented", [False, True])
+async def test_request_with_leaked_context_still_exports_server_span(
+    app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch, pre_instrumented: bool
+):
+    if pre_instrumented:
+        StarletteInstrumentor.instrument_app(app)
+    init(app, monkeypatch)
+    _, token = attach_stale_server_span()
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            assert (await client.get("/items/42")).status_code == 200
+    finally:
+        otel_context.detach(token)
+
+    (span,) = exported_spans(exporters)
+    assert span.kind == SpanKind.SERVER
+    assert span.parent is None

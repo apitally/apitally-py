@@ -7,6 +7,7 @@ import httpx
 import pytest
 from blacksheep import Application, Request, Response, text
 from blacksheep.server.routing import Router
+from opentelemetry import context as otel_context
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.trace import SpanKind, StatusCode
 
@@ -17,6 +18,7 @@ from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
     attach_metric_reader,
+    attach_stale_server_span,
     duration_data_points,
     exported_spans,
     startup_payload,
@@ -240,3 +242,20 @@ async def test_request_body_captured_and_redacted(exporters: InMemoryExporters, 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
     assert json.loads(str(span.attributes["apitally.request.body"])) == {"password": REDACTED, "name": "widget"}
+
+
+async def test_request_with_leaked_context_still_exports_server_span(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    allow_activation(monkeypatch)
+    app = create_app()
+    await app.start()
+    _, token = attach_stale_server_span()
+    try:
+        async with create_client(app) as client:
+            assert (await client.get("/items/123")).status_code == 200
+    finally:
+        otel_context.detach(token)
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert span.parent is None

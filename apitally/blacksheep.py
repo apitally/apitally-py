@@ -75,7 +75,9 @@ def init_apitally(
         chain: ApitallyASGIMiddleware | OpenTelemetryMiddleware = ApitallyASGIMiddleware(app._handle_http)
         if not instrumented_by_user:
             chain = OpenTelemetryMiddleware(chain, exclude_spans=["receive", "send"])
-        app._handle_http = activation.ASGIActivationShim(chain)  # ty: ignore[invalid-assignment]
+        # With a user instrumentor wrapping the whole app, the shim runs inside their SERVER
+        # span, where a context reset would orphan it
+        app._handle_http = activation.ASGIActivationShim(chain, reset_context=not instrumented_by_user)  # ty: ignore[invalid-assignment]
         app._apitally_initialized = True  # ty: ignore[invalid-assignment]
 
         async def activate_on_start(application: Application) -> None:
