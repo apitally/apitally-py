@@ -11,6 +11,7 @@ from collections.abc import Callable, MutableMapping
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from opentelemetry import context as otel_context
 from opentelemetry import trace
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
 from opentelemetry.sdk.resources import Resource
@@ -21,11 +22,14 @@ from opentelemetry.trace import SpanKind
 
 from apitally.shared import activation, export, log_processor, metrics
 from apitally.shared.asgi import Message, Receive, Scope, Send
+from apitally.shared.consumer import ConsumerHolder, consumer_holder_var
+from apitally.shared.context import server_span_kept_var, server_span_processor_var, server_span_var
 from apitally.shared.span_processor import ApitallySpanProcessor
 from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
     StubOTLPServer,
+    attach_stale_server_span,
     configure_and_activate,
     exported_spans,
     unwrap,
@@ -47,6 +51,16 @@ async def drive_lifespan(shim: activation.ASGIActivationShim) -> None:
         pass
 
     await shim({"type": "lifespan"}, receive, send)
+
+
+async def call_shim_with_request(shim: activation.ASGIActivationShim, scope_type: str = "http") -> None:
+    async def receive() -> Message:
+        return {"type": "http.request"}
+
+    async def send(message: MutableMapping[str, Any]) -> None:
+        pass
+
+    await shim({"type": scope_type}, receive, send)
 
 
 def test_configure_starts_no_threads():
@@ -134,6 +148,56 @@ async def test_asgi_shim_sends_buffered_telemetry_on_lifespan_shutdown(
     assert unwrap(worker.thread).is_alive() is False
     assert "/v1/traces" in otlp_server.paths()
     assert unwrap(activation.spool).pending_files() == []
+
+
+async def test_asgi_shim_runs_http_requests_under_fresh_context():
+    activation.configure(write_token=WRITE_TOKEN)
+    stale_span, token = attach_stale_server_span()
+    server_span_var.set(stale_span)
+    server_span_kept_var.set(True)
+    server_span_processor_var.set(ApitallySpanProcessor(SimpleSpanProcessor(InMemorySpanExporter())))
+    observed: dict[str, Any] = {}
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        observed["current_span"] = trace.get_current_span()
+        observed["server_span"] = server_span_var.get()
+        observed["kept"] = server_span_kept_var.get()
+        observed["processor"] = server_span_processor_var.get()
+
+    await call_shim_with_request(activation.ASGIActivationShim(app))
+    assert observed["current_span"] is trace.INVALID_SPAN
+    assert observed["server_span"] is None
+    assert observed["kept"] is False
+    assert observed["processor"] is None
+    assert trace.get_current_span() is stale_span
+    otel_context.detach(token)
+
+
+async def test_asgi_shim_clears_owned_consumer_holder_and_keeps_unowned():
+    observed: list[ConsumerHolder | None] = []
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        observed.append(consumer_holder_var.get())
+
+    shim = activation.ASGIActivationShim(app)
+    unowned = ConsumerHolder(identifier="tester")
+    consumer_holder_var.set(unowned)
+    await call_shim_with_request(shim)
+    consumer_holder_var.set(ConsumerHolder(owned=True))
+    await call_shim_with_request(shim)
+    assert observed == [unowned, None]
+
+
+async def test_asgi_shim_does_not_reset_context_for_websocket_scopes():
+    stale_span, token = attach_stale_server_span()
+    observed: dict[str, Any] = {}
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        observed["current_span"] = trace.get_current_span()
+
+    await call_shim_with_request(activation.ASGIActivationShim(app), scope_type="websocket")
+    assert observed["current_span"] is stale_span
+    otel_context.detach(token)
 
 
 def test_wsgi_shim_activates_before_first_request_proceeds(

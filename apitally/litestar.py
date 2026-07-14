@@ -79,8 +79,10 @@ class ApitallyPlugin(InitPluginProtocol):
         try:
             # Litestar runs app middleware only for matched routes, so the transport middleware
             # wraps the ASGI handler instead to also cover routing failures (404/405 responses)
-            if not isinstance(app.asgi_handler, ApitallyASGIMiddleware):
-                app.asgi_handler = ApitallyASGIMiddleware(app.asgi_handler, resolve_route=_resolve_route)  # ty: ignore[invalid-argument-type, invalid-assignment]
+            if not isinstance(app.asgi_handler, activation.ASGIActivationShim):
+                app.asgi_handler = activation.ASGIActivationShim(  # ty: ignore[invalid-assignment]
+                    ApitallyASGIMiddleware(app.asgi_handler, resolve_route=_resolve_route)  # ty: ignore[invalid-argument-type]
+                )
             startup.set_app_info(
                 framework="litestar",
                 paths=lambda: _get_paths(app),

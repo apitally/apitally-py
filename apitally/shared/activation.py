@@ -4,9 +4,12 @@ import logging
 import os
 import sys
 import threading
-from collections.abc import Awaitable, Callable, Iterable, MutableMapping
+from collections.abc import Awaitable, Callable, Iterable, Iterator, MutableMapping
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
+from opentelemetry import context as otel_context
+from opentelemetry.context import Context
 from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
@@ -15,6 +18,8 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from apitally.shared import config, export, metrics, providers, sentry
 from apitally.shared.config import TRUE_VALUES, ApitallyConfig
+from apitally.shared.consumer import consumer_holder_var
+from apitally.shared.context import server_span_kept_var, server_span_processor_var, server_span_var
 from apitally.shared.export import ExportWorker
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.log_processor import ApitallyLogRecordProcessor, install_root_handler, uninstall_root_handler
@@ -103,12 +108,30 @@ def register_on_activate_hook(hook: Callable[[], None]) -> None:
     on_activate_hooks.append(hook)
 
 
+@contextmanager
+def fresh_request_context() -> Iterator[None]:
+    """Run a request under an empty OTel context with cleared request-scoped state. ASGI servers
+    can start a pipelined request's task with the previous request's context still attached."""
+    token = otel_context.attach(Context())
+    try:
+        server_span_var.set(None)
+        server_span_kept_var.set(False)
+        server_span_processor_var.set(None)
+        holder = consumer_holder_var.get()
+        if holder is not None and holder.owned:
+            consumer_holder_var.set(None)
+        yield
+    finally:
+        otel_context.detach(token)
+
+
 class ASGIActivationShim:
     """Outermost ASGI layer. Activates on lifespan startup completion or on the first request,
     and flushes on lifespan shutdown."""
 
-    def __init__(self, app: Callable[..., Awaitable[Any]]) -> None:
+    def __init__(self, app: Callable[..., Awaitable[Any]], reset_context: bool = True) -> None:
         self.app = app
+        self.reset_context = reset_context
 
     async def __call__(
         self,
@@ -129,6 +152,10 @@ class ASGIActivationShim:
             return
         if not activation_attempted:
             activate()
+        if self.reset_context and scope["type"] == "http":
+            with fresh_request_context():
+                await self.app(scope, receive, send)
+            return
         await self.app(scope, receive, send)
 
 

@@ -3,9 +3,11 @@ import logging
 from collections.abc import Iterator
 from typing import Any
 
+import httpx
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
+from opentelemetry import context as otel_context
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.trace import SpanKind
 
@@ -17,6 +19,7 @@ from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
     attach_metric_reader,
+    attach_stale_server_span,
     duration_data_points,
     exported_log_records,
     exported_spans,
@@ -323,3 +326,20 @@ def test_init_disabled_skips_instrumentation(app: FastAPI):
     init_apitally(app, write_token=WRITE_TOKEN, disabled=True)
     assert not getattr(app, "_is_instrumented_by_opentelemetry", False)
     assert not isinstance(app.build_middleware_stack(), activation.ASGIActivationShim)
+
+
+async def test_request_with_leaked_context_still_exports_server_span(
+    app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch)
+    _, token = attach_stale_server_span()
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            assert (await client.get("/items/42")).status_code == 200
+    finally:
+        otel_context.detach(token)
+
+    (span,) = exported_spans(exporters)
+    assert span.kind == SpanKind.SERVER
+    assert span.parent is None
