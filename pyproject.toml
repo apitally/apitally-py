@@ -162,6 +162,7 @@ python-version = "3.14"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-p no:faker"
 filterwarnings = [
     # Python 3.14 asyncio deprecations triggered inside pytest-asyncio, not our code
     "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning",
