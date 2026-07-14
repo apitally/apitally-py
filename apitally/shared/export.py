@@ -128,7 +128,7 @@ class ExportWorker:
         """Stop the thread and attempt one final unpaced drain-and-send pass."""
         self.stop()
         try:
-            self.run_cycle(None)
+            self.run_cycle(None, final=True)
         except Exception:  # pragma: no cover
             logger.debug("Error in final Apitally export on shutdown", exc_info=True)
 
@@ -142,7 +142,7 @@ class ExportWorker:
             # Jitter desynchronizes deployments whose processes started together
             delay = self.interval * self.random.uniform(0.9, 1.1)
 
-    def run_cycle(self, stop_event: threading.Event | None) -> None:
+    def run_cycle(self, stop_event: threading.Event | None, final: bool = False) -> None:
         # Suppress instrumentation so our own flushes and POSTs generate no telemetry
         token = otel_context.attach(otel_context.set_value(_SUPPRESS_INSTRUMENTATION_KEY, True))
         try:
@@ -150,8 +150,11 @@ class ExportWorker:
             self.log_processor.downstream.force_flush()
             if metrics.reader is not None:
                 metrics.reader.collect()
-            self.spool.rotate_for_export()
-            self.spool.touch_files()
+            if final:
+                self.spool.close_current_files()
+            else:
+                self.spool.rotate_for_export()
+                self.spool.touch_files()
             self.send_pending(stop_event)
         finally:
             otel_context.detach(token)
