@@ -350,6 +350,17 @@ def test_shutdown_performs_final_drain_and_stops_thread(
     assert spool.pending_files() == []
 
 
+def test_final_drain_sends_current_files_despite_backlog(spool: Spool, otlp_server: StubOTLPServer) -> None:
+    worker = make_worker(spool, otlp_server.url)
+    spool.append("traces", b"backlog-payload")
+    spool.rotate_for_export()
+    spool.append("traces", b"final-payload")
+    worker.shutdown()
+    assert spool.pending_files() == []
+    bodies = [gzip.decompress(body) for path, _, body in otlp_server.requests if path == "/v1/traces"]
+    assert bodies == [b"backlog-payload", b"final-payload"]
+
+
 def test_unreadable_file_is_dropped_without_blocking_the_queue(
     spool: Spool, otlp_server: StubOTLPServer, caplog: pytest.LogCaptureFixture
 ) -> None:
