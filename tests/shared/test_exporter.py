@@ -1,3 +1,4 @@
+import gzip
 import json
 from urllib.parse import parse_qsl
 
@@ -101,6 +102,18 @@ def test_user_attached_exporters_never_see_captured_headers_and_bodies():
     assert "hunter2" not in str(attributes)
     assert "secret123" not in str(attributes)
     assert not hasattr(user_span, STASH_ATTRIBUTE)
+
+
+def test_non_utf8_body_exported_as_bytes():
+    compressed = gzip.compress(b'{"a": 1}')
+    set_config(write_token=WRITE_TOKEN, log_request_body=True)
+    tracer, exporter = create_trace_pipeline()
+    with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER) as span:
+        processor = unwrap(get_server_span_processor())
+        processor.update_stash(span.get_span_context().span_id, request_body=compressed)
+
+    (exported,) = exporter.get_finished_spans()
+    assert unwrap(exported.attributes)["apitally.request.body"] == compressed
 
 
 def test_mask_callback_receives_ended_span():

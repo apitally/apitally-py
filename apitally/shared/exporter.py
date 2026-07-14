@@ -89,7 +89,7 @@ class ApitallySpanExporter(SpanExporter):
         body: bytes,
         mask_callback: Callable[[ReadableSpan, bytes], bytes | None] | None,
         callback_name: str,
-    ) -> str:
+    ) -> str | bytes:
         if mask_callback is not None:
             try:
                 masked = mask_callback(span, body)
@@ -114,8 +114,10 @@ class ApitallySpanExporter(SpanExporter):
         try:
             data = json.loads(body)
         except Exception:
-            # Non-JSON but allowlisted (e.g. text/plain): stored as-is
-            return body.decode("utf-8", errors="replace")
+            try:
+                return body.decode("utf-8")
+            except UnicodeDecodeError:
+                return body
         try:
             return json.dumps(self.redaction.redact_body(data), separators=(",", ":"), ensure_ascii=False)
         except Exception:  # pragma: no cover

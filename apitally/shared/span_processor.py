@@ -337,7 +337,7 @@ def write_url_attributes_from_http_url(span: Span) -> None:
     span.set_attribute("http.target", f"{parsed.path}?{parsed.query}" if parsed.query else parsed.path)
 
 
-def copy_span_with_attributes(span: ReadableSpan, attributes: dict[str, AttributeValue]) -> ReadableSpan:
+def copy_span_with_attributes(span: ReadableSpan, attributes: dict[str, AttributeValue | bytes]) -> ReadableSpan:
     return ReadableSpan(
         name=span.name,
         context=span.get_span_context(),
