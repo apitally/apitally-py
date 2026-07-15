@@ -9,10 +9,6 @@ on:
       - LICENSE
       - README.md
   pull_request:
-    paths-ignore:
-      - .gitignore
-      - LICENSE
-      - README.md
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -107,3 +103,16 @@ jobs:
         run: uv run make test
         env:
           UV_NO_SYNC: "1"
+
+  ci-gate:
+    needs:
+      - test-coverage
+      - test-matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All checks passed or skipped
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            exit 1
+          fi
