@@ -50,18 +50,8 @@ blacksheep = [
 django = [
     "django>=3.2",
     "opentelemetry-instrumentation-django>=0.64b0",
-]
-django_ninja = [
-    "django>=3.2",
-    "django-ninja>=1.0.0",
-    "opentelemetry-instrumentation-django>=0.64b0",
-]
-django_rest_framework = [
-    "django>=3.2",
-    "djangorestframework>=3.12.0",
-    "opentelemetry-instrumentation-django>=0.64b0",
-    "uritemplate>=3.0.0",                    # required for schema generation
-    "inflection>=0.5.1",                     # required for schema generation
+    "uritemplate>=3.0.0",                    # required for DRF schema generation
+    "inflection>=0.5.1",                     # required for DRF schema generation
 ]
 fastapi = [
     "fastapi>=0.108.0",

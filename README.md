@@ -108,13 +108,9 @@ For further instructions, see our
 
 ### Django
 
-Install the SDK with the `django_rest_framework` or `django_ninja` extra, depending on which API framework you use, or the plain `django` extra otherwise:
+Install the SDK with the `django` extra, which also pulls in the OpenTelemetry instrumentation for Django. The same extra covers plain Django, Django REST Framework and Django Ninja:
 
 ```bash
-pip install "apitally[django_rest_framework]"
-# or
-pip install "apitally[django_ninja]"
-# or
 pip install "apitally[django]"
 ```
 

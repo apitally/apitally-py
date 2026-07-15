@@ -24,6 +24,8 @@ The `ApitallyMiddleware` class is gone. Setup is now a call to `init_apitally(..
 
 Import `init_apitally` from the framework-specific module, e.g. `from apitally.fastapi import init_apitally`.
 
+The `django_rest_framework` and `django_ninja` installation extras are replaced by a single `django` extra that covers all Django setups: `pip install "apitally[django]"`. Update your requirements accordingly — pip only warns about unknown extras, and the old names would silently skip dependencies needed for OpenAPI schema capture with Django REST Framework.
+
 **Django users**: remove the `"apitally.django.ApitallyMiddleware"` entry from `MIDDLEWARE` and the `APITALLY_MIDDLEWARE` settings dict. 1.x inserts its own middleware automatically when you call `init_apitally(...)`. The old class no longer exists, so a stale `MIDDLEWARE` entry makes Django fail at startup. Call `init_apitally(...)` at the very end of `settings.py`, after `MIDDLEWARE` is defined.
 
 ## Option lookup
