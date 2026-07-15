@@ -87,6 +87,7 @@ class Spool:
         else:
             cleanup_orphaned_files()
         self.max_size = MAX_SPOOL_SIZE_MEMORY if self.in_memory else MAX_SPOOL_SIZE_DISK
+        self.write_error_logged = False
         self.lock = threading.Lock()
         self.current: dict[str, SpoolFile] = {}
         self.closed: list[SpoolFile] = []
@@ -102,8 +103,11 @@ class Spool:
                     current = SpoolFile(signal, self.in_memory)
                     self.current[signal] = current
                 current.write(payload)
+                self.write_error_logged = False
             except OSError:
-                logger.warning("Error writing telemetry to disk, dropping buffered %s", signal, exc_info=True)
+                if not self.write_error_logged:
+                    self.write_error_logged = True
+                    logger.warning("Error writing telemetry to disk, dropping buffered %s", signal, exc_info=True)
                 self.discard_current_locked(signal)
             self.evict_locked()
 
@@ -152,9 +156,12 @@ class Spool:
         try:
             current.close()
         except OSError:
-            logger.warning("Error writing telemetry to disk, dropping buffered %s", signal, exc_info=True)
+            if not self.write_error_logged:
+                self.write_error_logged = True
+                logger.warning("Error writing telemetry to disk, dropping buffered %s", signal, exc_info=True)
             current.delete()
             return
+        self.write_error_logged = False
         self.closed.append(current)
 
     def discard_current_locked(self, signal: str) -> None:
