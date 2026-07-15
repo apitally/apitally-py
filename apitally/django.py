@@ -73,7 +73,13 @@ def init_apitally(
     sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
     sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
 ) -> None:
-    """Set up Apitally for Django. Call this at the end of settings.py, after MIDDLEWARE is defined."""
+    """
+    Set up Apitally for Django. Call this at the end of settings.py, after MIDDLEWARE is defined.
+
+    For more information, see:
+    - Setup guide: https://docs.apitally.io/setup-guides/django
+    - Reference: https://docs.apitally.io/sdk-reference/python
+    """
     global _urlconfs, _include_django_views
     try:
         cfg = activation.configure(**config.explicit_kwargs(locals()))

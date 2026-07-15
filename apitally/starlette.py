@@ -51,7 +51,13 @@ def init_apitally(
     sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
     sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
 ) -> None:
-    """Set up Apitally for a Starlette application. Activation happens on lifespan startup or the first request."""
+    """
+    Set up Apitally for a Starlette application.
+
+    For more information, see:
+    - Setup guide: https://docs.apitally.io/setup-guides/starlette
+    - Reference: https://docs.apitally.io/sdk-reference/python
+    """
     try:
         cfg = activation.configure(**config.explicit_kwargs(locals()))
         if cfg.disabled:

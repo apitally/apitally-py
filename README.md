@@ -68,11 +68,12 @@ email, Slack and Microsoft Teams.
 | ---------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------- |
 | [**FastAPI**](https://github.com/fastapi/fastapi) \*                         | `>=0.108.0`        | [Link](https://docs.apitally.io/setup-guides/fastapi)               |
 | [**Flask**](https://github.com/pallets/flask)                                | `>=2.0.0`          | [Link](https://docs.apitally.io/setup-guides/flask)                 |
-| [**Django REST Framework**](https://github.com/encode/django-rest-framework) | `>=3.10.0`         | [Link](https://docs.apitally.io/setup-guides/django-rest-framework) |
+| [**Django**](https://github.com/django/django)                               | `>=3.2`            | [Link](https://docs.apitally.io/setup-guides/django)                |
+| [**Django REST Framework**](https://github.com/encode/django-rest-framework) | `>=3.12.0`         | [Link](https://docs.apitally.io/setup-guides/django-rest-framework) |
 | [**Django Ninja**](https://github.com/vitalik/django-ninja)                  | `>=1.0.0`          | [Link](https://docs.apitally.io/setup-guides/django-ninja)          |
 | [**Starlette**](https://github.com/encode/starlette)                         | `>=0.29.0`         | [Link](https://docs.apitally.io/setup-guides/starlette)             |
 | [**Litestar**](https://github.com/litestar-org/litestar)                     | `>=2.24.0`         | [Link](https://docs.apitally.io/setup-guides/litestar)              |
-| [**BlackSheep**](https://github.com/Neoteroi/blacksheep)                     | `>=2.0.0`          | [Link](https://docs.apitally.io/setup-guides/blacksheep)            |
+| [**BlackSheep**](https://github.com/Neoteroi/blacksheep)                     | `>=2.6.1`          | [Link](https://docs.apitally.io/setup-guides/blacksheep)            |
 
 \* For FastAPI on Cloudflare Workers use our [Python Serverless SDK](https://github.com/apitally/apitally-py-serverless) instead.
 
@@ -107,12 +108,14 @@ For further instructions, see our
 
 ### Django
 
-Install the SDK with the `django_rest_framework` or `django_ninja` extra:
+Install the SDK with the `django_rest_framework` or `django_ninja` extra, depending on which API framework you use, or the plain `django` extra otherwise:
 
 ```bash
 pip install "apitally[django_rest_framework]"
 # or
 pip install "apitally[django_ninja]"
+# or
+pip install "apitally[django]"
 ```
 
 Then call `init_apitally` at the *end* of your `settings.py` module. The placement matters: it must run after `MIDDLEWARE` is defined, as Apitally inserts its own middleware automatically.

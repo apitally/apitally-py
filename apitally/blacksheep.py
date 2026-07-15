@@ -51,8 +51,8 @@ def init_apitally(
     Set up Apitally for a BlackSheep application.
 
     For more information, see:
-    - Setup guide: https://docs.apitally.io/frameworks/blacksheep
-    - Reference: https://docs.apitally.io/reference/python
+    - Setup guide: https://docs.apitally.io/setup-guides/blacksheep
+    - Reference: https://docs.apitally.io/sdk-reference/python
     """
     try:
         cfg = activation.configure(**config.explicit_kwargs(locals()))

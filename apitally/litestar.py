@@ -34,6 +34,14 @@ logger = logging.getLogger(__name__)
 
 
 class ApitallyPlugin(InitPluginProtocol):
+    """
+    Set up Apitally for a Litestar application by passing this plugin to the Litestar constructor.
+
+    For more information, see:
+    - Setup guide: https://docs.apitally.io/setup-guides/litestar
+    - Reference: https://docs.apitally.io/sdk-reference/python
+    """
+
     def __init__(
         self,
         *,
