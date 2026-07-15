@@ -60,18 +60,6 @@ blacksheep = [
 django = [
     { name = "django", version = "5.2.15", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "django", version = "6.0.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "opentelemetry-instrumentation-django" },
-]
-django-ninja = [
-    { name = "django", version = "5.2.15", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "django", version = "6.0.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "django-ninja" },
-    { name = "opentelemetry-instrumentation-django" },
-]
-django-rest-framework = [
-    { name = "django", version = "5.2.15", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "django", version = "6.0.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "djangorestframework" },
     { name = "inflection" },
     { name = "opentelemetry-instrumentation-django" },
     { name = "uritemplate" },
@@ -156,13 +144,9 @@ types = [
 requires-dist = [
     { name = "blacksheep", marker = "extra == 'blacksheep'", specifier = ">=2.6.1" },
     { name = "django", marker = "extra == 'django'", specifier = ">=3.2" },
-    { name = "django", marker = "extra == 'django-ninja'", specifier = ">=3.2" },
-    { name = "django", marker = "extra == 'django-rest-framework'", specifier = ">=3.2" },
-    { name = "django-ninja", marker = "extra == 'django-ninja'", specifier = ">=1.0.0" },
-    { name = "djangorestframework", marker = "extra == 'django-rest-framework'", specifier = ">=3.12.0" },
     { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.108.0" },
     { name = "flask", marker = "extra == 'flask'", specifier = ">=2.0.0" },
-    { name = "inflection", marker = "extra == 'django-rest-framework'", specifier = ">=0.5.1" },
+    { name = "inflection", marker = "extra == 'django'", specifier = ">=0.5.1" },
     { name = "litestar", marker = "extra == 'litestar'", specifier = ">=2.24.0" },
     { name = "opentelemetry-api", specifier = ">=1.43.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-common", specifier = ">=1.43.0,<2.0.0" },
@@ -171,8 +155,6 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'litestar'", specifier = ">=0.64b0" },
     { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'starlette'", specifier = ">=0.64b0" },
     { name = "opentelemetry-instrumentation-django", marker = "extra == 'django'", specifier = ">=0.64b0" },
-    { name = "opentelemetry-instrumentation-django", marker = "extra == 'django-ninja'", specifier = ">=0.64b0" },
-    { name = "opentelemetry-instrumentation-django", marker = "extra == 'django-rest-framework'", specifier = ">=0.64b0" },
     { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'fastapi'", specifier = ">=0.64b0" },
     { name = "opentelemetry-instrumentation-flask", marker = "extra == 'flask'", specifier = ">=0.64b0" },
     { name = "opentelemetry-instrumentation-logging", specifier = ">=0.64b0" },
@@ -181,9 +163,9 @@ requires-dist = [
     { name = "requests", specifier = ">=2.26.0" },
     { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.29.0,<2.0.0" },
     { name = "starlette", marker = "extra == 'starlette'", specifier = ">=0.29.0,<2.0.0" },
-    { name = "uritemplate", marker = "extra == 'django-rest-framework'", specifier = ">=3.0.0" },
+    { name = "uritemplate", marker = "extra == 'django'", specifier = ">=3.0.0" },
 ]
-provides-extras = ["blacksheep", "django", "django-ninja", "django-rest-framework", "fastapi", "flask", "litestar", "starlette"]
+provides-extras = ["blacksheep", "django", "fastapi", "flask", "litestar", "starlette"]
 
 [package.metadata.requires-dev]
 dev = [
