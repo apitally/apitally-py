@@ -34,11 +34,9 @@ class ApitallyWSGIMiddleware:
         self,
         app: WSGIApplication,
         get_route: Callable[[WSGIEnvironment], str | None] | None = None,
-        capture_response_body: bool = True,
     ) -> None:
         self.app = app
         self.get_route = get_route
-        self.capture_response_body = capture_response_body
         self.config = get_config()
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
@@ -98,12 +96,7 @@ class ApitallyWSGIMiddleware:
         content_length = parse_content_length(get_header(response_headers, "content-length"))
         state.response_size = content_length
         kept = is_server_span_kept()
-        if (
-            kept
-            and self.capture_response_body
-            and config.log_response_body
-            and is_allowed_content_type(get_header(response_headers, "content-type"))
-        ):
+        if kept and config.log_response_body and is_allowed_content_type(get_header(response_headers, "content-type")):
             over_cap = content_length is not None and content_length > MAX_BODY_SIZE
             state.response_body = BODY_TOO_LARGE if over_cap else bytearray()
 
