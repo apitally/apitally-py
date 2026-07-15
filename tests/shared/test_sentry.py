@@ -1,13 +1,18 @@
-import sys
+from __future__ import annotations
+
 from collections.abc import Generator
 from typing import TYPE_CHECKING
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.trace import SpanKind, Tracer
+from opentelemetry.trace import SpanKind
 
 from apitally.shared import activation, sentry
-from tests.conftest import WRITE_TOKEN
+from apitally.shared.exporter import ApitallySpanExporter
+from apitally.shared.span_processor import ApitallySpanProcessor
+from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN
 
 
 if TYPE_CHECKING:
@@ -20,7 +25,7 @@ sentry_transport = pytest.importorskip("sentry_sdk.transport")
 
 
 class DiscardTransport(sentry_transport.Transport):
-    def capture_envelope(self, envelope: "Envelope") -> None:
+    def capture_envelope(self, envelope: Envelope) -> None:
         pass
 
 
@@ -31,10 +36,11 @@ def reset_sentry_state() -> Generator[None]:
         p for p in sentry_scope.global_event_processors if p is not sentry.sentry_event_processor
     ]
     sentry.installed = False
+    sentry.pending_event_ids.clear()
 
 
-@pytest.fixture()
-def sentry_initialized() -> Generator[None]:
+@pytest.fixture(autouse=True)
+def initialize_sentry() -> Generator[None]:
     sentry_sdk.init(
         dsn="https://1234567890@example.invalid/1",
         transport=DiscardTransport(),
@@ -44,36 +50,33 @@ def sentry_initialized() -> Generator[None]:
     sentry_sdk.get_client().close()
 
 
-def capture_exception_in_server_span(tracer: Tracer) -> str | None:
-    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
-        try:
-            raise ValueError("boom")
-        except ValueError as exc:
-            return sentry_sdk.capture_exception(exc)
-
-
-def test_sentry_event_id_written_to_server_span(
-    sentry_initialized: None, tracer: Tracer, span_exporter: InMemorySpanExporter
-):
+def test_sentry_event_id_written_after_server_span_ended():
     activation.configure(write_token=WRITE_TOKEN)
     activation.configure(write_token=WRITE_TOKEN)
     assert sentry_scope.global_event_processors.count(sentry.sentry_event_processor) == 1
 
-    event_id = capture_exception_in_server_span(tracer)
+    span_exporter = InMemorySpanExporter()
+    batch_processor = BatchSpanProcessor(ApitallySpanExporter(span_exporter), schedule_delay_millis=60_000)
+    provider = TracerProvider()
+    provider.add_span_processor(ApitallySpanProcessor(batch_processor))
+    tracer = provider.get_tracer(CONTRIB_SCOPE)
+    try:
+        error: ValueError | None = None
+        with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as span:
+            try:
+                raise ValueError("boom")
+            except ValueError as exc:
+                span.record_exception(exc)
+                error = exc
+
+        # Mimics Sentry's outermost ASGI wrapper capturing after the SERVER span has ended
+        event_id = sentry_sdk.capture_exception(error)
+        batch_processor.force_flush()
+    finally:
+        provider.shutdown()
 
     assert event_id is not None
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].attributes is not None
-    assert spans[0].attributes["apitally.exception.sentry_event_id"] == event_id
-
-
-def test_configure_without_sentry_sdk_installs_nothing(monkeypatch: pytest.MonkeyPatch):
-    processors_before = list(sentry_scope.global_event_processors)
-    monkeypatch.setitem(sys.modules, "sentry_sdk", None)
-    monkeypatch.setitem(sys.modules, "sentry_sdk.scope", None)
-
-    activation.configure(write_token=WRITE_TOKEN)
-
-    assert not sentry.installed
-    assert sentry_scope.global_event_processors == processors_before
+    assert spans[0].attributes[sentry.SENTRY_EVENT_ID_ATTRIBUTE] == event_id

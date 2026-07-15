@@ -7,6 +7,7 @@ from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
 from apitally.shared.config import BODY_TOO_LARGE, MAX_BODY_SIZE, get_config
 from apitally.shared.redaction import REDACTED, Redaction
+from apitally.shared.sentry import SENTRY_EVENT_ID_ATTRIBUTE, pop_sentry_event_id
 from apitally.shared.span_processor import STASH_ATTRIBUTE, RequestStash, copy_span_with_attributes
 
 
@@ -17,8 +18,8 @@ HEADER_ATTRIBUTE_PREFIXES = ("http.request.header.", "http.response.header.")
 
 
 class ApitallySpanExporter(SpanExporter):
-    """Applies redaction and attaches stashed headers and bodies on the export thread,
-    in front of the delegate exporter."""
+    """Applies redaction and attaches stashed headers, bodies and Sentry event IDs on the
+    export thread, in front of the delegate exporter."""
 
     def __init__(self, delegate: SpanExporter) -> None:
         self.delegate = delegate
@@ -38,11 +39,17 @@ class ApitallySpanExporter(SpanExporter):
         return self.delegate.export(processed)
 
     def process_span(self, span: ReadableSpan) -> ReadableSpan:
-        """Return a copy with redaction applied and stashed headers and bodies added as attributes.
-        The copy does not carry the stash, and the original span is never mutated."""
+        """Return a copy with redaction applied and stashed headers, bodies and Sentry event IDs
+        added as attributes. The copy does not carry the stash, and the original span is never mutated."""
         stash: RequestStash | None = getattr(span, STASH_ATTRIBUTE, None)
-        if stash is None and not any(
-            key in QUERY_ATTRIBUTES or key.startswith(HEADER_ATTRIBUTE_PREFIXES) for key in span.attributes or {}
+        context = span.get_span_context()
+        sentry_event_id = pop_sentry_event_id(context.span_id) if context is not None else None
+        if (
+            stash is None
+            and sentry_event_id is None
+            and not any(
+                key in QUERY_ATTRIBUTES or key.startswith(HEADER_ATTRIBUTE_PREFIXES) for key in span.attributes or {}
+            )
         ):
             return span
         attributes = dict(span.attributes or {})
@@ -60,6 +67,9 @@ class ApitallySpanExporter(SpanExporter):
             if redacted != value:
                 attributes[key] = redacted
                 changed = True
+        if sentry_event_id is not None:
+            attributes[SENTRY_EVENT_ID_ATTRIBUTE] = sentry_event_id
+            changed = True
         if stash is None:
             return copy_span_with_attributes(span, attributes) if changed else span
         for prefix, headers in (
