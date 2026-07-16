@@ -24,12 +24,12 @@ if TYPE_CHECKING:
     from starlette.types import ASGIApp, Receive, Scope, Send
 
 
-__all__ = ["init_apitally"]
+__all__ = ["init"]
 
 logger = logging.getLogger(__name__)
 
 
-def init_apitally(
+def init(
     app: Starlette,
     *,
     write_token: str | None = None,

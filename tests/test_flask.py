@@ -8,7 +8,7 @@ from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import SpanKind
 
-from apitally.flask import init_apitally
+import apitally
 from apitally.shared import activation
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
@@ -59,7 +59,7 @@ def app() -> Iterator[Flask]:
 
 def init(app: Flask, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=WRITE_TOKEN, **kwargs)
+    apitally.init(app, write_token=WRITE_TOKEN, **kwargs)
 
 
 def activate_with_metric_reader() -> InMemoryMetricReader:

@@ -70,7 +70,7 @@ def set_config(**kwargs: Any) -> ApitallyConfig:
     config, error = resolve_config(kwargs)
     if current_config is not None:
         if config != current_config:
-            logger.warning("init_apitally was called again with different arguments; ignoring")
+            logger.warning("apitally.init() was called again with different arguments; ignoring")
         return current_config
     if error:
         logger.error(error)

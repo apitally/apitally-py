@@ -8,7 +8,7 @@ from django.core.signals import request_started
 from django.utils.functional import empty
 from opentelemetry.instrumentation.django import DjangoInstrumentor
 
-from apitally.django import init_apitally
+import apitally
 from apitally.shared import activation
 from tests.conftest import WRITE_TOKEN
 
@@ -34,7 +34,7 @@ def reset_django_settings() -> None:
 def init(monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(sys, "argv", ["manage.py", "runserver"])
-    init_apitally(write_token=WRITE_TOKEN, **kwargs)
+    apitally.init(write_token=WRITE_TOKEN, **kwargs)
 
 
 def activate_via_signal() -> None:

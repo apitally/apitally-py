@@ -16,10 +16,10 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 from starlette.testclient import TestClient
 
+import apitally
 from apitally.shared import activation, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.redaction import REDACTED
-from apitally.starlette import init_apitally
 from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
@@ -65,7 +65,7 @@ def app() -> Iterator[Starlette]:
 
 def init(app: Starlette, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=WRITE_TOKEN, **kwargs)
+    apitally.init(app, write_token=WRITE_TOKEN, **kwargs)
 
 
 def test_request_flow_span_histogram_and_startup_event(

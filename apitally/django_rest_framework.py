@@ -2,10 +2,10 @@ from collections.abc import Mapping
 from contextlib import suppress
 from typing import Any
 
-from apitally.django import init_apitally
+from apitally.django import init
 
 
-__all__ = ["init_apitally"]
+__all__ = ["init"]
 
 
 def _get_drf_paths(urlconfs: list[str | None]) -> list[dict[str, str]]:

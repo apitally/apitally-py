@@ -24,6 +24,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind
 
+import apitally
 from apitally.shared import activation, export, metrics, startup
 from apitally.shared.config import set_config
 from apitally.shared.context import get_server_span_processor
@@ -420,8 +421,6 @@ def create_starlette_client(otlp_server: StubOTLPServer, monkeypatch: pytest.Mon
     from starlette.routing import Route
     from starlette.testclient import TestClient
 
-    from apitally.starlette import init_apitally
-
     async def get_item(request: Request) -> JSONResponse:
         logging.getLogger("myapp").warning("handling item")
         return JSONResponse({"item_id": request.path_params["item_id"]})
@@ -434,7 +433,7 @@ def create_starlette_client(otlp_server: StubOTLPServer, monkeypatch: pytest.Mon
     monkeypatch.setenv("APITALLY_OTLP_ENDPOINT", otlp_server.url)
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
-    init_apitally(app, write_token=WRITE_TOKEN, **kwargs)
+    apitally.init(app, write_token=WRITE_TOKEN, **kwargs)
     return TestClient(app)
 
 
