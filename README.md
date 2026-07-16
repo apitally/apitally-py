@@ -34,7 +34,7 @@ Learn more about Apitally on our 🌎 [website](https://apitally.io) or check ou
 the 📚 [documentation](https://docs.apitally.io).
 
 > [!IMPORTANT]
-> **Upgrading from 0.x?** Version 1.0 is a rewrite with a new setup API. See the [migration guide](MIGRATION.md) for a full 0.x to 1.x mapping, including one behavior change you should know about before upgrading.
+> **Upgrading from 0.x?** Version 1.0 is a full rewrite with a new setup API. See the [migration guide](MIGRATION.md) for a full 0.x to 1.x mapping.
 
 ## Key features
 
@@ -128,14 +128,13 @@ Then call `apitally.init()` at the *end* of your `settings.py` module. The place
 
 ```python
 # settings.py
+import apitally
 
 MIDDLEWARE = [
     # Your middleware ...
 ]
 
 # ... at the very end of the file:
-import apitally
-
 apitally.init(write_token="your-write-token")
 ```
 
@@ -232,7 +231,7 @@ For further instructions, see our
 
 The write token and environment can also be provided via the `APITALLY_WRITE_TOKEN` and `APITALLY_ENV` environment variables instead of the `write_token` and `env` arguments. The environment defaults to `prod`.
 
-Out of the box, Apitally captures metrics, request logs, traces, exceptions, application logs, and response headers. Request headers and request and response bodies are *not* captured by default. You can opt in per direction:
+Out of the box, Apitally captures metrics, request logs, traces, exceptions, application logs, and response headers. Request headers and request and response bodies are *not* captured by default. You can opt in with parameters:
 
 ```python
 apitally.init(
@@ -246,7 +245,7 @@ apitally.init(
 
 Sensitive values in query parameters, headers, and body fields are masked automatically based on built-in patterns, and you can add your own via the `mask_query_params`, `mask_headers`, and `mask_body_fields` arguments.
 
-On high-traffic applications you can capture traces and logs for only a fraction of requests by setting `sample_rate` (e.g. `0.1` for 10%), or decide per request with the `sample_on_request` and `sample_on_response` callbacks. A request's telemetry is held in memory until the request completes (up to 1,000 spans and 1,000 log records per request), so a request dropped by `sample_on_response` never counts toward your quota. Request-stage sampling additionally skips capture work such as body buffering and masking (for Flask, request bodies are still buffered because the sampling decision happens later). Metrics always count every request, regardless of sampling.
+On high-traffic applications you can capture traces and logs for only a fraction of requests by setting `sample_rate` (e.g. `0.1` for 10%), or decide per request with the `sample_on_request` and `sample_on_response` callbacks. Metrics always count every request, regardless of sampling.
 
 Application logs written via the standard `logging` module are captured and correlated with requests by default. Log messages are exported as-is, so if your application logs sensitive data, sanitize it at the source or opt out with `capture_logs=False`.
 
@@ -257,16 +256,16 @@ See the [SDK reference](https://docs.apitally.io/sdk-reference/python) for all c
 The top-level `apitally` package provides functions you can call from anywhere in your request handling code, for example from your authentication middleware or dependencies:
 
 ```python
-from apitally import capture_exception, set_consumer, set_request_attribute
+import apitally
 
 # Associate the current request with an API consumer
-set_consumer(user.identifier, name=user.name, group=user.group)
+apitally.set_consumer(user.identifier, name=user.name, group=user.group)
 
 # Attach a custom attribute to the current request
-set_request_attribute("tenant", tenant_id)
+apitally.set_request_attribute("tenant", tenant_id)
 
 # Capture a handled exception for the current request
-capture_exception(exc)
+apitally.capture_exception(exc)
 ```
 
 For further details, check out our [documentation](https://docs.apitally.io).
