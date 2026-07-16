@@ -10,7 +10,8 @@ from opentelemetry.instrumentation.django import DjangoInstrumentor
 from opentelemetry.sdk.metrics.export import ExponentialHistogramDataPoint
 from opentelemetry.trace import SpanKind
 
-from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, _convert_proxy_objects, init_apitally
+import apitally
+from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, _convert_proxy_objects
 from apitally.shared import activation, config
 from apitally.shared.config import BODY_TOO_LARGE
 from apitally.shared.redaction import REDACTED
@@ -72,7 +73,7 @@ def test_management_command_configures_but_never_activates(
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(sys, "argv", ["manage.py", "migrate"])
-    init_apitally(write_token=WRITE_TOKEN)
+    apitally.init(write_token=WRITE_TOKEN)
     assert config.is_configured()
     assert not activation.is_activated()
     assert exporters.span == []
@@ -285,7 +286,7 @@ def test_init_from_settings_module(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "tests.django.settings")
     sys.modules.pop("tests.django.settings", None)
     try:
-        # Accessing settings imports the module, running init_apitally at its end
+        # Accessing settings imports the module, running apitally.init at its end
         assert settings.MIDDLEWARE == [
             OTEL_MIDDLEWARE,
             APITALLY_MIDDLEWARE,

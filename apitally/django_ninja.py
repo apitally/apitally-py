@@ -4,14 +4,14 @@ from typing import TYPE_CHECKING, Any
 
 from django.urls import URLPattern, URLResolver, get_resolver
 
-from apitally.django import init_apitally
+from apitally.django import init
 
 
 if TYPE_CHECKING:
     from ninja import NinjaAPI
 
 
-__all__ = ["init_apitally"]
+__all__ = ["init"]
 
 
 def _get_ninja_paths(urlconfs: list[str | None]) -> list[dict[str, str]]:

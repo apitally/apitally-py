@@ -34,11 +34,13 @@ from apitally.shared.wsgi import group_headers, parse_content_length
 
 
 if TYPE_CHECKING:
+    from types import FrameType
+
     from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
     from opentelemetry.sdk.trace import ReadableSpan, Span
 
 
-__all__ = ["init_apitally"]
+__all__ = ["init"]
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +52,7 @@ _urlconfs: list[str | None] = [None]
 _include_django_views = False
 
 
-def init_apitally(
+def init(
     *,
     write_token: str | None = None,
     env: str | None = None,
@@ -85,7 +87,11 @@ def init_apitally(
         cfg = activation.configure(**config.explicit_kwargs(locals()))
         if cfg.disabled:
             return
-        caller_globals = sys._getframe(1).f_globals
+        # Skip apitally's own frames so delegation via apitally.init() still finds the settings module
+        frame: FrameType | None = sys._getframe(1)
+        while frame is not None and frame.f_globals.get("__name__", "").partition(".")[0] == "apitally":
+            frame = frame.f_back
+        caller_globals = frame.f_globals if frame is not None else {}
         if isinstance(caller_globals.get("MIDDLEWARE"), tuple):
             # A list is required so the middleware insertions below mutate the settings module in place
             caller_globals["MIDDLEWARE"] = list(caller_globals["MIDDLEWARE"])

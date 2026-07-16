@@ -47,7 +47,7 @@ def resolve_env(user_provider: TracerProvider | None) -> str:
         logger.warning(
             "Configured Apitally env '%s' conflicts with the existing OpenTelemetry resource attribute "
             "deployment.environment.name='%s'; using '%s'. To resolve this, either remove the env argument "
-            "from init_apitally() or set the deployment.environment.name resource attribute to '%s' in "
+            "from apitally.init() or set the deployment.environment.name resource attribute to '%s' in "
             "your OpenTelemetry setup.",
             config.env,
             resource_env,

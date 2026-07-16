@@ -83,6 +83,16 @@ Apitally also supports many other web frameworks in [JavaScript](https://github.
 
 If you don't have an Apitally account yet, first [sign up here](https://app.apitally.io/?signup). Then create an app in the Apitally dashboard. You'll see detailed setup instructions with code snippets you can copy and paste. These also include your write token.
 
+Setup is a single call to `apitally.init`, which detects your framework from the app instance:
+
+```python
+import apitally
+
+apitally.init(app, write_token="your-write-token")
+```
+
+Django apps call `apitally.init()` without an app argument at the end of `settings.py`, and Litestar apps use `ApitallyPlugin` instead. See the framework sections below for details.
+
 See the [SDK reference](https://docs.apitally.io/sdk-reference/python) for all available configuration options, including how to mask sensitive data, capture request and response payloads, and more.
 
 ### FastAPI
@@ -96,11 +106,11 @@ pip install "apitally[fastapi]"
 Then initialize Apitally for your application:
 
 ```python
+import apitally
 from fastapi import FastAPI
-from apitally.fastapi import init_apitally
 
 app = FastAPI()
-init_apitally(app, write_token="your-write-token")
+apitally.init(app, write_token="your-write-token")
 ```
 
 For further instructions, see our
@@ -114,7 +124,7 @@ Install the SDK with the `django` extra, which also pulls in the OpenTelemetry i
 pip install "apitally[django]"
 ```
 
-Then call `init_apitally` at the *end* of your `settings.py` module. The placement matters: it must run after `MIDDLEWARE` is defined, as Apitally inserts its own middleware automatically.
+Then call `apitally.init()` at the *end* of your `settings.py` module. The placement matters: it must run after `MIDDLEWARE` is defined, as Apitally inserts its own middleware automatically.
 
 ```python
 # settings.py
@@ -124,9 +134,9 @@ MIDDLEWARE = [
 ]
 
 # ... at the very end of the file:
-from apitally.django import init_apitally
+import apitally
 
-init_apitally(write_token="your-write-token")
+apitally.init(write_token="your-write-token")
 ```
 
 For further instructions, see our
@@ -143,11 +153,11 @@ pip install "apitally[flask]"
 Then initialize Apitally for your application:
 
 ```python
+import apitally
 from flask import Flask
-from apitally.flask import init_apitally
 
 app = Flask(__name__)
-init_apitally(app, write_token="your-write-token")
+apitally.init(app, write_token="your-write-token")
 ```
 
 For further instructions, see our
@@ -164,11 +174,11 @@ pip install "apitally[starlette]"
 Then initialize Apitally for your application:
 
 ```python
+import apitally
 from starlette.applications import Starlette
-from apitally.starlette import init_apitally
 
 app = Starlette(routes=[...])
-init_apitally(app, write_token="your-write-token")
+apitally.init(app, write_token="your-write-token")
 ```
 
 For further instructions, see our
@@ -182,7 +192,7 @@ Install the SDK with the `litestar` extra:
 pip install "apitally[litestar]"
 ```
 
-Litestar plugins must be passed at construction, so setup uses `ApitallyPlugin` instead of an `init_apitally` function:
+Litestar plugins must be passed at construction, so setup uses `ApitallyPlugin` instead of `apitally.init`:
 
 ```python
 from litestar import Litestar
@@ -208,11 +218,11 @@ pip install "apitally[blacksheep]"
 Then initialize Apitally for your application:
 
 ```python
+import apitally
 from blacksheep import Application
-from apitally.blacksheep import init_apitally
 
 app = Application()
-init_apitally(app, write_token="your-write-token")
+apitally.init(app, write_token="your-write-token")
 ```
 
 For further instructions, see our
@@ -225,7 +235,7 @@ The write token and environment can also be provided via the `APITALLY_WRITE_TOK
 Out of the box, Apitally captures metrics, request logs, traces, exceptions, application logs, and response headers. Request headers and request and response bodies are *not* captured by default. You can opt in per direction:
 
 ```python
-init_apitally(
+apitally.init(
     app,
     write_token="your-write-token",
     log_request_headers=True,

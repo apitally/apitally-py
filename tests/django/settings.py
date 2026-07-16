@@ -1,6 +1,6 @@
-"""Real settings module exercising the documented end-of-settings.py init_apitally placement."""
+"""Real settings module exercising the documented end-of-settings.py apitally.init() placement."""
 
-from apitally.django import init_apitally
+import apitally
 
 
 SECRET_KEY = "secret"
@@ -12,4 +12,4 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
 ]
 
-init_apitally(write_token="apt_" + "a" * 24)
+apitally.init(write_token="apt_" + "a" * 24)

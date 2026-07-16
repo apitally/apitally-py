@@ -11,8 +11,8 @@ from opentelemetry import context as otel_context
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.trace import SpanKind
 
+import apitally
 from apitally import set_consumer
-from apitally.fastapi import init_apitally
 from apitally.shared import activation, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from tests.conftest import (
@@ -72,7 +72,7 @@ def app() -> Iterator[FastAPI]:
 
 def init(app: FastAPI, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    init_apitally(app, write_token=WRITE_TOKEN, **kwargs)
+    apitally.init(app, write_token=WRITE_TOKEN, **kwargs)
 
 
 def test_request_exports_single_server_span_with_stable_semconv(
@@ -284,7 +284,7 @@ def test_consumer_set_in_sync_endpoint_reaches_metrics(
 def test_sample_rate_zero_drops_spans_keeps_metrics(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    # Pins that sampling kwargs passed to init_apitally reach the config, exercised through a real framework
+    # Pins that sampling kwargs passed to init reach the config, exercised through a real framework
     init(app, monkeypatch, sample_rate=0.0)
     with TestClient(app) as client:
         reader = attach_metric_reader()
@@ -315,7 +315,7 @@ def test_init_without_write_token_exports_nothing(
 ):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.delenv("APITALLY_WRITE_TOKEN", raising=False)
-    init_apitally(app)
+    apitally.init(app)
     with TestClient(app) as client:
         assert client.get("/items/42").status_code == 200
     assert not activation.is_activated()
@@ -323,7 +323,7 @@ def test_init_without_write_token_exports_nothing(
 
 
 def test_init_disabled_skips_instrumentation(app: FastAPI):
-    init_apitally(app, write_token=WRITE_TOKEN, disabled=True)
+    apitally.init(app, write_token=WRITE_TOKEN, disabled=True)
     assert not getattr(app, "_is_instrumented_by_opentelemetry", False)
     assert not isinstance(app.build_middleware_stack(), activation.ASGIActivationShim)
 

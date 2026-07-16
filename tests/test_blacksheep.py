@@ -11,7 +11,7 @@ from opentelemetry import context as otel_context
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.trace import SpanKind, StatusCode
 
-from apitally.blacksheep import init_apitally
+import apitally
 from apitally.shared import activation
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
@@ -33,7 +33,7 @@ def allow_activation(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def create_app(**kwargs: Any) -> Application:
     app = Application(router=Router())
-    init_apitally(app, write_token=WRITE_TOKEN, app_version="1.2.3", **kwargs)
+    apitally.init(app, write_token=WRITE_TOKEN, app_version="1.2.3", **kwargs)
 
     @app.router.get("/items/{id}")
     def get_item(id: str) -> Response:
@@ -95,7 +95,7 @@ async def test_startup_paths_include_sub_router_routes(exporters: InMemoryExport
         return text(f"book {book_id}")
 
     app = Application(router=Router(sub_routers=[books]))
-    init_apitally(app, write_token=WRITE_TOKEN)
+    apitally.init(app, write_token=WRITE_TOKEN)
 
     @app.router.get("/health")
     def health() -> Response:
@@ -129,7 +129,7 @@ async def test_unmatched_request_has_no_route_and_no_histogram_point(
 async def test_first_request_activates_and_records_without_lifespan(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    # init_apitally wraps app._handle_http, the one private-API dependency; this assertion
+    # init wraps app._handle_http, the one private-API dependency; this assertion
     # fails loudly if BlackSheep renames it or changes its signature
     assert list(inspect.signature(Application._handle_http).parameters) == ["self", "scope", "receive", "send"]
 
@@ -169,7 +169,7 @@ async def test_pre_instrumented_app_adapts_without_duplicate_spans(
     allow_activation(monkeypatch)
     app = Application(router=Router())
     wrapped = OpenTelemetryMiddleware(app)
-    init_apitally(wrapped, write_token=WRITE_TOKEN)
+    apitally.init(wrapped, write_token=WRITE_TOKEN)
 
     @app.router.get("/items/{id}")
     def get_item(id: str) -> Response:
@@ -219,7 +219,7 @@ async def test_init_twice_does_not_stack_middleware(exporters: InMemoryExporters
     allow_activation(monkeypatch)
     app = create_app()
     handler = app.__dict__["_handle_http"]
-    init_apitally(app, write_token=WRITE_TOKEN, app_version="1.2.3")
+    apitally.init(app, write_token=WRITE_TOKEN, app_version="1.2.3")
     assert app.__dict__["_handle_http"] is handler
 
     await app.start()

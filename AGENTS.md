@@ -19,7 +19,7 @@
 - The name states what the function actually does, including its outcome: a function that only logs a warning is `warn_if_sampler_drops_spans`, not `check_sampler`. A method that may discard or buffer as well as export is `process_ended_span`, not `export_span`.
 - One concept, one name across modules: the content-type allowlist check is `is_allowed_content_type` everywhere. Names align with the config option they implement (`_get_django_view_paths` for `include_django_views`).
 - When renaming a function, rename its associated constants to match.
-- Public API names (`init_apitally`, `set_consumer`, `capture_exception`, `instrument_*`) are stable; naming improvements are internal only.
+- Public API names (`init`, `set_consumer`, `capture_exception`, `instrument_*`) are stable; naming improvements are internal only.
 
 ## Comments and docstrings
 

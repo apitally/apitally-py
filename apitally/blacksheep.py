@@ -20,12 +20,12 @@ if TYPE_CHECKING:
     from opentelemetry.sdk.trace import ReadableSpan
 
 
-__all__ = ["init_apitally"]
+__all__ = ["init"]
 
 logger = logging.getLogger(__name__)
 
 
-def init_apitally(
+def init(
     app: Application | OpenTelemetryMiddleware,
     *,
     write_token: str | None = None,

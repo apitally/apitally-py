@@ -18,10 +18,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["init_apitally"]
+__all__ = ["init"]
 
 
-def init_apitally(
+def init(
     app: Flask,
     *,
     write_token: str | None = None,

@@ -11,26 +11,26 @@ The `client_id` is gone. 1.x authenticates with a *write token* (format `apt_...
 
 ## Setup
 
-The `ApitallyMiddleware` class is gone. Setup is now a call to `init_apitally(...)`, except for Litestar, which keeps its plugin (Litestar plugins must be passed at construction, so a plugin remains the right shape there).
+The `ApitallyMiddleware` class is gone. Setup is now a call to `apitally.init(...)`, except for Litestar, which keeps its plugin (Litestar plugins must be passed at construction, so a plugin remains the right shape there).
 
 | Framework | 0.x | 1.x |
 | --- | --- | --- |
-| FastAPI | `app.add_middleware(ApitallyMiddleware, client_id="...")` | `init_apitally(app, write_token="...")` |
-| Starlette | `app.add_middleware(ApitallyMiddleware, client_id="...")` | `init_apitally(app, write_token="...")` |
-| Flask | `app.wsgi_app = ApitallyMiddleware(app, client_id="...")` | `init_apitally(app, write_token="...")` |
-| Django | `"apitally.django.ApitallyMiddleware"` in `MIDDLEWARE` + `APITALLY_MIDDLEWARE` setting | `init_apitally(write_token="...")` at the *end* of `settings.py` |
+| FastAPI | `app.add_middleware(ApitallyMiddleware, client_id="...")` | `apitally.init(app, write_token="...")` |
+| Starlette | `app.add_middleware(ApitallyMiddleware, client_id="...")` | `apitally.init(app, write_token="...")` |
+| Flask | `app.wsgi_app = ApitallyMiddleware(app, client_id="...")` | `apitally.init(app, write_token="...")` |
+| Django | `"apitally.django.ApitallyMiddleware"` in `MIDDLEWARE` + `APITALLY_MIDDLEWARE` setting | `apitally.init(write_token="...")` at the *end* of `settings.py` |
 | Litestar | `Litestar(plugins=[ApitallyPlugin(client_id="...")])` | `Litestar(plugins=[ApitallyPlugin(write_token="...")])` |
-| BlackSheep | `use_apitally(app, client_id="...")` | `init_apitally(app, write_token="...")` |
+| BlackSheep | `use_apitally(app, client_id="...")` | `apitally.init(app, write_token="...")` |
 
-Import `init_apitally` from the framework-specific module, e.g. `from apitally.fastapi import init_apitally`.
+`apitally.init` detects the framework from the app instance. The framework-specific init functions are also available, e.g. `import apitally.fastapi` and `apitally.fastapi.init(app, write_token="...")`.
 
 The `django_rest_framework` and `django_ninja` installation extras are replaced by a single `django` extra that covers all Django setups: `pip install "apitally[django]"`. Update your requirements accordingly — pip only warns about unknown extras, and the old names would silently skip dependencies needed for OpenAPI schema capture with Django REST Framework.
 
-**Django users**: remove the `"apitally.django.ApitallyMiddleware"` entry from `MIDDLEWARE` and the `APITALLY_MIDDLEWARE` settings dict. 1.x inserts its own middleware automatically when you call `init_apitally(...)`. The old class no longer exists, so a stale `MIDDLEWARE` entry makes Django fail at startup. Call `init_apitally(...)` at the very end of `settings.py`, after `MIDDLEWARE` is defined.
+**Django users**: remove the `"apitally.django.ApitallyMiddleware"` entry from `MIDDLEWARE` and the `APITALLY_MIDDLEWARE` settings dict. 1.x inserts its own middleware automatically when you call `apitally.init(...)`. The old class no longer exists, so a stale `MIDDLEWARE` entry makes Django fail at startup. Call `apitally.init(...)` at the very end of `settings.py`, after `MIDDLEWARE` is defined.
 
 ## Option lookup
 
-All options move to keyword arguments of `init_apitally(...)` (or `ApitallyPlugin(...)` for Litestar). The `RequestLoggingConfig` class and the `request_logging_config` argument are gone; its fields are now flat keyword arguments.
+All options move to keyword arguments of `apitally.init(...)` (or `ApitallyPlugin(...)` for Litestar). The `RequestLoggingConfig` class and the `request_logging_config` argument are gone; its fields are now flat keyword arguments.
 
 | 0.x | 1.x |
 | --- | --- |
@@ -102,7 +102,7 @@ def sample_on_response(span):
         return True  # always capture server errors
     return 0.05  # capture 5% of healthy responses
 
-init_apitally(
+apitally.init(
     app,
     write_token="your-write-token",
     sample_on_request=sample_on_request,
@@ -129,7 +129,7 @@ def mask_request_body(span, body):
 
 If your application already has an OpenTelemetry `TracerProvider` configured (e.g. for Datadog, Honeycomb, or your own collector), Apitally attaches to it instead of replacing it. Your existing pipeline is unaffected. A few things to be aware of in this mode:
 
-- The order of `init_apitally(...)` and your other OpenTelemetry setup does not matter, as long as your `TracerProvider` is registered before the application starts serving requests. A provider registered after startup is not picked up.
+- The order of `apitally.init(...)` and your other OpenTelemetry setup does not matter, as long as your `TracerProvider` is registered before the application starts serving requests. A provider registered after startup is not picked up.
 - Your sampler applies. If it drops requests (e.g. `TraceIdRatioBased`), request logs in Apitally follow your sampling rate; Apitally's own `sample_rate` applies on top, to the requests your sampler keeps. Metrics are recorded independently of sampling and stay complete.
 - Your span attribute limits apply. A limit below 65,536 (e.g. via `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT`) can truncate captured request/response bodies. The SDK logs a warning when it detects this.
 - Headers and bodies captured by Apitally never appear on the spans your own exporters receive. They are attached, already redacted, only on Apitally's export path. Headers captured by OpenTelemetry instrumentation itself (e.g. via `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST`) remain visible to your pipeline as usual.
