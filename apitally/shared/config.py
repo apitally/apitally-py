@@ -60,7 +60,7 @@ current_config: ApitallyConfig | None = None
 
 
 def explicit_kwargs(params: dict[str, Any]) -> dict[str, Any]:
-    """Filter an adapter signature's locals() down to config fields the caller actually provided.
+    """Filter kwargs passed through an adapter down to config fields the caller actually provided.
     None means absent, which keeps the env var fallbacks in resolve_config in effect."""
     return {name: value for name, value in params.items() if name in CONFIG_FIELDS and value is not None}
 

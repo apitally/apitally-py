@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import Any
 
 from blacksheep import Application
 from blacksheep.messages import Request, Response
@@ -16,10 +15,6 @@ from apitally.shared.context import get_server_span
 from apitally.shared.helpers import capture_exception
 
 
-if TYPE_CHECKING:
-    from opentelemetry.sdk.trace import ReadableSpan
-
-
 __all__ = ["init"]
 
 logger = logging.getLogger(__name__)
@@ -28,24 +23,8 @@ logger = logging.getLogger(__name__)
 def init(
     app: Application | OpenTelemetryMiddleware,
     *,
-    write_token: str | None = None,
-    env: str | None = None,
     app_version: str | None = None,
-    disabled: bool | None = None,
-    capture_logs: bool | None = None,
-    log_request_headers: bool | None = None,
-    log_request_body: bool | None = None,
-    log_response_headers: bool | None = None,
-    log_response_body: bool | None = None,
-    mask_query_params: list[str] | None = None,
-    mask_headers: list[str] | None = None,
-    mask_body_fields: list[str] | None = None,
-    mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
-    mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
-    exclude_paths: list[str] | None = None,
-    sample_rate: float | None = None,
-    sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
-    sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
+    **kwargs: Any,
 ) -> None:
     """
     Set up Apitally for a BlackSheep application.
@@ -55,7 +34,7 @@ def init(
     - Reference: https://docs.apitally.io/sdk-reference/python
     """
     try:
-        cfg = activation.configure(**config.explicit_kwargs(locals()))
+        cfg = activation.configure(**config.explicit_kwargs(kwargs))
         if cfg.disabled:
             return
         instrumented_by_user = isinstance(app, OpenTelemetryMiddleware)
