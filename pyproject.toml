@@ -133,6 +133,9 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 source = "vcs"
 
+[tool.hatch.build.targets.sdist]
+only-include = ["apitally"]
+
 [tool.uv]
 default-groups = "all"
 
