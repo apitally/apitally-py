@@ -153,7 +153,7 @@ def test_request_body_captured_and_redacted(
     assert isinstance(body_size, int) and body_size > 0
 
 
-def test_mounted_subapp_route_includes_mount_prefix(
+def test_mounted_subapp_route_in_metrics_and_startup_paths(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     subapp = FastAPI()
@@ -173,6 +173,9 @@ def test_mounted_subapp_route_includes_mount_prefix(
     assert span.name == "GET /sub/things/{thing_id}"
     assert unwrap(span.attributes)["http.route"] == "/sub/things/{thing_id}"
     assert unwrap(point.attributes)["http.route"] == "/sub/things/{thing_id}"
+
+    payload = startup_payload(exporters)
+    assert {"method": "GET", "path": "/sub/things/{thing_id}"} in payload["paths"]
 
 
 def test_pre_instrumented_app_adapts_without_duplicate_spans(

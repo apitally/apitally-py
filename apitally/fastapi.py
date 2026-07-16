@@ -84,14 +84,14 @@ def _resolve_route(scope: Scope) -> str | None:
 
 def _get_paths(app: FastAPI) -> list[dict[str, str]]:
     paths = []
-    for route in _iter_routes(app.routes):
+    for prefix, route in _iter_routes(app.routes):
         path = getattr(route, "path", None)
         if not isinstance(path, str) or not getattr(route, "include_in_schema", True):
             continue
         for method in sorted(getattr(route, "methods", None) or []):
             if method in ("HEAD", "OPTIONS"):
                 continue
-            entry = {"method": method, "path": path}
+            entry = {"method": method, "path": prefix + path}
             if summary := getattr(route, "summary", None):
                 entry["summary"] = summary
             if description := getattr(route, "description", None):
@@ -100,16 +100,19 @@ def _get_paths(app: FastAPI) -> list[dict[str, str]]:
     return paths
 
 
-def _iter_routes(routes: list[BaseRoute]) -> Iterator[Any]:
+def _iter_routes(routes: list[BaseRoute], prefix: str = "") -> Iterator[tuple[str, Any]]:
     # FastAPI 0.138+ route lists contain included-router entries; effective_route_contexts()
     # expands them into route objects whose path, methods, summary, and description use the
     # full templated path
     for route in routes:
         contexts = getattr(route, "effective_route_contexts", None)
         if callable(contexts):
-            yield from contexts()
+            for context in contexts():
+                yield prefix, context
+        elif (sub_routes := getattr(route, "routes", None)) is not None:
+            yield from _iter_routes(sub_routes, prefix + getattr(route, "path", ""))
         else:
-            yield route
+            yield prefix, route
 
 
 def _get_openapi(app: FastAPI, openapi_url: str | None) -> str | None:

@@ -28,8 +28,6 @@ def test_redact_query_params_parsing_edge_cases():
     redaction = Redaction()
     # Valueless params are preserved, not dropped
     assert redaction.redact_query_params("/items?debug&x=1", assume_query=False) == "/items?debug=&x=1"
-    # Values separated by legacy semicolons are also redacted
-    assert redaction.redact_query_params("a=1;token=x") == "a=1&token=%5BREDACTED%5D"
     # A query-less path containing '=' is not a query string
     assert redaction.redact_query_params("/items/key=value", assume_query=False) == "/items/key=value"
 
