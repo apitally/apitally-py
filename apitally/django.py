@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from types import FrameType
 
     from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
-    from opentelemetry.sdk.trace import ReadableSpan, Span
+    from opentelemetry.sdk.trace import Span
 
 
 __all__ = ["init"]
@@ -54,26 +54,10 @@ _include_django_views = False
 
 def init(
     *,
-    write_token: str | None = None,
-    env: str | None = None,
     app_version: str | None = None,
     urlconf: str | list[str | None] | None = None,
     include_django_views: bool = False,
-    disabled: bool | None = None,
-    capture_logs: bool | None = None,
-    log_request_headers: bool | None = None,
-    log_request_body: bool | None = None,
-    log_response_headers: bool | None = None,
-    log_response_body: bool | None = None,
-    mask_query_params: list[str] | None = None,
-    mask_headers: list[str] | None = None,
-    mask_body_fields: list[str] | None = None,
-    mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
-    mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
-    exclude_paths: list[str] | None = None,
-    sample_rate: float | None = None,
-    sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
-    sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
+    **kwargs: Any,
 ) -> None:
     """
     Set up Apitally for Django. Call this at the end of settings.py, after MIDDLEWARE is defined.
@@ -84,7 +68,7 @@ def init(
     """
     global _urlconfs, _include_django_views
     try:
-        cfg = activation.configure(**config.explicit_kwargs(locals()))
+        cfg = activation.configure(**config.explicit_kwargs(kwargs))
         if cfg.disabled:
             return
         # Skip apitally's own frames so delegation via apitally.init() still finds the settings module
