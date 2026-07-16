@@ -53,8 +53,7 @@ class Redaction:
             if not assume_query:
                 return value
             base, query = "", value
-        # Treat legacy semicolon separators as pair boundaries too, so those values are also redacted
-        pairs = parse_qsl(query.replace(";", "&"), keep_blank_values=True)
+        pairs = parse_qsl(query, keep_blank_values=True)
         redacted = urlencode([(k, REDACTED if self.should_redact_query_param(k) else v) for k, v in pairs])
         return f"{base}?{redacted}" if sep else redacted
 
