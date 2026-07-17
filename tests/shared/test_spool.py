@@ -74,7 +74,7 @@ def test_rotation_error_discards_current_file_and_recovers(
     def raise_oserror(*args: object) -> None:
         raise OSError("disk full")
 
-    monkeypatch.setattr(failed_file.gzip_stream, "close", raise_oserror)
+    monkeypatch.setattr(failed_file, "close", raise_oserror)
     with caplog.at_level(logging.WARNING, logger="apitally.shared.spool"):
         spool.rotate_for_export()
     assert len(caplog.records) == 1
