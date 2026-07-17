@@ -117,7 +117,7 @@ def test_mounted_route_includes_mount_prefix(
 def test_request_body_captured_and_redacted(
     app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    init(app, monkeypatch, log_request_body=True)
+    init(app, monkeypatch, capture_request_body=True)
     with TestClient(app) as client:
         client.post("/items", json={"name": "widget", "password": "hunter2"})
     (span,) = exported_spans(exporters)
@@ -197,7 +197,7 @@ def test_unhandled_exception_with_http_middleware_recorded_unwrapped(
 def test_unhandled_exception_response_captured(
     app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    init(app, monkeypatch, log_response_headers=True, log_response_body=True)
+    init(app, monkeypatch, capture_response_headers=True, capture_response_body=True)
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get("/error")
     assert response.status_code == 500

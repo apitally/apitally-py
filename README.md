@@ -237,9 +237,9 @@ Out of the box, Apitally captures metrics, request logs, traces, exceptions, app
 apitally.init(
     app,
     write_token="your-write-token",
-    log_request_headers=True,
-    log_request_body=True,
-    log_response_body=True,
+    capture_request_headers=True,
+    capture_request_body=True,
+    capture_response_body=True,
 )
 ```
 

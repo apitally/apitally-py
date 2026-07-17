@@ -110,7 +110,7 @@ async def send_request(
 
 
 async def test_json_bodies_captured_and_redacted():
-    set_config(write_token=WRITE_TOKEN, log_request_body=True, log_response_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True, capture_response_body=True)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(response_headers=JSON_HEADERS, response_chunks=[b'{"token": "t", "ok": true}'])
     await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"password": "x", "user": "u"}'])
@@ -151,7 +151,7 @@ async def test_capture_off_passthrough_and_size_from_content_length():
     [("image/png", False), ("text/plain; charset=utf-8", True)],
 )
 async def test_content_type_allowlist(content_type: str, captured: bool):
-    set_config(write_token=WRITE_TOKEN, log_request_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     await send_request(tracer, app, request_headers=[("content-type", content_type)], request_chunks=[b"hello"])
@@ -166,7 +166,7 @@ async def test_content_type_allowlist(content_type: str, captured: bool):
 
 
 async def test_body_over_cap_sentinel_with_passthrough():
-    set_config(write_token=WRITE_TOKEN, log_request_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     chunks = [b"a" * 30_000, b"b" * 30_000]
@@ -181,7 +181,7 @@ async def test_body_over_cap_sentinel_with_passthrough():
 
 @pytest.mark.parametrize("extra_headers", [[("content-length", "60000")], []], ids=["declared", "mid-stream"])
 async def test_response_body_over_cap_sentinel(extra_headers: list[tuple[str, str]]):
-    set_config(write_token=WRITE_TOKEN, log_response_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_response_body=True)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(response_headers=JSON_HEADERS + extra_headers, response_chunks=[b"a" * 30_000, b"b" * 30_000])
     await send_request(tracer, app)
@@ -196,7 +196,7 @@ async def test_mask_request_body_result_exported_after_redaction():
     def mask(span: ReadableSpan, body: bytes) -> bytes:
         return b'{"password": "x", "card": "masked"}'
 
-    set_config(write_token=WRITE_TOKEN, log_request_body=True, mask_request_body=mask)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True, mask_request_body=mask)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"card": "4111111111111111"}'])
@@ -212,7 +212,7 @@ async def test_mask_request_body_none_or_raise_yields_redacted():
             raise ValueError("boom")
         return None
 
-    set_config(write_token=WRITE_TOKEN, log_request_body=True, mask_request_body=mask)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True, mask_request_body=mask)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a": 1}'])
@@ -226,7 +226,7 @@ async def test_mask_request_body_none_or_raise_yields_redacted():
 
 
 async def test_mask_request_body_result_over_cap_yields_too_large():
-    set_config(write_token=WRITE_TOKEN, log_request_body=True, mask_request_body=lambda span, body: b"x" * 50_001)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True, mask_request_body=lambda span, body: b"x" * 50_001)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a": 1}'])
@@ -237,7 +237,9 @@ async def test_mask_request_body_result_over_cap_yields_too_large():
 
 
 async def test_aborted_response_exports_headers_and_size_but_not_body():
-    set_config(write_token=WRITE_TOKEN, log_request_headers=True, log_response_headers=True, log_response_body=True)
+    set_config(
+        write_token=WRITE_TOKEN, capture_request_headers=True, capture_response_headers=True, capture_response_body=True
+    )
     tracer, exporter = create_trace_pipeline()
 
     async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
@@ -271,7 +273,7 @@ async def test_aborted_response_exports_headers_and_size_but_not_body():
 
 
 async def test_invalid_user_pattern_dropped_and_request_succeeds():
-    set_config(write_token=WRITE_TOKEN, log_request_headers=True, mask_headers=["(", "x-custom"])
+    set_config(write_token=WRITE_TOKEN, capture_request_headers=True, mask_headers=["(", "x-custom"])
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     await send_request(tracer, app, request_headers=[("Authorization", "Bearer x"), ("X-Custom", "v")])
@@ -283,7 +285,7 @@ async def test_invalid_user_pattern_dropped_and_request_succeeds():
 
 
 async def test_headers_redacted_and_repeated_as_list():
-    set_config(write_token=WRITE_TOKEN, log_request_headers=True, log_response_headers=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_headers=True, capture_response_headers=True)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(response_headers=[("x-item", "a"), ("x-item", "b"), ("x-secret-key", "s")])
     await send_request(tracer, app, request_headers=[("Authorization", "Bearer x"), ("user-agent", "test")])
@@ -297,7 +299,7 @@ async def test_headers_redacted_and_repeated_as_list():
 
 
 async def test_size_backfill_and_chunked_response_counter():
-    set_config(write_token=WRITE_TOKEN, log_request_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(response_chunks=[b"aa", b"bbb"])  # no Content-Length
     await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a"', b": 1}"])
@@ -426,7 +428,7 @@ async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricRe
         mask_calls.append(body)
         return body
 
-    set_config(write_token=WRITE_TOKEN, sample_rate=0.0, log_request_body=True, mask_request_body=mask)
+    set_config(write_token=WRITE_TOKEN, sample_rate=0.0, capture_request_body=True, mask_request_body=mask)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
     middleware = ApitallyASGIMiddleware(app)

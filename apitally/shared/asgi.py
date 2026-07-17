@@ -71,7 +71,7 @@ class ApitallyASGIMiddleware:
         try:
             init_consumer()
             request_size = parse_int(get_header(request_headers, b"content-length"))
-            capture_request = config.log_request_body and is_allowed_content_type(
+            capture_request = config.capture_request_body and is_allowed_content_type(
                 get_header(request_headers, b"content-type")
             )
             request_too_large = capture_request and request_size is not None and request_size > MAX_BODY_SIZE
@@ -144,7 +144,7 @@ class ApitallyASGIMiddleware:
                     extra_attributes["apitally.request.body"] = BODY_TOO_LARGE
                 if response_too_large:
                     extra_attributes["apitally.response.body"] = BODY_TOO_LARGE
-                stash_request_headers = group_headers(request_headers) if config.log_request_headers else None
+                stash_request_headers = group_headers(request_headers) if config.capture_request_headers else None
                 stash_response_headers = group_headers(response_headers) if response_headers is not None else None
                 stash_request_body = (
                     bytes(request_body)
@@ -195,13 +195,13 @@ class ApitallyASGIMiddleware:
                     kept = is_server_span_kept()
                     capture_response = (
                         kept
-                        and config.log_response_body
+                        and config.capture_response_body
                         and is_allowed_content_type(get_header(headers, b"content-type"))
                     )
                     response_too_large = (
                         capture_response and response_size is not None and response_size > MAX_BODY_SIZE
                     )
-                    if kept and config.log_response_headers:
+                    if kept and config.capture_response_headers:
                         response_headers = headers
                     if kept:
                         # The instrumentor may end the span before finish runs on the exception path,

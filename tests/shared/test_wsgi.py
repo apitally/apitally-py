@@ -110,7 +110,7 @@ def run_request(
 
 
 def test_over_cap_body_sentinel_without_reading(tracer: Tracer, span_exporter: InMemorySpanExporter):
-    set_config(write_token=WRITE_TOKEN, log_request_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
         start_response("200 OK", [("Content-Type", "text/plain")])
@@ -130,7 +130,7 @@ def test_over_cap_body_sentinel_without_reading(tracer: Tracer, span_exporter: I
 def test_absent_or_unparseable_content_length_means_no_capture(
     tracer: Tracer, span_exporter: InMemorySpanExporter, content_length: str | None
 ):
-    set_config(write_token=WRITE_TOKEN, log_request_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
         start_response("200 OK", [("Content-Type", "text/plain")])
@@ -148,7 +148,7 @@ def test_absent_or_unparseable_content_length_means_no_capture(
 
 
 def test_captured_body_reemitted_and_redacted(tracer: Tracer, span_exporter: InMemorySpanExporter):
-    set_config(write_token=WRITE_TOKEN, log_request_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
     body = b'{"password": "secret123", "item": "x"}'
     received: dict[str, bytes] = {}
 
@@ -167,7 +167,7 @@ def test_captured_body_reemitted_and_redacted(tracer: Tracer, span_exporter: InM
 def test_redaction_failure_after_parse_fails_closed(
     tracer: Tracer, span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
 ):
-    set_config(write_token=WRITE_TOKEN, log_request_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
     body = b'{"a": 1}'
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
@@ -185,7 +185,7 @@ def test_redaction_failure_after_parse_fails_closed(
 
 
 def test_request_body_not_read_for_disallowed_content_type(tracer: Tracer, span_exporter: InMemorySpanExporter):
-    set_config(write_token=WRITE_TOKEN, log_request_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
         start_response("200 OK", [("Content-Type", "text/plain")])
@@ -202,7 +202,7 @@ def test_request_body_not_read_for_disallowed_content_type(tracer: Tracer, span_
 
 def test_request_and_response_bodies_captured_together(tracer: Tracer, span_exporter: InMemorySpanExporter):
     # The bodies are stashed in separate calls (response start vs finalize), covering the merge in update_stash
-    set_config(write_token=WRITE_TOKEN, log_request_body=True, log_response_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True, capture_response_body=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
         start_response("200 OK", [("Content-Type", "application/json")])
@@ -217,7 +217,7 @@ def test_request_and_response_bodies_captured_together(tracer: Tracer, span_expo
 
 
 def test_response_body_captured_from_chunks(tracer: Tracer, span_exporter: InMemorySpanExporter):
-    set_config(write_token=WRITE_TOKEN, log_response_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_response_body=True)
     iterable = ClosingIterable([b'{"token": "abc", ', b'"id": 1}'])
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> ClosingIterable:
@@ -232,7 +232,7 @@ def test_response_body_captured_from_chunks(tracer: Tracer, span_exporter: InMem
 
 
 def test_response_body_over_cap_sentinel(tracer: Tracer, span_exporter: InMemorySpanExporter):
-    set_config(write_token=WRITE_TOKEN, log_response_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_response_body=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
         start_response("200 OK", [("Content-Type", "application/json")])
@@ -245,7 +245,7 @@ def test_response_body_over_cap_sentinel(tracer: Tracer, span_exporter: InMemory
 
 
 def test_request_headers_redacted(tracer: Tracer, span_exporter: InMemorySpanExporter):
-    set_config(write_token=WRITE_TOKEN, log_request_headers=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_headers=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
         start_response("200 OK", [("Content-Type", "text/plain")])
@@ -267,7 +267,7 @@ def test_request_headers_redacted(tracer: Tracer, span_exporter: InMemorySpanExp
 
 
 def test_sampled_out_request_produces_no_span(span_exporter: InMemorySpanExporter):
-    set_config(write_token=WRITE_TOKEN, sample_rate=0.0, log_request_body=True, log_response_body=True)
+    set_config(write_token=WRITE_TOKEN, sample_rate=0.0, capture_request_body=True, capture_response_body=True)
     provider = TracerProvider(sampler=ALWAYS_ON)
     provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(span_exporter)))
     tracer = provider.get_tracer("test")
@@ -329,7 +329,7 @@ def test_no_response_size_when_client_stops_reading_mid_stream(tracer: Tracer, s
 def test_exception_after_response_start_records_metrics(
     tracer: Tracer, span_exporter: InMemorySpanExporter, metric_reader: InMemoryMetricReader
 ):
-    set_config(write_token=WRITE_TOKEN, log_request_headers=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_headers=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
         start_response("200 OK", [("Content-Type", "text/plain")])

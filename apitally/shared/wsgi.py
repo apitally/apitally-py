@@ -72,7 +72,7 @@ class ApitallyWSGIMiddleware:
     ) -> bytes | str | None:
         # The keep decision is not checked here: on Flask the SERVER span starts later, in
         # before_request. handle_response_start checks it and only then writes the buffered body.
-        if not config.log_request_body or not is_allowed_content_type(environ.get("CONTENT_TYPE")):
+        if not config.capture_request_body or not is_allowed_content_type(environ.get("CONTENT_TYPE")):
             return None
         if content_length is None:
             # Chunked/absent-length bodies are never read: raw-socket servers block on
@@ -96,7 +96,11 @@ class ApitallyWSGIMiddleware:
         content_length = parse_content_length(get_header(response_headers, "content-length"))
         state.response_size = content_length
         kept = is_server_span_kept()
-        if kept and config.log_response_body and is_allowed_content_type(get_header(response_headers, "content-type")):
+        if (
+            kept
+            and config.capture_response_body
+            and is_allowed_content_type(get_header(response_headers, "content-type"))
+        ):
             over_cap = content_length is not None and content_length > MAX_BODY_SIZE
             state.response_body = BODY_TOO_LARGE if over_cap else bytearray()
 
@@ -114,9 +118,9 @@ class ApitallyWSGIMiddleware:
                 span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
             elif isinstance(state.request_body, bytes):
                 stash_request_body = state.request_body
-            if config.log_request_headers:
+            if config.capture_request_headers:
                 stash_request_headers = environ_headers(environ)
-        stash_response_headers = group_headers(response_headers) if config.log_response_headers else None
+        stash_response_headers = group_headers(response_headers) if config.capture_response_headers else None
         if processor is not None and span.context is not None:
             if stash_request_headers or stash_request_body or stash_response_headers:
                 processor.update_stash(

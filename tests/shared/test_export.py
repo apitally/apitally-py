@@ -103,7 +103,7 @@ def test_span_batch_is_written_to_spool_as_parseable_payload(spool: Spool) -> No
 
 
 def test_stashed_body_and_headers_reach_spool_redacted(spool: Spool) -> None:
-    set_config(write_token=WRITE_TOKEN, log_request_headers=True, log_request_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_headers=True, capture_request_body=True)
     provider = TracerProvider(sampler=ALWAYS_ON)
     provider.add_span_processor(
         ApitallySpanProcessor(SimpleSpanProcessor(ApitallySpanExporter(SpoolSpanExporter(spool))))
@@ -485,7 +485,7 @@ def test_end_to_end_request_delivers_all_three_signals_decoded(
 def test_end_to_end_sensitive_body_redacted_in_spool_files_and_sent_payloads(
     otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    with create_starlette_client(otlp_server, monkeypatch, log_request_body=True) as client:
+    with create_starlette_client(otlp_server, monkeypatch, capture_request_body=True) as client:
         assert client.post("/login", json={"password": "hunter2"}).status_code == 200
         spool = unwrap(activation.spool)
         unwrap(activation.span_processor).downstream.force_flush()
