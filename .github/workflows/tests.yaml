@@ -9,8 +9,11 @@ on:
       - LICENSE
       - README.md
   pull_request:
+  schedule:
+    - cron: "0 0,12 * * *" # 10am and 10pm AEST
+  workflow_dispatch:
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
