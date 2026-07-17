@@ -5,7 +5,7 @@ import logging
 import re
 import sys
 import time
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterable, Iterator, Mapping
 from contextlib import suppress
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
@@ -215,9 +215,16 @@ class ApitallyDjangoMiddleware:
                         response_headers=stash_response_headers,
                         response_body=stash_response_body,
                     )
-        if streaming and response_size is None and not getattr(response, "is_async", False):
+        if streaming:
             self.finalize_streaming(
-                request, cast("StreamingHttpResponse", response), config, start_time, request_size, route, span
+                request,
+                cast("StreamingHttpResponse", response),
+                config,
+                start_time,
+                request_size,
+                response_size,
+                route,
+                span,
             )
             return
         metrics.record_request(
@@ -238,6 +245,7 @@ class ApitallyDjangoMiddleware:
         config: ApitallyConfig,
         start_time: float,
         request_size: int | None,
+        response_size: int | None,
         route: str | None,
         span: Span | None,
     ) -> None:
@@ -259,50 +267,77 @@ class ApitallyDjangoMiddleware:
         status_code = response.status_code
         consumer = get_consumer_identifier()
         scheme = request.scheme
-        content = cast(Iterable[bytes], response.streaming_content)
 
-        def stream_wrapper() -> Iterator[bytes]:
-            bytes_sent = 0
-            body: bytearray | str | None = bytearray() if capture_body else None
-            completed = False
+        def finish(bytes_sent: int, body: bytearray | str | None, completed: bool) -> None:
             try:
-                for chunk in content:
-                    bytes_sent += len(chunk)
-                    if isinstance(body, bytearray):
-                        body += chunk
-                        if len(body) > MAX_BODY_SIZE:
-                            body = BODY_TOO_LARGE
-                    yield chunk
-                completed = True
-            finally:
-                try:
-                    response_size = bytes_sent if completed else None
-                    extra: dict[str, str | int] = {}
-                    if response_size is not None:
-                        extra["http.response.body.size"] = response_size
-                    # An abandoned iterator leaves a partial buffer; never export a truncated body
-                    if completed and body is not None:
-                        if body is BODY_TOO_LARGE:
-                            extra["apitally.response.body"] = BODY_TOO_LARGE
-                        elif isinstance(body, bytearray) and processor is not None and span_id is not None:
-                            # The deferred export guarantees process_ended_span still runs and attaches this body
-                            processor.update_stash(span_id, response_body=bytes(body))
-                    if processor is not None and span_id is not None:
-                        processor.finish_export(span_id, extra or None)
-                    metrics.record_request(
-                        method=method,
-                        route=route or "",
-                        status_code=status_code,
-                        consumer=consumer,
-                        duration=time.perf_counter() - start_time,
-                        request_size=request_size,
-                        response_size=response_size,
-                        scheme=scheme,
-                    )
-                except Exception:  # pragma: no cover
-                    logger.exception("Error in Apitally Django middleware")
+                # A declared Content-Length is already set on the span and remains the reported size
+                final_response_size = response_size
+                extra: dict[str, str | int] = {}
+                if final_response_size is None and completed:
+                    final_response_size = bytes_sent
+                    extra["http.response.body.size"] = final_response_size
+                # An abandoned iterator leaves a partial buffer; never export a truncated body
+                if completed and body is not None:
+                    if body is BODY_TOO_LARGE:
+                        extra["apitally.response.body"] = BODY_TOO_LARGE
+                    elif isinstance(body, bytearray) and processor is not None and span_id is not None:
+                        # The deferred export guarantees process_ended_span still runs and attaches this body
+                        processor.update_stash(span_id, response_body=bytes(body))
+                if processor is not None and span_id is not None:
+                    processor.finish_export(span_id, extra or None)
+                metrics.record_request(
+                    method=method,
+                    route=route or "",
+                    status_code=status_code,
+                    consumer=consumer,
+                    duration=time.perf_counter() - start_time,
+                    request_size=request_size,
+                    response_size=final_response_size,
+                    scheme=scheme,
+                )
+            except Exception:  # pragma: no cover
+                logger.exception("Error in Apitally Django middleware")
 
-        response.streaming_content = stream_wrapper()
+        if getattr(response, "is_async", False):
+            async_content = cast(AsyncIterable[bytes], response.streaming_content)
+
+            async def async_stream_wrapper() -> AsyncIterator[bytes]:
+                bytes_sent = 0
+                body: bytearray | str | None = bytearray() if capture_body else None
+                completed = False
+                try:
+                    async for chunk in async_content:
+                        bytes_sent += len(chunk)
+                        if isinstance(body, bytearray):
+                            body += chunk
+                            if len(body) > MAX_BODY_SIZE:
+                                body = BODY_TOO_LARGE
+                        yield chunk
+                    completed = True
+                finally:
+                    finish(bytes_sent, body, completed)
+
+            response.streaming_content = async_stream_wrapper()
+        else:
+            content = cast(Iterable[bytes], response.streaming_content)
+
+            def stream_wrapper() -> Iterator[bytes]:
+                bytes_sent = 0
+                body: bytearray | str | None = bytearray() if capture_body else None
+                completed = False
+                try:
+                    for chunk in content:
+                        bytes_sent += len(chunk)
+                        if isinstance(body, bytearray):
+                            body += chunk
+                            if len(body) > MAX_BODY_SIZE:
+                                body = BODY_TOO_LARGE
+                        yield chunk
+                    completed = True
+                finally:
+                    finish(bytes_sent, body, completed)
+
+            response.streaming_content = stream_wrapper()
 
     def get_route(self, request: HttpRequest) -> str | None:
         match = request.resolver_match

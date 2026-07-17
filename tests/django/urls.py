@@ -19,6 +19,20 @@ def stream(request: HttpRequest) -> StreamingHttpResponse:
     return StreamingHttpResponse(iter([b"chunk1", b"chunk2"]), content_type="text/plain")
 
 
+def stream_sized(request: HttpRequest) -> StreamingHttpResponse:
+    response = StreamingHttpResponse(iter([b"chunk1", b"chunk2"]), content_type="text/plain")
+    response["Content-Length"] = "12"
+    return response
+
+
+async def stream_async(request: HttpRequest) -> StreamingHttpResponse:
+    async def content():
+        yield b"chunk1"
+        yield b"chunk2"
+
+    return StreamingHttpResponse(content(), content_type="text/plain")
+
+
 def whoami(request: HttpRequest) -> HttpResponse:
     set_consumer("tester", name="Tester", group="Testers")
     return HttpResponse("ok")
@@ -40,6 +54,8 @@ urlpatterns = [
     path("items/<int:pk>/", get_item),
     path("items/", create_item),
     path("stream/", stream),
+    path("stream-sized/", stream_sized),
+    path("stream-async/", stream_async),
     path("whoami/", whoami),
     path("error/", error),
     path("notes/", NotesView.as_view()),

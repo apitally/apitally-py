@@ -2,9 +2,11 @@ import json
 import sys
 from collections.abc import Iterator
 
+import django
 import pytest
 from django.conf import settings
 from django.test import Client
+from django.test.client import AsyncClient
 from django.utils.functional import empty, lazy
 from opentelemetry.instrumentation.django import DjangoInstrumentor
 from opentelemetry.sdk.metrics.export import ExponentialHistogramDataPoint
@@ -183,6 +185,46 @@ def test_no_response_size_when_client_stops_reading_mid_stream(
     assert "http.response.body.size" not in span.attributes
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.route"] == "/stream/"
+
+
+def test_span_export_waits_for_streaming_response_with_content_length_to_complete(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(monkeypatch)
+    activate_via_signal()
+    reader = attach_metric_reader()
+
+    response = Client().get("/stream-sized/")
+    assert exported_spans(exporters, kind=SpanKind.SERVER) == []
+    assert b"".join(response.streaming_content) == b"chunk1chunk2"  # ty: ignore[unresolved-attribute]
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert span.attributes is not None
+    # The declared Content-Length remains the reported size
+    assert span.attributes["http.response.body.size"] == 12
+    (point,) = duration_data_points(reader)
+    assert (point.attributes or {})["http.route"] == "/stream-sized/"
+
+
+@pytest.mark.skipif(django.VERSION < (4, 2), reason="async streaming responses require Django 4.2")
+async def test_span_export_waits_for_async_streaming_response_to_complete(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(monkeypatch, capture_response_body=True)
+    activate_via_signal()
+    reader = attach_metric_reader()
+
+    response = await AsyncClient().get("/stream-async/")
+    assert exported_spans(exporters, kind=SpanKind.SERVER) == []
+    chunks = [chunk async for chunk in response.streaming_content]  # ty: ignore[unresolved-attribute]
+    assert b"".join(chunks) == b"chunk1chunk2"
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert span.attributes is not None
+    assert span.attributes["http.response.body.size"] == 12
+    assert span.attributes["apitally.response.body"] == "chunk1chunk2"
+    (point,) = duration_data_points(reader)
+    assert (point.attributes or {})["http.route"] == "/stream-async/"
 
 
 def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
