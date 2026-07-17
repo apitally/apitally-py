@@ -83,6 +83,7 @@ dev = [
 ]
 test-base = [
     "httpx",
+    "loguru",
     "opentelemetry-test-utils>=0.64b0",
     "pytest~=8.4.0",
     "pytest-asyncio~=0.21.2",

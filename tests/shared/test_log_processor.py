@@ -64,7 +64,7 @@ def root_handler(logger_provider: LoggerProvider, span_processor: ApitallySpanPr
     return install_root_handler(logger_provider, span_processor)
 
 
-def test_log_in_nested_span_carries_server_span_id(
+def test_logs_in_nested_spans_include_server_span_id(
     tracer: Tracer, log_exporter: InMemoryLogRecordExporter, root_handler: LoggingHandler | None
 ):
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as server:
@@ -81,7 +81,7 @@ def test_log_in_nested_span_carries_server_span_id(
     )
 
 
-def test_logs_discarded_when_sample_on_response_drops_request(log_exporter: InMemoryLogRecordExporter):
+def test_logs_discarded_when_sample_on_response_returns_false(log_exporter: InMemoryLogRecordExporter):
     set_config(write_token=WRITE_TOKEN, sample_on_response=lambda span: False)
     span_processor = ApitallySpanProcessor(SpanProcessor())
     tracer_provider = TracerProvider()
@@ -96,7 +96,7 @@ def test_logs_discarded_when_sample_on_response_drops_request(log_exporter: InMe
     assert log_exporter.get_finished_logs() == ()
 
 
-def test_log_buffer_cap_drops_excess(
+def test_buffer_cap_drops_excess_logs(
     tracer: Tracer, log_exporter: InMemoryLogRecordExporter, root_handler: LoggingHandler | None
 ):
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
@@ -105,14 +105,14 @@ def test_log_buffer_cap_drops_excess(
     assert len(log_exporter.get_finished_logs()) == MAX_BUFFERED_LOGS
 
 
-def test_log_without_active_request_dropped(
+def test_logs_without_active_request_dropped(
     log_exporter: InMemoryLogRecordExporter, root_handler: LoggingHandler | None
 ):
     logging.getLogger("myapp").warning("no request")
     assert log_exporter.get_finished_logs() == ()
 
 
-def test_apitally_scope_passes_without_request_context(
+def test_apitally_scope_logs_exported_without_request_context(
     logger_provider: LoggerProvider, log_exporter: InMemoryLogRecordExporter
 ):
     startup_logger = logger_provider.get_logger("apitally")
@@ -121,7 +121,7 @@ def test_apitally_scope_passes_without_request_context(
     assert exported.log_record.body == "startup"
 
 
-def test_self_logs_reach_user_handlers_but_not_export(
+def test_sdk_and_otel_logs_not_exported(
     tracer: Tracer, log_exporter: InMemoryLogRecordExporter, root_handler: LoggingHandler | None
 ):
     user_handler = logging.handlers.BufferingHandler(capacity=10)
@@ -161,19 +161,45 @@ def test_shutdown_flushes_queued_logs(log_exporter: InMemoryLogRecordExporter):
     assert exported.log_record.body == "during request"
 
 
-def test_excluded_request_contributes_no_logs(
+def test_no_logs_exported_for_excluded_requests(
     tracer: Tracer, log_exporter: InMemoryLogRecordExporter, root_handler: LoggingHandler | None
 ):
+    assert root_handler is not None
     attributes = {"http.request.method": "GET", "url.path": "/healthz"}
-    with tracer.start_as_current_span("GET /healthz", kind=SpanKind.SERVER, attributes=attributes):
-        logging.getLogger("myapp").warning("inside excluded request")
+    with mock.patch.object(root_handler, "emit", wraps=root_handler.emit) as emit_spy:
+        with tracer.start_as_current_span("GET /healthz", kind=SpanKind.SERVER, attributes=attributes):
+            logging.getLogger("myapp").warning("inside excluded request")
+    # The kept-request filter drops the record before the handler translates it
+    emit_spy.assert_not_called()
     assert log_exporter.get_finished_logs() == ()
 
 
-def test_log_in_excluded_request_dropped_before_translation(tracer: Tracer, root_handler: LoggingHandler | None):
-    assert root_handler is not None
-    attributes = {"http.request.method": "GET", "url.path": "/healthz"}
-    with mock.patch.object(root_handler, "emit") as emit_mock:
-        with tracer.start_as_current_span("GET /healthz", kind=SpanKind.SERVER, attributes=attributes):
-            logging.getLogger("myapp").warning("inside excluded request")
-    emit_mock.assert_not_called()
+def test_loguru_logs_captured_with_extra(
+    tracer: Tracer, log_exporter: InMemoryLogRecordExporter, root_handler: LoggingHandler | None
+):
+    from loguru import logger
+
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        logger.bind(user_id=42).info("Hello {name}", name="world")
+    (exported,) = log_exporter.get_finished_logs()
+    record = exported.log_record
+    assert record.body == "Hello world"
+    assert unwrap(record.attributes)["user_id"] == 42
+
+
+def test_loguru_logs_include_exception_attributes(
+    tracer: Tracer, log_exporter: InMemoryLogRecordExporter, root_handler: LoggingHandler | None
+):
+    from loguru import logger
+
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            logger.exception("Something failed")
+    (exported,) = log_exporter.get_finished_logs()
+    attributes = unwrap(exported.log_record.attributes)
+    assert attributes["exception.type"] == "ValueError"
+    stacktrace = attributes["exception.stacktrace"]
+    assert isinstance(stacktrace, str)
+    assert "boom" in stacktrace
