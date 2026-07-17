@@ -128,7 +128,7 @@ class ApitallyDjangoMiddleware:
         config = self.config
         start_time = time.perf_counter()
         request_size: int | None = None
-        request_body: bytes | str | None = None
+        request_body: bytes | None = None
         try:
             init_consumer()
             request_size = parse_content_length(request.headers.get("Content-Length"))
@@ -147,7 +147,7 @@ class ApitallyDjangoMiddleware:
 
     def capture_request_body(
         self, request: HttpRequest, config: ApitallyConfig, request_size: int | None
-    ) -> bytes | str | None:
+    ) -> bytes | None:
         # Excluded and sampled-out requests skip all capture work; metrics are still recorded
         if (
             not is_server_span_kept()
@@ -164,7 +164,7 @@ class ApitallyDjangoMiddleware:
 
     def capture_response_body(
         self, response: HttpResponse, config: ApitallyConfig, response_size: int | None, streaming: bool
-    ) -> bytes | str | None:
+    ) -> bytes | None:
         if not config.capture_response_body or streaming or not is_allowed_content_type(response.get("Content-Type")):
             return None
         if response_size is not None and response_size > MAX_BODY_SIZE:
@@ -178,7 +178,7 @@ class ApitallyDjangoMiddleware:
         config: ApitallyConfig,
         start_time: float,
         request_size: int | None,
-        request_body: bytes | str | None,
+        request_body: bytes | None,
     ) -> None:
         streaming = getattr(response, "streaming", False)
         response_size = parse_content_length(response.get("Content-Length"))
@@ -195,25 +195,17 @@ class ApitallyDjangoMiddleware:
             if response_size is not None:
                 span.set_attribute("http.response.body.size", response_size)
             response_body = self.capture_response_body(response, config, response_size, streaming)
-            if request_body is BODY_TOO_LARGE:
-                span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
-            if response_body is BODY_TOO_LARGE:
-                span.set_attribute("apitally.response.body", BODY_TOO_LARGE)
-            stash_request_headers = group_headers(request.headers.items()) if config.capture_request_headers else None
-            stash_response_headers = group_headers(response.items()) if config.capture_response_headers else None
-            stash_request_body = request_body if isinstance(request_body, bytes) else None
-            stash_response_body = response_body if isinstance(response_body, bytes) else None
-            if (
-                stash_request_headers or stash_request_body or stash_response_headers or stash_response_body
-            ) and span.context is not None:
+            request_headers = group_headers(request.headers.items()) if config.capture_request_headers else None
+            response_headers = group_headers(response.items()) if config.capture_response_headers else None
+            if (request_headers or request_body or response_headers or response_body) and span.context is not None:
                 processor = get_server_span_processor()
                 if processor is not None:
                     processor.update_stash(
                         span.context.span_id,
-                        request_headers=stash_request_headers,
-                        request_body=stash_request_body,
-                        response_headers=stash_response_headers,
-                        response_body=stash_response_body,
+                        request_headers=request_headers,
+                        request_body=request_body,
+                        response_headers=response_headers,
+                        response_body=response_body,
                     )
         if streaming:
             self.finalize_streaming(
@@ -268,7 +260,7 @@ class ApitallyDjangoMiddleware:
         consumer = get_consumer_identifier()
         scheme = request.scheme
 
-        def finish(bytes_sent: int, body: bytearray | str | None, completed: bool) -> None:
+        def finish(bytes_sent: int, body: bytearray | bytes | None, completed: bool) -> None:
             try:
                 # A declared Content-Length is already set on the span and remains the reported size
                 final_response_size = response_size
@@ -277,12 +269,9 @@ class ApitallyDjangoMiddleware:
                     final_response_size = bytes_sent
                     extra["http.response.body.size"] = final_response_size
                 # An abandoned iterator leaves a partial buffer; never export a truncated body
-                if completed and body is not None:
-                    if body is BODY_TOO_LARGE:
-                        extra["apitally.response.body"] = BODY_TOO_LARGE
-                    elif isinstance(body, bytearray) and processor is not None and span_id is not None:
-                        # The deferred export guarantees process_ended_span still runs and attaches this body
-                        processor.update_stash(span_id, response_body=bytes(body))
+                if completed and body is not None and processor is not None and span_id is not None:
+                    # The deferred export guarantees process_ended_span still runs and attaches this body
+                    processor.update_stash(span_id, response_body=bytes(body))
                 if processor is not None and span_id is not None:
                     processor.finish_export(span_id, extra or None)
                 metrics.record_request(
@@ -303,7 +292,7 @@ class ApitallyDjangoMiddleware:
 
             async def async_stream_wrapper() -> AsyncIterator[bytes]:
                 bytes_sent = 0
-                body: bytearray | str | None = bytearray() if capture_body else None
+                body: bytearray | bytes | None = bytearray() if capture_body else None
                 completed = False
                 try:
                     async for chunk in async_content:
@@ -323,7 +312,7 @@ class ApitallyDjangoMiddleware:
 
             def stream_wrapper() -> Iterator[bytes]:
                 bytes_sent = 0
-                body: bytearray | str | None = bytearray() if capture_body else None
+                body: bytearray | bytes | None = bytearray() if capture_body else None
                 completed = False
                 try:
                     for chunk in content:

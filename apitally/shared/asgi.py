@@ -140,21 +140,19 @@ class ApitallyASGIMiddleware:
                 if final_response_size is not None:
                     extra_attributes["http.response.body.size"] = final_response_size
                 # Partial buffers from aborted requests/responses are never exported
-                if request_too_large:
-                    extra_attributes["apitally.request.body"] = BODY_TOO_LARGE
-                if response_too_large:
-                    extra_attributes["apitally.response.body"] = BODY_TOO_LARGE
                 stash_request_headers = group_headers(request_headers) if config.capture_request_headers else None
                 stash_response_headers = group_headers(response_headers) if response_headers is not None else None
                 stash_request_body = (
-                    bytes(request_body)
-                    if capture_request and not request_too_large and request_body and request_body_complete
-                    else None
+                    BODY_TOO_LARGE
+                    if request_too_large
+                    else (bytes(request_body) if capture_request and request_body and request_body_complete else None)
                 )
                 stash_response_body = (
-                    bytes(response_body)
-                    if capture_response and not response_too_large and response_body and response_body_complete
-                    else None
+                    BODY_TOO_LARGE
+                    if response_too_large
+                    else (
+                        bytes(response_body) if capture_response and response_body and response_body_complete else None
+                    )
                 )
                 if stash_request_headers or stash_request_body or stash_response_headers or stash_response_body:
                     processor.update_stash(

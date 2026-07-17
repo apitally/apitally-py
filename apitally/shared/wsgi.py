@@ -69,7 +69,7 @@ class ApitallyWSGIMiddleware:
 
     def capture_request_body(
         self, environ: WSGIEnvironment, config: ApitallyConfig, content_length: int | None
-    ) -> bytes | str | None:
+    ) -> bytes | None:
         # The keep decision is not checked here: on Flask the SERVER span starts later, in
         # before_request. handle_response_start checks it and only then writes the buffered body.
         if not config.capture_request_body or not is_allowed_content_type(environ.get("CONTENT_TYPE")):
@@ -114,10 +114,7 @@ class ApitallyWSGIMiddleware:
             state.request_attributes_written = True
             if state.request_size is not None:
                 span.set_attribute("http.request.body.size", state.request_size)
-            if state.request_body is BODY_TOO_LARGE:
-                span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
-            elif isinstance(state.request_body, bytes):
-                stash_request_body = state.request_body
+            stash_request_body = state.request_body
             if config.capture_request_headers:
                 stash_request_headers = environ_headers(environ)
         stash_response_headers = group_headers(response_headers) if config.capture_response_headers else None
@@ -152,9 +149,7 @@ class ApitallyWSGIMiddleware:
                 if isinstance(body, bytearray):
                     # An abandoned iterable leaves a partial buffer; never export a truncated body
                     body = bytes(body) if state.completed else None
-                if body is BODY_TOO_LARGE:
-                    extra["apitally.response.body"] = BODY_TOO_LARGE
-                elif isinstance(body, bytes) and processor is not None and state.deferred_span_id is not None:
+                if isinstance(body, bytes) and processor is not None and state.deferred_span_id is not None:
                     # The deferred export guarantees process_ended_span still runs and attaches this body
                     processor.update_stash(state.deferred_span_id, response_body=body)
             if state.deferred_span_id is not None and processor is not None:
@@ -223,10 +218,10 @@ class RequestState:
     start_time: float = field(default_factory=time.perf_counter)
     status_code: int = 0
     request_size: int | None = None
-    request_body: bytes | str | None = None
+    request_body: bytes | None = None
     request_attributes_written: bool = False
     response_size: int | None = None
-    response_body: bytearray | str | None = None
+    response_body: bytearray | bytes | None = None
     bytes_sent: int = 0
     completed: bool = False
     finalized: bool = False
