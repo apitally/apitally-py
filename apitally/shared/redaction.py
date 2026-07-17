@@ -30,6 +30,7 @@ DEFAULT_BODY_FIELD_PATTERNS = [
     r"ccv",
     r"ssn",
 ]
+URL_HEADER_NAMES = frozenset({"location", "content-location"})
 
 JSONValue = None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
 
@@ -62,6 +63,11 @@ class Redaction:
         for name, value in headers.items():
             if self.should_redact_header(name):
                 value = REDACTED if isinstance(value, str) else [REDACTED]
+            elif name.lower() in URL_HEADER_NAMES:
+                if isinstance(value, str):
+                    value = self.redact_query_params(value, assume_query=False)
+                else:
+                    value = [self.redact_query_params(item, assume_query=False) for item in value]
             result[name] = value
         return result
 

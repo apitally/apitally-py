@@ -39,12 +39,16 @@ def test_redact_headers():
         "x-api-key": ["abc"],
         "x_api_key": ["abc"],
         "Authorization": "Bearer xyz",
+        "Location": "/callback?token=secret&ok=1",
+        "Content-Location": ["https://example.com/item?api-key=secret"],
     }
     assert redaction.redact_headers(headers) == {
         "content-type": ["application/json"],
         "x-api-key": [REDACTED],
         "x_api_key": [REDACTED],
         "Authorization": REDACTED,
+        "Location": "/callback?token=%5BREDACTED%5D&ok=1",
+        "Content-Location": ["https://example.com/item?api-key=%5BREDACTED%5D"],
     }
 
 
