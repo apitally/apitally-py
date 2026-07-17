@@ -161,16 +161,16 @@ class ExportWorker:
             else:
                 self.spool.rotate_for_export()
                 self.spool.touch_files()
-            self.send_pending(stop_event)
+            self.send_pending(stop_event, cap=not final)
         finally:
             otel_context.detach(token)
 
-    def send_pending(self, stop_event: threading.Event | None) -> None:
+    def send_pending(self, stop_event: threading.Event | None, cap: bool = True) -> None:
         """During an outage this amounts to one probe POST per cycle. The final drain on
-        shutdown passes no stop event and runs unpaced."""
+        shutdown passes no stop event and runs unpaced and uncapped."""
         sent = 0
         for file in self.spool.pending_files():
-            if sent >= MAX_SENDS_PER_CYCLE or (stop_event is not None and stop_event.is_set()):
+            if (cap and sent >= MAX_SENDS_PER_CYCLE) or (stop_event is not None and stop_event.is_set()):
                 return
             if sent > 0 and stop_event is not None and stop_event.wait(self.random.uniform(0.1, 0.5)):
                 return
