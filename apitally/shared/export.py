@@ -74,6 +74,9 @@ class SpoolLogExporter(LogRecordExporter):
             self.spool.append("logs", encode_logs(chunk).SerializeToString())
         return LogRecordExportResult.SUCCESS
 
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return True
+
     def shutdown(self) -> None:
         pass
 
