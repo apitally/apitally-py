@@ -175,8 +175,10 @@ class Spool:
             self.closed.remove(file)
             file.delete()
         while self.total_size_locked() > self.max_size:
-            # Metrics are exempt: an hour of them is small and they must survive an outage
+            # Prefer retaining metrics, but the size bound still applies when only metrics remain
             oldest = next((file for file in self.closed if file.signal != "metrics"), None)
+            if oldest is None and self.closed:
+                oldest = self.closed[0]
             if oldest is None:
                 break
             logger.warning("Buffer size limit reached, dropping oldest buffered %s", oldest.signal)

@@ -129,7 +129,7 @@ def test_size_cap_evicts_oldest_non_metrics_first(spool: Spool) -> None:
     assert [file.signal for file in spool.pending_files()] == ["metrics", "logs"]
     spool.max_size = 0
     spool.rotate_for_export()
-    assert [file.signal for file in spool.pending_files()] == ["metrics"]
+    assert spool.pending_files() == []
 
 
 def test_unwritable_temp_dir_falls_back_to_memory(
