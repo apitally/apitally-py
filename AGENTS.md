@@ -28,6 +28,10 @@
 - No historical references: nothing about the 0.x SDK, "previously", or "ported from". Comments describe the present code only.
 - A comment must sit next to the code it justifies and stay accurate about what that code covers.
 
+## Checks
+
+- Verify changes with the Makefile targets, never with hand-picked subsets of them: `uv run make check` (ruff lint, format diff, ty on both `apitally` and `tests`, `uv lock --locked`) and `uv run make test`. Running `ty check apitally` alone misses diagnostics in `tests/`; CI runs the full targets, so only their output counts as green.
+
 ## Testing
 
 - Never replace Apitally's own classes or functions with mocks. Mocking is only acceptable where the test would otherwise leave the process (the network, `os.fork` where forking in a test is impractical).
