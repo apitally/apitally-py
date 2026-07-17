@@ -1,6 +1,7 @@
+import contextlib
 import logging
 from collections.abc import Callable, MutableMapping
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from opentelemetry import trace
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
@@ -12,6 +13,10 @@ from apitally.shared.context import is_server_span_kept
 from apitally.shared.span_processor import ApitallySpanProcessor
 
 
+if TYPE_CHECKING:
+    from loguru import Message as LoguruMessage
+
+
 logger = logging.getLogger(__name__)
 
 SERVER_SPAN_ID_ATTRIBUTE = "apitally.request.server_span_id"
@@ -19,6 +24,7 @@ SDK_LOGGER_NAMESPACES = ("apitally", "opentelemetry")
 MAX_BUFFERED_LOGS = 1_000
 
 installed_handler: LoggingHandler | None = None
+loguru_sink_id: int | None = None
 
 
 def install_root_handler(
@@ -35,14 +41,60 @@ def install_root_handler(
         handler.addFilter(make_kept_request_filter(span_processor))
         logging.getLogger().addHandler(handler)
         installed_handler = handler
+        install_loguru_sink(handler)
     return installed_handler
 
 
 def uninstall_root_handler() -> None:
     global installed_handler
+    uninstall_loguru_sink()
     if installed_handler is not None:
         logging.getLogger().removeHandler(installed_handler)
         installed_handler = None
+
+
+def install_loguru_sink(handler: LoggingHandler) -> None:
+    global loguru_sink_id
+    try:
+        from loguru import logger as loguru_logger
+    except ImportError:
+        return
+
+    def sink(message: "LoguruMessage") -> None:
+        record = message.record
+        exception = record["exception"]
+        exc_info = (
+            (exception.type, exception.value, exception.traceback)
+            if exception is not None and exception.type is not None and exception.value is not None
+            else None
+        )
+        log_record = logging.LogRecord(
+            name=record["name"] or "loguru",
+            level=record["level"].no,
+            pathname=record["file"].path,
+            lineno=record["line"],
+            msg=record["message"],
+            args=(),
+            exc_info=exc_info,
+            func=record["function"],
+        )
+        log_record.created = record["time"].timestamp()
+        for key, value in record["extra"].items():
+            if key not in log_record.__dict__:
+                log_record.__dict__[key] = value
+        handler.handle(log_record)
+
+    loguru_sink_id = loguru_logger.add(sink, level=0)
+
+
+def uninstall_loguru_sink() -> None:
+    global loguru_sink_id
+    if loguru_sink_id is not None:
+        from loguru import logger as loguru_logger
+
+        with contextlib.suppress(ValueError):
+            loguru_logger.remove(loguru_sink_id)
+        loguru_sink_id = None
 
 
 def is_application_log(record: logging.LogRecord) -> bool:
