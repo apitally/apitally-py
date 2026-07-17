@@ -19,7 +19,7 @@ WRITE_TOKEN_FORMAT = re.compile(r"^apt_[a-zA-Z0-9]{24}$")
 TRUE_VALUES = frozenset({"1", "true", "yes"})
 
 MAX_BODY_SIZE = 50_000
-BODY_TOO_LARGE = "[BODY_TOO_LARGE]"
+BODY_TOO_LARGE = b"[BODY_TOO_LARGE]"
 ALLOWED_CONTENT_TYPES = (
     "application/json",
     "application/problem+json",

@@ -100,6 +100,8 @@ class ApitallySpanExporter(SpanExporter):
         mask_callback: Callable[[ReadableSpan, bytes], bytes | None] | None,
         callback_name: str,
     ) -> str | bytes:
+        if body == BODY_TOO_LARGE:
+            return body
         if mask_callback is not None:
             try:
                 masked = mask_callback(span, body)
