@@ -3,7 +3,7 @@ import logging
 import random
 import threading
 from collections.abc import MutableMapping, Sequence
-from typing import cast
+from typing import Any, cast
 
 import requests
 from opentelemetry import context as otel_context
@@ -90,6 +90,7 @@ class ExportWorker:
         span_processor: ApitallySpanProcessor,
         log_processor: ApitallyLogRecordProcessor,
         env: str,
+        proxy_urls: dict[str, str] | None = None,
     ) -> None:
         self.spool = spool
         self.span_processor = span_processor
@@ -98,6 +99,8 @@ class ExportWorker:
         self.session = requests.Session()
         # Environment lookups per request would call macOS's _scproxy in forked workers, which crashes the process
         self.session.trust_env = False
+        if proxy_urls:
+            self.session.proxies.update(proxy_urls)
         self.headers = {
             **export_headers(env),
             "Content-Type": "application/x-protobuf",
@@ -231,6 +234,11 @@ def create_span_exporter(spool: Spool) -> SpanExporter:
 
 def create_log_exporter(spool: Spool) -> LogRecordExporter:
     return SpoolLogExporter(spool)
+
+
+def resolve_proxy_urls() -> dict[str, str]:
+    proxy_urls = requests.utils.get_environ_proxies(endpoint_url("/"))
+    return {str(key): str(value) for key, value in cast(dict[Any, Any], proxy_urls).items()}
 
 
 def chunked(batch: Sequence) -> list[Sequence]:

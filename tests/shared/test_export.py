@@ -38,6 +38,7 @@ from apitally.shared.export import (
     ExportWorker,
     SpoolLogExporter,
     SpoolSpanExporter,
+    resolve_proxy_urls,
 )
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
@@ -406,6 +407,25 @@ def test_start_after_timed_out_stop_replaces_stuck_thread(
     worker.stop()
     stuck_thread.join(5)
     assert not stuck_thread.is_alive()
+
+
+def test_export_worker_uses_proxies(spool: Spool, otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch) -> None:
+    endpoint = "http://otlp.invalid"
+    monkeypatch.setenv("HTTP_PROXY", otlp_server.url)
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=endpoint)
+    processor_stub = SimpleNamespace(downstream=SimpleNamespace(force_flush=lambda timeout_millis=30_000: True))
+    worker = ExportWorker(
+        spool,
+        cast("Any", processor_stub),
+        cast("Any", processor_stub),
+        env="dev",
+        proxy_urls=resolve_proxy_urls(),
+    )
+    spool.append("traces", b"trace-payload")
+    worker.run_cycle(None)
+    assert otlp_server.paths() == [f"{endpoint}/v1/traces"]
 
 
 starlette_required = pytest.mark.skipif(

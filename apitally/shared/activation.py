@@ -46,6 +46,7 @@ log_processor: ApitallyLogRecordProcessor | None = None
 logger_provider: LoggerProvider | None = None
 spool: Spool | None = None
 export_worker: ExportWorker | None = None
+proxy_urls: dict[str, str] | None = None
 
 # OTel's own fork handlers hold weak references to batch processors; keep shut-down
 # instances alive so a later fork never calls a dead reference
@@ -58,8 +59,10 @@ inherited_span_processor: ApitallySpanProcessor | None = None
 
 def configure(**kwargs: Any) -> ApitallyConfig:
     """Records configuration only. Threads and network I/O are deferred to activate()."""
-    global fork_handlers_registered
+    global fork_handlers_registered, proxy_urls
     cfg = config.set_config(**kwargs)
+    if proxy_urls is None:
+        proxy_urls = export.resolve_proxy_urls()
     config.ensure_semconv_opt_in()
     sentry.install()
     if not fork_handlers_registered and hasattr(os, "register_at_fork"):
@@ -230,7 +233,7 @@ def start_pipelines() -> None:
     logger_provider = providers.create_logger_provider(resource, [log_processor])
     install_root_handler(logger_provider, span_processor)
     metrics.attach_reader(spool)
-    export_worker = ExportWorker(spool, span_processor, log_processor, env)
+    export_worker = ExportWorker(spool, span_processor, log_processor, env, proxy_urls=proxy_urls)
     export_worker.start()
 
 
@@ -303,7 +306,7 @@ def reset() -> None:
     """Full teardown for tests. Shuts down and drops all pipeline state."""
     global activation_lock, activation_attempted, activated, env, resource
     global span_processor, log_processor, logger_provider, inherited_span_processor
-    global spool, export_worker
+    global spool, export_worker, proxy_urls
     activation_lock = threading.Lock()
     uninstall_root_handler()
     metrics.reset()
@@ -325,4 +328,5 @@ def reset() -> None:
     inherited_span_processor = None
     spool = None
     export_worker = None
+    proxy_urls = None
     on_activate_hooks.clear()
