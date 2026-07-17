@@ -84,9 +84,9 @@ def test_bodies_and_request_headers_captured_and_redacted(
 ):
     init(
         monkeypatch,
-        log_request_body=True,
-        log_response_body=True,
-        log_request_headers=True,
+        capture_request_body=True,
+        capture_response_body=True,
+        capture_request_headers=True,
         mask_body_fields=["custom_field"],
     )
     response = Client().post(
@@ -107,7 +107,7 @@ def test_bodies_and_request_headers_captured_and_redacted(
 
 
 def test_bodies_over_cap_replaced_with_sentinel(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    init(monkeypatch, log_request_body=True, log_response_body=True)
+    init(monkeypatch, capture_request_body=True, capture_response_body=True)
     response = Client().post("/items/", data=json.dumps({"data": "x" * 60_000}), content_type="application/json")
     assert response.status_code == 201
 
@@ -127,8 +127,8 @@ def test_sampled_out_request_skips_capture(exporters: InMemoryExporters, monkeyp
     init(
         monkeypatch,
         sample_rate=0.0,
-        log_request_body=True,
-        log_response_body=True,
+        capture_request_body=True,
+        capture_response_body=True,
         mask_request_body=mask,
         mask_response_body=mask,
     )
@@ -145,7 +145,7 @@ def test_sampled_out_request_skips_capture(exporters: InMemoryExporters, monkeyp
 
 
 def test_streaming_response_size_and_body_captured(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    init(monkeypatch, log_response_body=True)
+    init(monkeypatch, capture_response_body=True)
     activate_via_signal()
     reader = attach_metric_reader()
 

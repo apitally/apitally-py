@@ -130,7 +130,7 @@ def test_startup_event_paths_match_routes(app: Flask, exporters: InMemoryExporte
 def test_request_and_response_bodies_captured_and_redacted(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    init(app, monkeypatch, log_request_body=True, log_response_body=True)
+    init(app, monkeypatch, capture_request_body=True, capture_response_body=True)
 
     response = app.test_client().post("/items", json={"password": "secret123", "name": "x"})
 
@@ -144,7 +144,7 @@ def test_request_and_response_bodies_captured_and_redacted(
 def test_streaming_response_size_and_body_captured(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    init(app, monkeypatch, log_response_body=True)
+    init(app, monkeypatch, capture_response_body=True)
     reader = activate_with_metric_reader()
 
     response = app.test_client().get("/stream")
@@ -181,7 +181,7 @@ def test_body_capture_does_not_consume_streaming_response_early(
         streamed_after_capture["value"] = response.is_streamed and not consumed
         return response
 
-    init(app, monkeypatch, log_response_body=True)
+    init(app, monkeypatch, capture_response_body=True)
 
     response = app.test_client().get("/gen")
 
@@ -198,7 +198,7 @@ def test_body_capture_does_not_consume_streaming_response_early(
 def test_response_headers_include_headers_added_by_framework(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    init(app, monkeypatch, log_response_headers=True)
+    init(app, monkeypatch, capture_response_headers=True)
 
     assert app.test_client().get("/headers").data
 
@@ -250,8 +250,8 @@ def test_sampled_out_request_skips_capture(app: Flask, exporters: InMemoryExport
         app,
         monkeypatch,
         sample_rate=0.0,
-        log_request_body=True,
-        log_response_body=True,
+        capture_request_body=True,
+        capture_response_body=True,
         mask_request_body=mask,
         mask_response_body=mask,
     )
@@ -287,7 +287,7 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     FlaskInstrumentor().instrument_app(app)
-    init(app, monkeypatch, log_response_headers=True)
+    init(app, monkeypatch, capture_response_headers=True)
 
     response = app.test_client().get("/items/7")
 

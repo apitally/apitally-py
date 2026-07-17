@@ -132,7 +132,10 @@ def warn_if_attribute_length_limit_too_low(user_provider: TracerProvider) -> Non
     global span_limits_warned
     config = get_config()
     capture_enabled = (
-        config.log_request_headers or config.log_request_body or config.log_response_headers or config.log_response_body
+        config.capture_request_headers
+        or config.capture_request_body
+        or config.capture_response_headers
+        or config.capture_response_body
     )
     if not capture_enabled or span_limits_warned:
         return

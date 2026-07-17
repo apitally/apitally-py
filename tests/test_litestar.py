@@ -123,7 +123,7 @@ def test_excluded_request_exports_nothing(exporters: InMemoryExporters, monkeypa
 def test_request_and_response_bodies_captured_and_redacted(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    with TestClient(app=make_app(monkeypatch, log_request_body=True, log_response_body=True)) as client:
+    with TestClient(app=make_app(monkeypatch, capture_request_body=True, capture_response_body=True)) as client:
         response = client.post("/users", json={"user": "u", "password": "secret"})
         assert response.status_code == 201
 
@@ -134,7 +134,7 @@ def test_request_and_response_bodies_captured_and_redacted(
 
 
 def test_headers_captured_for_unmatched_requests(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    app = make_app(monkeypatch, log_request_headers=True, log_response_headers=True)
+    app = make_app(monkeypatch, capture_request_headers=True, capture_response_headers=True)
     with TestClient(app=app) as client:
         assert client.get("/nonexistent", headers={"X-Test": "1"}).status_code == 404
         assert client.head("/users/123", headers={"X-Test": "1"}).status_code == 405

@@ -151,7 +151,7 @@ class ApitallyDjangoMiddleware:
         # Excluded and sampled-out requests skip all capture work; metrics are still recorded
         if (
             not is_server_span_kept()
-            or not config.log_request_body
+            or not config.capture_request_body
             or not is_allowed_content_type(request.headers.get("Content-Type"))
         ):
             return None
@@ -165,7 +165,7 @@ class ApitallyDjangoMiddleware:
     def capture_response_body(
         self, response: HttpResponse, config: ApitallyConfig, response_size: int | None, streaming: bool
     ) -> bytes | str | None:
-        if not config.log_response_body or streaming or not is_allowed_content_type(response.get("Content-Type")):
+        if not config.capture_response_body or streaming or not is_allowed_content_type(response.get("Content-Type")):
             return None
         if response_size is not None and response_size > MAX_BODY_SIZE:
             return BODY_TOO_LARGE
@@ -199,8 +199,8 @@ class ApitallyDjangoMiddleware:
                 span.set_attribute("apitally.request.body", BODY_TOO_LARGE)
             if response_body is BODY_TOO_LARGE:
                 span.set_attribute("apitally.response.body", BODY_TOO_LARGE)
-            stash_request_headers = group_headers(request.headers.items()) if config.log_request_headers else None
-            stash_response_headers = group_headers(response.items()) if config.log_response_headers else None
+            stash_request_headers = group_headers(request.headers.items()) if config.capture_request_headers else None
+            stash_response_headers = group_headers(response.items()) if config.capture_response_headers else None
             stash_request_body = request_body if isinstance(request_body, bytes) else None
             stash_response_body = response_body if isinstance(response_body, bytes) else None
             if (
@@ -251,7 +251,9 @@ class ApitallyDjangoMiddleware:
                 span_id = context.span_id
                 processor.defer_export(span_id)
         capture_body = (
-            span_id is not None and config.log_response_body and is_allowed_content_type(response.get("Content-Type"))
+            span_id is not None
+            and config.capture_response_body
+            and is_allowed_content_type(response.get("Content-Type"))
         )
         method = request.method or ""
         status_code = response.status_code

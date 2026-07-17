@@ -51,10 +51,10 @@ All options move to keyword arguments of `apitally.init(...)` (or `ApitallyPlugi
 | `request_logging_config=RequestLoggingConfig(...)` | Removed. Use the flat keyword arguments below. |
 | `enable_request_logging` | Removed. Request logs are always captured. |
 | `log_query_params` | Removed. Query params are always captured, with masking applied. |
-| `log_request_headers` | `log_request_headers` (unchanged, default `False`) |
-| `log_request_body` | `log_request_body` (unchanged, default `False`) |
-| `log_response_headers` | `log_response_headers` (unchanged, default `True`) |
-| `log_response_body` | `log_response_body` (unchanged, default `False`) |
+| `log_request_headers` | `capture_request_headers` (default `False`) |
+| `log_request_body` | `capture_request_body` (default `False`) |
+| `log_response_headers` | `capture_response_headers` (default `True`) |
+| `log_response_body` | `capture_response_body` (default `False`) |
 | `log_exception` | Removed. Exceptions are always captured as OpenTelemetry exception events. |
 | `capture_logs` | `capture_logs`, now a top-level argument and **default `True`** (see the warning at the top). |
 | `capture_traces` | Removed. Traces are a core signal in 1.x and always captured. |

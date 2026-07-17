@@ -74,7 +74,7 @@ def test_span_without_sensitive_attributes_passes_through_unchanged():
 
 
 def test_user_attached_exporters_never_see_captured_headers_and_bodies():
-    set_config(write_token=WRITE_TOKEN, log_request_headers=True, log_request_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_headers=True, capture_request_body=True)
     user_exporter = InMemorySpanExporter()
     apitally_exporter = InMemorySpanExporter()
     provider = TracerProvider(sampler=ALWAYS_ON)
@@ -106,7 +106,7 @@ def test_user_attached_exporters_never_see_captured_headers_and_bodies():
 
 def test_non_utf8_body_exported_as_bytes():
     compressed = gzip.compress(b'{"a": 1}')
-    set_config(write_token=WRITE_TOKEN, log_request_body=True)
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
     tracer, exporter = create_trace_pipeline()
     with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER) as span:
         processor = unwrap(get_server_span_processor())
@@ -123,7 +123,7 @@ def test_mask_callback_receives_ended_span():
         seen.append(span)
         return body
 
-    set_config(write_token=WRITE_TOKEN, log_request_headers=True, log_request_body=True, mask_request_body=mask)
+    set_config(write_token=WRITE_TOKEN, capture_request_headers=True, capture_request_body=True, mask_request_body=mask)
     tracer, exporter = create_trace_pipeline()
     with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER) as span:
         processor = unwrap(get_server_span_processor())
