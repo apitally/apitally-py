@@ -96,12 +96,10 @@ jobs:
           enable-cache: true
       - name: Install Python
         run: uv python install ${{ matrix.python }}
-      - name: Build Python package wheel
-        run: uv build --wheel
       - name: Install test dependencies
         run: uv sync --no-install-project --only-group test-base --frozen
       - name: Install app dependencies
-        run: uv pip install ${{ matrix.deps }} ./dist/apitally-*.whl
+        run: uv pip install ${{ matrix.deps }} .
       - name: Run tests
         run: uv run make test
         env:
