@@ -1,5 +1,9 @@
 # Agent guidance
 
+## Scope
+
+- The SDK does not support forking after Apitally has activated. Pre-fork servers configure in the parent and activate in each worker after fork; spawning children from an activated process is outside the supported lifecycle.
+
 ## Code style
 
 - Write the least amount of code that gets the job done.
