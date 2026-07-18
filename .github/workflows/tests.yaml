@@ -55,40 +55,40 @@ jobs:
           - flask opentelemetry-instrumentation-flask
           - flask==2.3.* opentelemetry-instrumentation-flask
           - flask==2.0.3 Werkzeug==2.* opentelemetry-instrumentation-flask
-          - django opentelemetry-instrumentation-django
-          - django==3.2.* opentelemetry-instrumentation-django
-          - djangorestframework django uritemplate inflection opentelemetry-instrumentation-django
-          - djangorestframework django==4.2.* uritemplate inflection opentelemetry-instrumentation-django
-          - djangorestframework==3.12.* django==3.2.* uritemplate opentelemetry-instrumentation-django
-          - django-ninja django opentelemetry-instrumentation-django
-          - django-ninja==1.5.1 django==6.* opentelemetry-instrumentation-django
-          - django-ninja==1.4.5 django==5.* opentelemetry-instrumentation-django
-          - django-ninja==1.0.0 django==4.* opentelemetry-instrumentation-django
+          - django opentelemetry-instrumentation-django[asgi]
+          - django==3.2.* opentelemetry-instrumentation-django[asgi]
+          - djangorestframework django uritemplate inflection opentelemetry-instrumentation-django[asgi]
+          - djangorestframework django==4.2.* uritemplate inflection opentelemetry-instrumentation-django[asgi]
+          - djangorestframework==3.12.* django==3.2.* uritemplate opentelemetry-instrumentation-django[asgi]
+          - django-ninja django opentelemetry-instrumentation-django[asgi]
+          - django-ninja==1.5.1 django==6.* opentelemetry-instrumentation-django[asgi]
+          - django-ninja==1.4.5 django==5.* opentelemetry-instrumentation-django[asgi]
+          - django-ninja==1.0.0 django==4.* opentelemetry-instrumentation-django[asgi]
           - litestar opentelemetry-instrumentation-asgi
           - litestar==2.24.0 opentelemetry-instrumentation-asgi
           - blacksheep opentelemetry-instrumentation-asgi
           - blacksheep==2.6.1 opentelemetry-instrumentation-asgi
         exclude:
           - python: "3.10"
-            deps: django-ninja==1.5.1 django==6.* opentelemetry-instrumentation-django
+            deps: django-ninja==1.5.1 django==6.* opentelemetry-instrumentation-django[asgi]
           - python: "3.11"
-            deps: django-ninja==1.5.1 django==6.* opentelemetry-instrumentation-django
+            deps: django-ninja==1.5.1 django==6.* opentelemetry-instrumentation-django[asgi]
           - python: "3.12"
-            deps: django==3.2.* opentelemetry-instrumentation-django
+            deps: django==3.2.* opentelemetry-instrumentation-django[asgi]
           - python: "3.12"
-            deps: djangorestframework==3.12.* django==3.2.* uritemplate opentelemetry-instrumentation-django
+            deps: djangorestframework==3.12.* django==3.2.* uritemplate opentelemetry-instrumentation-django[asgi]
           - python: "3.13"
-            deps: django==3.2.* opentelemetry-instrumentation-django
+            deps: django==3.2.* opentelemetry-instrumentation-django[asgi]
           - python: "3.13"
-            deps: djangorestframework==3.12.* django==3.2.* uritemplate opentelemetry-instrumentation-django
+            deps: djangorestframework==3.12.* django==3.2.* uritemplate opentelemetry-instrumentation-django[asgi]
           - python: "3.14"
             deps: flask==2.0.3 Werkzeug==2.* opentelemetry-instrumentation-flask
           - python: "3.14"
-            deps: django==3.2.* opentelemetry-instrumentation-django
+            deps: django==3.2.* opentelemetry-instrumentation-django[asgi]
           - python: "3.14"
-            deps: djangorestframework==3.12.* django==3.2.* uritemplate opentelemetry-instrumentation-django
+            deps: djangorestframework==3.12.* django==3.2.* uritemplate opentelemetry-instrumentation-django[asgi]
           - python: "3.14"
-            deps: django-ninja==1.0.0 django==4.* opentelemetry-instrumentation-django
+            deps: django-ninja==1.0.0 django==4.* opentelemetry-instrumentation-django[asgi]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Install uv

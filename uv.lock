@@ -61,7 +61,7 @@ django = [
     { name = "django", version = "5.2.15", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "django", version = "6.0.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "inflection" },
-    { name = "opentelemetry-instrumentation-django" },
+    { name = "opentelemetry-instrumentation-django", extra = ["asgi"] },
     { name = "uritemplate" },
 ]
 fastapi = [
@@ -156,7 +156,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'blacksheep'", specifier = ">=0.64b0" },
     { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'litestar'", specifier = ">=0.64b0" },
     { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'starlette'", specifier = ">=0.64b0" },
-    { name = "opentelemetry-instrumentation-django", marker = "extra == 'django'", specifier = ">=0.64b0" },
+    { name = "opentelemetry-instrumentation-django", extras = ["asgi"], marker = "extra == 'django'", specifier = ">=0.64b0" },
     { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'fastapi'", specifier = ">=0.64b0" },
     { name = "opentelemetry-instrumentation-flask", marker = "extra == 'flask'", specifier = ">=0.64b0" },
     { name = "opentelemetry-instrumentation-logging", specifier = ">=0.64b0" },
@@ -1419,6 +1419,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ce/2e/8f6084eab186533b0574683a8c39e51803e6c34c21fc33e194f58352d704/opentelemetry_instrumentation_django-0.64b0.tar.gz", hash = "sha256:3d2673b4f77156b15b1b119c8849b50e3644cfc325f7a24c03602596de2dbba4", size = 25387, upload-time = "2026-06-24T15:19:24.795Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/ef/7e7857fae434e0eb0395d8a5b399c21efd23fe0f3c166ecdcb8596902541/opentelemetry_instrumentation_django-0.64b0-py3-none-any.whl", hash = "sha256:c1f628e53c22aa8f9cc9cbe6e61e781940da6eda5f910d26720ef8ac73e25afe", size = 18938, upload-time = "2026-06-24T15:18:34.449Z" },
+]
+
+[package.optional-dependencies]
+asgi = [
+    { name = "opentelemetry-instrumentation-asgi" },
 ]
 
 [[package]]
