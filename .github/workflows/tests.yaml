@@ -41,54 +41,110 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   test-matrix:
+    name: test-matrix (${{ matrix.python }}, ${{ matrix.scenario }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-        deps:
-          - fastapi starlette opentelemetry-instrumentation-fastapi
-          - fastapi==0.108.0 starlette httpx==0.27.* opentelemetry-instrumentation-fastapi
-          - starlette opentelemetry-instrumentation-starlette
-          - starlette==0.29.0 httpx==0.27.* opentelemetry-instrumentation-starlette
-          - flask opentelemetry-instrumentation-flask
-          - flask==2.3.* opentelemetry-instrumentation-flask
-          - flask==2.0.3 Werkzeug==2.* opentelemetry-instrumentation-flask
-          - django opentelemetry-instrumentation-django[asgi]
-          - django==3.2.* opentelemetry-instrumentation-django[asgi]
-          - djangorestframework django uritemplate inflection opentelemetry-instrumentation-django[asgi]
-          - djangorestframework django==4.2.* uritemplate inflection opentelemetry-instrumentation-django[asgi]
-          - djangorestframework==3.12.* django==3.2.* uritemplate opentelemetry-instrumentation-django[asgi]
-          - django-ninja django opentelemetry-instrumentation-django[asgi]
-          - django-ninja==1.5.1 django==6.* opentelemetry-instrumentation-django[asgi]
-          - django-ninja==1.4.5 django==5.* opentelemetry-instrumentation-django[asgi]
-          - django-ninja==1.0.0 django==4.* opentelemetry-instrumentation-django[asgi]
-          - litestar opentelemetry-instrumentation-asgi
-          - litestar==2.24.0 opentelemetry-instrumentation-asgi
-          - blacksheep opentelemetry-instrumentation-asgi
-          - blacksheep==2.6.1 opentelemetry-instrumentation-asgi
+        python: ["3.10", "3.12", "3.14"]
+        scenario:
+          - fastapi
+          - fastapi-0.108
+          - starlette
+          - starlette-0.29
+          - flask
+          - flask-2.3
+          - flask-2.0
+          - django
+          - django-3.2
+          - django-rest-framework
+          - django-4.2-rest-framework
+          - django-3.2-rest-framework-3.12
+          - django-ninja
+          - django-6-ninja-1.5
+          - django-5-ninja-1.4
+          - django-4-ninja-1.0
+          - litestar
+          - litestar-2.24
+          - blacksheep
+          - blacksheep-2.6
+        include:
+          - scenario: fastapi
+            extra: fastapi
+            packages: ""
+          - scenario: fastapi-0.108
+            extra: fastapi
+            packages: fastapi==0.108.0 httpx==0.27.*
+          - scenario: starlette
+            extra: starlette
+            packages: opentelemetry-instrumentation-starlette
+          - scenario: starlette-0.29
+            extra: starlette
+            packages: starlette==0.29.0 httpx==0.27.* opentelemetry-instrumentation-starlette
+          - scenario: flask
+            extra: flask
+            packages: ""
+          - scenario: flask-2.3
+            extra: flask
+            packages: flask==2.3.*
+          - scenario: flask-2.0
+            extra: flask
+            packages: flask==2.0.3 Werkzeug==2.*
+          - scenario: django
+            extra: django
+            packages: ""
+          - scenario: django-3.2
+            extra: django
+            packages: django==3.2.*
+          - scenario: django-rest-framework
+            extra: django
+            packages: djangorestframework
+          - scenario: django-4.2-rest-framework
+            extra: django
+            packages: django==4.2.* djangorestframework
+          - scenario: django-3.2-rest-framework-3.12
+            extra: django
+            packages: django==3.2.* djangorestframework==3.12.*
+          - scenario: django-ninja
+            extra: django
+            packages: django-ninja
+          - scenario: django-6-ninja-1.5
+            extra: django
+            packages: django==6.* django-ninja==1.5.1
+          - scenario: django-5-ninja-1.4
+            extra: django
+            packages: django==5.* django-ninja==1.4.5
+          - scenario: django-4-ninja-1.0
+            extra: django
+            packages: django==4.* django-ninja==1.0.0
+          - scenario: litestar
+            extra: litestar
+            packages: ""
+          - scenario: litestar-2.24
+            extra: litestar
+            packages: litestar==2.24.0
+          - scenario: blacksheep
+            extra: blacksheep
+            packages: ""
+          - scenario: blacksheep-2.6
+            extra: blacksheep
+            packages: blacksheep==2.6.1
         exclude:
           - python: "3.10"
-            deps: django-ninja==1.5.1 django==6.* opentelemetry-instrumentation-django[asgi]
-          - python: "3.11"
-            deps: django-ninja==1.5.1 django==6.* opentelemetry-instrumentation-django[asgi]
+            scenario: django-6-ninja-1.5
           - python: "3.12"
-            deps: django==3.2.* opentelemetry-instrumentation-django[asgi]
+            scenario: django-3.2
           - python: "3.12"
-            deps: djangorestframework==3.12.* django==3.2.* uritemplate opentelemetry-instrumentation-django[asgi]
-          - python: "3.13"
-            deps: django==3.2.* opentelemetry-instrumentation-django[asgi]
-          - python: "3.13"
-            deps: djangorestframework==3.12.* django==3.2.* uritemplate opentelemetry-instrumentation-django[asgi]
+            scenario: django-3.2-rest-framework-3.12
           - python: "3.14"
-            deps: flask==2.0.3 Werkzeug==2.* opentelemetry-instrumentation-flask
+            scenario: flask-2.0
           - python: "3.14"
-            deps: django==3.2.* opentelemetry-instrumentation-django[asgi]
+            scenario: django-3.2
           - python: "3.14"
-            deps: djangorestframework==3.12.* django==3.2.* uritemplate opentelemetry-instrumentation-django[asgi]
+            scenario: django-3.2-rest-framework-3.12
           - python: "3.14"
-            deps: django-ninja==1.0.0 django==4.* opentelemetry-instrumentation-django[asgi]
+            scenario: django-4-ninja-1.0
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Install uv
@@ -101,7 +157,7 @@ jobs:
       - name: Install test dependencies
         run: uv sync --no-install-project --only-group test-base --frozen
       - name: Install app dependencies
-        run: uv pip install ${{ matrix.deps }} .
+        run: uv pip install ".[${{ matrix.extra }}]" ${{ matrix.packages }}
       - name: Run tests
         run: uv run make test
         env:
