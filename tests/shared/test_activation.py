@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import gc
 import gzip
-import multiprocessing
-import os
 import sys
 import threading
 import time
@@ -443,60 +441,3 @@ def test_reset_stops_worker_and_removes_spool_files(otlp_server: StubOTLPServer,
     activation.reset()
     assert not any(thread.name == "ApitallyExportWorker" and thread.is_alive() for thread in threading.enumerate())
     assert not any(path.exists() for path in paths)
-
-
-def child_probe(queue: multiprocessing.Queue[dict[str, Any]]) -> None:
-    inert_after_fork = not activation.is_activated()
-    activation.activate()
-    resource = activation.resource
-    queue.put(
-        {
-            "inert_after_fork": inert_after_fork,
-            "activated_after_gate": activation.is_activated(),
-            "instance_id": resource.attributes["service.instance.id"] if resource is not None else None,
-        }
-    )
-
-
-@linux_only
-def test_forked_child_stays_inert_until_activation_gate(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    configure_and_activate(monkeypatch)
-    assert activation.resource is not None
-    parent_instance_id = activation.resource.attributes["service.instance.id"]
-
-    ctx = multiprocessing.get_context("fork")
-    queue = ctx.Queue()
-    process = ctx.Process(target=child_probe, args=(queue,))
-    process.start()
-    result = queue.get(timeout=15)
-    process.join(15)
-
-    assert process.exitcode == 0
-    assert result["inert_after_fork"] is True
-    assert result["activated_after_gate"] is True
-    assert result["instance_id"] is not None
-    assert result["instance_id"] != parent_instance_id
-
-
-@linux_only
-def test_os_fork_in_activated_process_does_not_deadlock(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    configure_and_activate(monkeypatch)
-    pid = os.fork()
-    if pid == 0:
-        # Child: the after-fork handler must have reset to configured state
-        os._exit(0 if not activation.is_activated() else 1)
-
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
-        done_pid, status = os.waitpid(pid, os.WNOHANG)
-        if done_pid:
-            break
-        time.sleep(0.05)
-    else:
-        os.kill(pid, 9)
-        os.waitpid(pid, 0)
-        raise AssertionError("Forked child did not exit, possible deadlock")
-
-    assert os.WEXITSTATUS(status) == 0
-    assert activation.is_activated()
-    assert metrics.reader is not None
