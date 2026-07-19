@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader
-from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -19,7 +18,7 @@ from apitally.shared.config import BODY_TOO_LARGE, set_config
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.wsgi import ApitallyWSGIMiddleware
-from tests.conftest import WRITE_TOKEN, attach_metric_reader, collect_metrics, create_tracer
+from tests.conftest import WRITE_TOKEN, collect_metrics, create_tracer, setup_metric_reader
 
 
 if TYPE_CHECKING:
@@ -55,7 +54,7 @@ def tracer(span_exporter: InMemorySpanExporter) -> Tracer:
 
 @pytest.fixture()
 def metric_reader() -> Iterator[InMemoryMetricReader]:
-    reader = attach_metric_reader(metrics.setup(Resource.create({})))
+    reader = setup_metric_reader()
     yield reader
     metrics.reset()
 

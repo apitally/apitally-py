@@ -14,13 +14,13 @@ from opentelemetry import trace
 from opentelemetry._logs import LogRecord
 from opentelemetry.instrumentation._semconv import _OpenTelemetrySemanticConventionStability
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
-from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import (
     DataPointT,
     ExponentialHistogramDataPoint,
     InMemoryMetricReader,
     Metric,
 )
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, Span, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -105,6 +105,7 @@ def reset_apitally_config() -> Iterator[None]:
         os.environ.pop("OTEL_SEMCONV_STABILITY_OPT_IN", None)
     else:
         os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = semconv_before
+
     # The instrumentation layer reads the env var once on the first instrument() call and
     # caches it process-globally; reset the cache so each test re-reads the current env var
     _OpenTelemetrySemanticConventionStability._initialized = False
@@ -221,15 +222,27 @@ def otlp_server() -> Iterator[StubOTLPServer]:
     stub.server.server_close()
 
 
-def attach_metric_reader(provider: MeterProvider | None = None) -> InMemoryMetricReader:
-    """Attach an in-memory reader with the same histogram temporality and aggregation as production."""
-    if provider is None:
-        provider = unwrap(metrics.meter_provider)
+def setup_metric_reader() -> InMemoryMetricReader:
+    """Create a standalone in-memory metrics pipeline for tests before SDK activation."""
     reader = InMemoryMetricReader(
         preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
         preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
     )
-    provider.add_metric_reader(reader)
+    metrics.setup(Resource.create({}), reader)
+    return reader
+
+
+def attach_metric_reader() -> InMemoryMetricReader:
+    """Recreate the active metrics pipeline with an in-memory reader, preserving its resource and spool."""
+    apitally_reader = unwrap(metrics.reader)
+    assert isinstance(apitally_reader, metrics.ApitallyMetricReader)
+    reader = InMemoryMetricReader(
+        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
+        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
+    )
+    resource = unwrap(activation.resource)
+    metrics.reset()
+    metrics.setup(resource, metrics.ApitallyMetricReader(apitally_reader.spool), reader)
     return reader
 
 

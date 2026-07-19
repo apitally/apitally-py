@@ -210,8 +210,8 @@ def start_pipelines() -> None:
     user_provider = providers.get_user_tracer_provider()
     env = providers.resolve_env(user_provider)
     resource = providers.create_resource(env)
-    metrics.setup(resource)
     spool = Spool()
+    metrics.setup(resource, metrics.ApitallyMetricReader(spool))
     if inherited_span_processor is not None:
         # Forked child re-activation: swap in a fresh downstream batch processor, like
         # after_fork_in_parent, and drop the parent's in-flight and pending request state
@@ -232,7 +232,6 @@ def start_pipelines() -> None:
     log_processor = ApitallyLogRecordProcessor(create_batch_log_processor(spool), span_processor)
     logger_provider = providers.create_logger_provider(resource, [log_processor])
     install_root_handler(logger_provider, span_processor)
-    metrics.attach_reader(spool)
     export_worker = ExportWorker(spool, span_processor, log_processor, env, proxy_urls=proxy_urls)
     export_worker.start()
 
@@ -245,7 +244,7 @@ def before_fork() -> None:
     try:
         if export_worker is not None:
             export_worker.stop()
-        metrics.detach_reader()
+        metrics.reset()
         if span_processor is not None:
             retired_processors.append(span_processor.downstream)
             span_processor.downstream.shutdown()
@@ -261,13 +260,13 @@ def before_fork() -> None:
 def after_fork_in_parent() -> None:
     """Re-activate by swapping fresh batch processors into the registered wrappers."""
     try:
-        if not activated or spool is None:  # pragma: no cover
+        if not activated or resource is None or spool is None:  # pragma: no cover
             return
         if span_processor is not None:
             span_processor.downstream = create_batch_span_processor(spool)
         if log_processor is not None:
             log_processor.downstream = create_batch_log_processor(spool)
-        metrics.attach_reader(spool)
+        metrics.setup(resource, metrics.ApitallyMetricReader(spool))
         if export_worker is not None:
             export_worker.start()
     except Exception:  # pragma: no cover
