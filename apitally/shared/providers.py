@@ -89,7 +89,9 @@ def setup_tracer_provider(resource: Resource, span_processor: SpanProcessor) -> 
 
 
 def attach_to_tracer_provider(user_provider: TracerProvider, span_processor: SpanProcessor) -> None:
-    warn_if_sampler_drops_spans(user_provider.sampler)
+    sampler = getattr(user_provider, "sampler", None)
+    if sampler is not None:
+        warn_if_sampler_drops_spans(sampler)
     warn_if_attribute_length_limit_too_low(user_provider)
     user_provider.add_span_processor(span_processor)
 
