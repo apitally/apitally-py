@@ -130,21 +130,61 @@ jobs:
           - scenario: blacksheep-2.6
             extra: blacksheep
             packages: blacksheep==2.6.1
+          - scenario: fastapi-otel-1.42
+            python: "3.14"
+            extra: fastapi
+            packages: >-
+              opentelemetry-api==1.42.0
+              opentelemetry-sdk==1.42.0
+              opentelemetry-exporter-otlp-proto-common==1.42.0
+              opentelemetry-instrumentation==0.63b0
+              opentelemetry-instrumentation-asgi==0.63b0
+              opentelemetry-instrumentation-fastapi==0.63b0
+              opentelemetry-instrumentation-logging==0.63b0
+              opentelemetry-instrumentation-system-metrics==0.63b0
+              opentelemetry-test-utils==0.63b0
+          - scenario: flask-otel-1.42
+            python: "3.14"
+            extra: flask
+            packages: >-
+              opentelemetry-api==1.42.0
+              opentelemetry-sdk==1.42.0
+              opentelemetry-exporter-otlp-proto-common==1.42.0
+              opentelemetry-instrumentation==0.63b0
+              opentelemetry-instrumentation-flask==0.63b0
+              opentelemetry-instrumentation-logging==0.63b0
+              opentelemetry-instrumentation-system-metrics==0.63b0
+              opentelemetry-test-utils==0.63b0
+          - scenario: django-rest-framework-otel-1.42
+            python: "3.14"
+            extra: django
+            packages: >-
+              djangorestframework
+              opentelemetry-api==1.42.0
+              opentelemetry-sdk==1.42.0
+              opentelemetry-exporter-otlp-proto-common==1.42.0
+              opentelemetry-instrumentation==0.63b0
+              opentelemetry-instrumentation-asgi==0.63b0
+              opentelemetry-instrumentation-django[asgi]==0.63b0
+              opentelemetry-instrumentation-logging==0.63b0
+              opentelemetry-instrumentation-system-metrics==0.63b0
+              opentelemetry-test-utils==0.63b0
         exclude:
-          - python: "3.10"
-            scenario: django-6-ninja-1.5
-          - python: "3.12"
-            scenario: django-3.2
-          - python: "3.12"
-            scenario: django-3.2-rest-framework-3.12
-          - python: "3.14"
-            scenario: flask-2.0
-          - python: "3.14"
-            scenario: django-3.2
-          - python: "3.14"
-            scenario: django-3.2-rest-framework-3.12
-          - python: "3.14"
-            scenario: django-4-ninja-1.0
+          - scenario: django-6-ninja-1.5
+            python: "3.10"
+          - scenario: django-3.2
+            python: "3.12"
+          - scenario: django-3.2-rest-framework-3.12
+            python: "3.12"
+          - scenario: flask-2.0
+            python: "3.14"
+          - scenario: django-3.2
+            python: "3.14"
+          - scenario: django-3.2-rest-framework-3.12
+            python: "3.14"
+          - scenario: django-4-ninja-1.0
+            python: "3.14"
+
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Install uv
