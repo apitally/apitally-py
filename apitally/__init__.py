@@ -50,8 +50,8 @@ def init(
     sample_rate: float = 1.0,
     sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
     sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
-    urlconf: str | list[str | None] | None = _UNSET,
-    include_django_views: bool = _UNSET,
+    django_urlconf: str | list[str | None] | None = _UNSET,
+    django_include_class_based_views: bool = _UNSET,
 ) -> None:
     """
     Set up Apitally for an application.
@@ -96,10 +96,11 @@ def init(
         sample_on_response: A callback that receives the ended request SERVER span and returns a
             capture probability, a boolean, or `None` to preserve the request-stage decision. It
             cannot retain a request that was already sampled out.
-        urlconf: For Django, the URLconf module or modules used to discover routes and schemas.
-            `None` uses the root URLconf.
-        include_django_views: For Django, whether to include class-based Django views in the
-            reported endpoint list in addition to Django REST Framework and Django Ninja routes.
+        django_urlconf: For Django, the URLconf module or modules used to discover routes and
+            schemas. `None` uses the root URLconf.
+        django_include_class_based_views: For Django, whether to include class-based Django views
+            in the reported endpoint list in addition to Django REST Framework and Django Ninja
+            routes.
 
     For more information, see:
     - Setup guides: https://docs.apitally.io/setup-guides

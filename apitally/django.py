@@ -49,14 +49,14 @@ OTEL_MIDDLEWARE = DjangoInstrumentor._opentelemetry_middleware
 PATH_PARAMETER_RE = re.compile(r"<(?:[^>:]+:)?(?P<parameter>\w+)>")
 
 _urlconfs: list[str | None] = [None]
-_include_django_views = False
+_include_class_based_views = False
 
 
 def init(
     *,
     app_version: str | None = None,
-    urlconf: str | list[str | None] | None = None,
-    include_django_views: bool = False,
+    django_urlconf: str | list[str | None] | None = None,
+    django_include_class_based_views: bool = False,
     **kwargs: Any,
 ) -> None:
     """
@@ -66,7 +66,7 @@ def init(
     - Setup guide: https://docs.apitally.io/setup-guides/django
     - Reference: https://docs.apitally.io/sdk-reference/python
     """
-    global _urlconfs, _include_django_views
+    global _urlconfs, _include_class_based_views
     try:
         cfg = activation.configure(**config.explicit_kwargs(kwargs))
         if cfg.disabled:
@@ -79,8 +79,8 @@ def init(
         if isinstance(caller_globals.get("MIDDLEWARE"), tuple):
             # A list is required so the middleware insertions below mutate the settings module in place
             caller_globals["MIDDLEWARE"] = list(caller_globals["MIDDLEWARE"])
-        _urlconfs = [urlconf] if urlconf is None or isinstance(urlconf, str) else urlconf
-        _include_django_views = include_django_views
+        _urlconfs = [django_urlconf] if django_urlconf is None or isinstance(django_urlconf, str) else django_urlconf
+        _include_class_based_views = django_include_class_based_views
         instrumentor = DjangoInstrumentor()
         if not instrumentor.is_instrumented_by_opentelemetry:
             instrumentor.instrument()
@@ -350,8 +350,8 @@ def _get_paths() -> list[dict[str, str]]:
         from apitally.django_ninja import _get_ninja_paths
 
         paths.extend(_get_ninja_paths(_urlconfs))
-    if _include_django_views:
-        paths.extend(_get_django_view_paths(_urlconfs))
+    if _include_class_based_views:
+        paths.extend(_get_django_class_based_view_paths(_urlconfs))
     seen: set[tuple[str, str]] = set()
     deduplicated = []
     for path in paths:
@@ -362,7 +362,7 @@ def _get_paths() -> list[dict[str, str]]:
     return deduplicated
 
 
-def _get_django_view_paths(urlconfs: list[str | None]) -> list[dict[str, str]]:
+def _get_django_class_based_view_paths(urlconfs: list[str | None]) -> list[dict[str, str]]:
     return [
         {"method": method.upper(), "path": _regex_to_route_template(regex)}
         for urlconf in urlconfs
