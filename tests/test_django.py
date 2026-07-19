@@ -303,10 +303,8 @@ def test_init_twice_does_not_stack_middleware(exporters: InMemoryExporters, monk
     assert len(exported_spans(exporters, kind=SpanKind.SERVER)) == 1
 
 
-def test_include_django_views_adds_class_based_view_paths(
-    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
-):
-    init(monkeypatch, include_django_views=True)
+def test_django_include_class_based_views_adds_paths(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(monkeypatch, django_include_class_based_views=True)
     activate_via_signal()
 
     paths = startup_payload(exporters)["paths"]

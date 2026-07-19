@@ -38,7 +38,6 @@ All options move to keyword arguments of `apitally.init(...)` (or `ApitallyPlugi
 | `env` (default `"dev"`) | `env` (default changed to `"prod"`, or `APITALLY_ENV`) |
 | `app_version` | `app_version` (unchanged) |
 | `openapi_url` (FastAPI) | Removed. The configured FastAPI OpenAPI schema is captured automatically. |
-| `openapi_url` (Starlette) | Removed. Plain Starlette apps report route templates only. |
 | `consumer_callback` | Removed. Call `set_consumer(...)` from your auth middleware or dependencies (see below). |
 | `identify_consumer_callback` | Removed. Same replacement: `set_consumer(...)`. |
 | `set_consumer(request, ...)` / `request.state.apitally_consumer` / `request.apitally_consumer` | `from apitally import set_consumer; set_consumer(identifier, name=..., group=...)`. No request object needed. |
@@ -46,8 +45,8 @@ All options move to keyword arguments of `apitally.init(...)` (or `ApitallyPlugi
 | `proxy` | Removed. The exporter honors the standard `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` environment variables. |
 | `capture_client_disconnects` | Removed, no replacement. |
 | `filter_openapi_paths` (Litestar) | Removed. OpenAPI schema routes are always filtered from the reported endpoint list. |
-| `urlconf` (Django) | `urlconf` (unchanged) |
-| `include_django_views` (Django) | Kept, but now only affects the reported endpoint list. |
+| `urlconf` (Django) | `django_urlconf` |
+| `include_django_views` (Django) | `django_include_class_based_views` (only affects the reported endpoint list) |
 | `request_logging_config=RequestLoggingConfig(...)` | Removed. Use the flat keyword arguments below. |
 | `enable_request_logging` | Removed. Request logs are always captured. |
 | `log_query_params` | Removed. Query params are always captured, with masking applied. |
