@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader
-from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler, TraceIdRatioBased
 from opentelemetry.trace import SpanKind, Tracer
@@ -15,7 +14,7 @@ from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.config import BODY_TOO_LARGE, set_config
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
-from tests.conftest import WRITE_TOKEN, attach_metric_reader, collect_metrics, create_trace_pipeline
+from tests.conftest import WRITE_TOKEN, collect_metrics, create_trace_pipeline, setup_metric_reader
 
 
 JSON_HEADERS = [("content-type", "application/json")]
@@ -29,7 +28,7 @@ def reset_config() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def metric_reader() -> Iterator[InMemoryMetricReader]:
-    reader = attach_metric_reader(metrics.setup(Resource.create({})))
+    reader = setup_metric_reader()
     yield reader
     metrics.reset()
 

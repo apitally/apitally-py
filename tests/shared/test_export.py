@@ -175,8 +175,7 @@ def test_apitally_scope_records_are_exempt_from_truncation(spool: Spool) -> None
 
 def test_export_cycle_posts_all_three_signals_in_lockstep(spool: Spool, otlp_server: StubOTLPServer) -> None:
     worker = make_worker(spool, otlp_server.url)
-    metrics.setup(Resource.create({}))
-    metrics.attach_reader(spool)
+    metrics.setup(Resource.create({}), metrics.ApitallyMetricReader(spool))
     metrics.record_request("GET", "/a", 200, consumer=None, duration=0.1)
     spool.append("traces", b"trace-payload")
     spool.append("logs", b"log-payload")

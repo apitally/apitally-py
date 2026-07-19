@@ -32,43 +32,43 @@ classifiers = [
 ]
 requires-python = ">=3.10,<4.0"
 dependencies = [
-    "opentelemetry-api>=1.43.0,<2.0.0",
-    "opentelemetry-sdk>=1.43.0,<2.0.0",
-    "opentelemetry-exporter-otlp-proto-common>=1.43.0,<2.0.0",
+    "opentelemetry-api>=1.42.0,<2.0.0",
+    "opentelemetry-sdk>=1.42.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-common>=1.42.0,<2.0.0",
     "requests>=2.26.0",
-    "opentelemetry-instrumentation>=0.64b0",
-    "opentelemetry-instrumentation-logging>=0.64b0",
-    "opentelemetry-instrumentation-system-metrics>=0.64b0",
+    "opentelemetry-instrumentation>=0.63b0",
+    "opentelemetry-instrumentation-logging>=0.63b0",
+    "opentelemetry-instrumentation-system-metrics>=0.63b0",
 ]
 dynamic = ["version"]
 
 [project.optional-dependencies]
 blacksheep = [
     "blacksheep>=2.6.1",
-    "opentelemetry-instrumentation-asgi>=0.64b0",
+    "opentelemetry-instrumentation-asgi>=0.63b0",
 ]
 django = [
     "django>=3.2",
-    "opentelemetry-instrumentation-django[asgi]>=0.64b0",
+    "opentelemetry-instrumentation-django[asgi]>=0.63b0",
     "uritemplate>=3.0.0",                    # required for DRF schema generation
     "inflection>=0.5.1",                     # required for DRF schema generation
 ]
 fastapi = [
     "fastapi>=0.108.0",
     "starlette>=0.29.0,<2.0.0",
-    "opentelemetry-instrumentation-fastapi>=0.64b0",
+    "opentelemetry-instrumentation-fastapi>=0.63b0",
 ]
 flask = [
     "flask>=2.0.0",
-    "opentelemetry-instrumentation-flask>=0.64b0",
+    "opentelemetry-instrumentation-flask>=0.63b0",
 ]
 litestar = [
     "litestar>=2.24.0",
-    "opentelemetry-instrumentation-asgi>=0.64b0",
+    "opentelemetry-instrumentation-asgi>=0.63b0",
 ]
 starlette = [
     "starlette>=0.29.0,<2.0.0",
-    "opentelemetry-instrumentation-asgi>=0.64b0",
+    "opentelemetry-instrumentation-asgi>=0.63b0",
 ]
 
 [project.urls]
@@ -84,7 +84,7 @@ dev = [
 test-base = [
     "httpx",
     "loguru",
-    "opentelemetry-test-utils>=0.64b0",
+    "opentelemetry-test-utils>=0.63b0",
     "pytest~=8.4.0",
     "pytest-asyncio~=0.21.2",
     "pytest-cov~=7.1.0",
@@ -101,11 +101,11 @@ test = [
     "flask",
     "inflection",
     "litestar",
-    "opentelemetry-instrumentation-asgi>=0.64b0",
-    "opentelemetry-instrumentation-django>=0.64b0",
-    "opentelemetry-instrumentation-fastapi>=0.64b0",
-    "opentelemetry-instrumentation-flask>=0.64b0",
-    "opentelemetry-instrumentation-starlette>=0.64b0",
+    "opentelemetry-instrumentation-asgi>=0.63b0",
+    "opentelemetry-instrumentation-django>=0.63b0",
+    "opentelemetry-instrumentation-fastapi>=0.63b0",
+    "opentelemetry-instrumentation-flask>=0.63b0",
+    "opentelemetry-instrumentation-starlette>=0.63b0",
     "starlette",
     "uritemplate",
 ]

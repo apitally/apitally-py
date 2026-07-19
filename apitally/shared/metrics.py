@@ -54,16 +54,17 @@ class ApitallyMetricReader(MetricReader):
 
 
 meter_provider: MeterProvider | None = None
-reader: ApitallyMetricReader | None = None
+reader: MetricReader | None = None
 request_duration: Histogram | None = None
 request_body_size: Histogram | None = None
 response_body_size: Histogram | None = None
 start_time: float = 0.0
 
 
-def setup(resource: Resource) -> MeterProvider:
-    global meter_provider, request_duration, request_body_size, response_body_size, start_time
-    meter_provider = create_meter_provider(resource, metric_readers=[])
+def setup(resource: Resource, metric_reader: MetricReader, *additional_metric_readers: MetricReader) -> MeterProvider:
+    global meter_provider, reader, request_duration, request_body_size, response_body_size, start_time
+    reader = metric_reader
+    meter_provider = create_meter_provider(resource, metric_readers=[reader, *additional_metric_readers])
     start_time = time.monotonic()
     meter = meter_provider.get_meter("apitally")
     request_duration = meter.create_histogram("http.server.request.duration", unit="s")
@@ -110,29 +111,15 @@ def record_request(
         response_body_size.record(response_size, attributes)
 
 
-def attach_reader(spool: Spool) -> None:
-    global reader
-    if meter_provider is None:  # pragma: no cover
-        return
-    detach_reader()
-    reader = ApitallyMetricReader(spool)
-    meter_provider.add_metric_reader(reader)
-
-
-def detach_reader() -> None:
-    global reader
-    if meter_provider is not None and reader is not None:
-        meter_provider.remove_metric_reader(reader)
-        reader = None
-
-
 def reset() -> None:
-    global meter_provider, request_duration, request_body_size, response_body_size
-    detach_reader()
+    global meter_provider, reader, request_duration, request_body_size, response_body_size
+    if meter_provider is not None:
+        meter_provider.shutdown()
     instrumentor = SystemMetricsInstrumentor()
     if instrumentor.is_instrumented_by_opentelemetry:
         instrumentor.uninstrument()
     meter_provider = None
+    reader = None
     request_duration = None
     request_body_size = None
     response_body_size = None

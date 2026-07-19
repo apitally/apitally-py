@@ -1,4 +1,3 @@
-import logging
 import threading
 from collections.abc import Iterator
 
@@ -15,7 +14,7 @@ from opentelemetry.sdk.resources import Resource
 
 from apitally.shared import metrics
 from apitally.shared.spool import Spool
-from tests.conftest import attach_metric_reader, collect_metrics, read_spool_payload, unwrap
+from tests.conftest import collect_metrics, read_spool_payload, setup_metric_reader, unwrap
 
 
 @pytest.fixture(autouse=True)
@@ -32,7 +31,7 @@ def spool() -> Iterator[Spool]:
 
 
 def create_pipeline() -> InMemoryMetricReader:
-    return attach_metric_reader(metrics.setup(Resource.create({})))
+    return setup_metric_reader()
 
 
 def get_scope_names(reader: InMemoryMetricReader) -> dict[str, str]:
@@ -82,8 +81,7 @@ def test_histograms_under_apitally_scope():
 
 
 def test_collect_appends_delta_payloads_to_spool(spool: Spool):
-    metrics.setup(Resource.create({}))
-    metrics.attach_reader(spool)
+    metrics.setup(Resource.create({}), metrics.ApitallyMetricReader(spool))
     metrics.record_request("GET", "/a", 200, consumer=None, duration=1.0)
     unwrap(metrics.reader).collect()
     metrics.record_request("GET", "/a", 200, consumer=None, duration=2.0)
@@ -104,25 +102,13 @@ def test_collect_appends_delta_payloads_to_spool(spool: Spool):
     assert sum(point.sum for point in points) == pytest.approx(3.0)
 
 
-def test_no_timer_thread_after_attach(spool: Spool):
+def test_metric_reader_does_not_start_timer_thread(spool: Spool):
     threads_before = {thread.ident for thread in threading.enumerate()}
-    metrics.setup(Resource.create({}))
-    metrics.attach_reader(spool)
+    metrics.setup(Resource.create({}), metrics.ApitallyMetricReader(spool))
     assert {thread.ident for thread in threading.enumerate()} == threads_before
 
 
-def test_detach_then_collect_is_a_noop_without_warnings(spool: Spool, caplog: pytest.LogCaptureFixture):
-    metrics.setup(Resource.create({}))
-    metrics.attach_reader(spool)
-    reader = unwrap(metrics.reader)
-    metrics.detach_reader()
-    with caplog.at_level(logging.WARNING):
-        reader.collect()
-    assert not caplog.records
-    assert not spool.pending_files()
-
-
-def test_consumer_identifier_attribute():
+def test_consumer_identifier_recorded():
     reader = create_pipeline()
     metrics.record_request("GET", "/a", 200, consumer="tenant-1", duration=0.01)
     metrics.record_request("GET", "/b", 200, consumer=None, duration=0.01)
