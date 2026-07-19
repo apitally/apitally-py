@@ -26,7 +26,6 @@ def init(
     app: FastAPI,
     *,
     app_version: str | None = None,
-    openapi_url: str | None = "/openapi.json",
     **kwargs: Any,
 ) -> None:
     """
@@ -45,7 +44,7 @@ def init(
             framework="fastapi",
             paths=lambda: _get_paths(app),
             versions=startup.resolve_versions(app_version, fastapi="fastapi", starlette="starlette"),
-            openapi=lambda: _get_openapi(app, openapi_url),
+            openapi=lambda: json.dumps(app.openapi()) if app.openapi_url else None,
         )
     except Exception:  # pragma: no cover
         logger.exception("Apitally setup for FastAPI failed")
@@ -113,10 +112,3 @@ def _iter_routes(routes: list[BaseRoute], prefix: str = "") -> Iterator[tuple[st
             yield from _iter_routes(sub_routes, prefix + getattr(route, "path", ""))
         else:
             yield prefix, route
-
-
-def _get_openapi(app: FastAPI, openapi_url: str | None) -> str | None:
-    # Emit only when the app actually serves a schema at openapi_url
-    if not openapi_url or not any(getattr(route, "path", None) == openapi_url for route in app.routes):
-        return None
-    return json.dumps(app.openapi())
