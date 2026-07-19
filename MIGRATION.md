@@ -37,7 +37,7 @@ All options move to keyword arguments of `apitally.init(...)` (or `ApitallyPlugi
 | `client_id` | `write_token` (new credential, from the Apitally dashboard, or `APITALLY_WRITE_TOKEN`) |
 | `env` (default `"dev"`) | `env` (default changed to `"prod"`, or `APITALLY_ENV`) |
 | `app_version` | `app_version` (unchanged) |
-| `openapi_url` (FastAPI) | `openapi_url` (unchanged) |
+| `openapi_url` (FastAPI) | Removed. The configured FastAPI OpenAPI schema is captured automatically. |
 | `openapi_url` (Starlette) | Removed. Plain Starlette apps report route templates only. |
 | `consumer_callback` | Removed. Call `set_consumer(...)` from your auth middleware or dependencies (see below). |
 | `identify_consumer_callback` | Removed. Same replacement: `set_consumer(...)`. |

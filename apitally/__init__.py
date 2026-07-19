@@ -50,7 +50,6 @@ def init(
     sample_rate: float = 1.0,
     sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
     sample_on_response: Callable[[ReadableSpan], float | bool | None] | None = None,
-    openapi_url: str | None = _UNSET,
     urlconf: str | list[str | None] | None = _UNSET,
     include_django_views: bool = _UNSET,
 ) -> None:
@@ -97,8 +96,6 @@ def init(
         sample_on_response: A callback that receives the ended request SERVER span and returns a
             capture probability, a boolean, or `None` to preserve the request-stage decision. It
             cannot retain a request that was already sampled out.
-        openapi_url: For FastAPI, the path that serves the OpenAPI schema. Set to `None` to disable
-            OpenAPI schema reporting.
         urlconf: For Django, the URLconf module or modules used to discover routes and schemas.
             `None` uses the root URLconf.
         include_django_views: For Django, whether to include class-based Django views in the
