@@ -61,7 +61,7 @@ def init(
         write_token: The Apitally client write token. When omitted, the `APITALLY_WRITE_TOKEN`
             environment variable is used.
         env: The environment name reported to Apitally. When omitted, the `APITALLY_ENV`
-            environment variable is used, falling back to `"prod"`.
+            environment variable is used, falling back to `"dev"`.
         app_version: The application version reported to Apitally.
         disabled: Whether to disable Apitally. When omitted, `APITALLY_DISABLED` and
             `OTEL_SDK_DISABLED` are respected.

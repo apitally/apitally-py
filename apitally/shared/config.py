@@ -34,7 +34,7 @@ ALLOWED_CONTENT_TYPES = (
 @dataclass
 class ApitallyConfig:
     write_token: str = ""
-    env: str = "prod"
+    env: str = "dev"
     disabled: bool = False
     capture_logs: bool = True
     capture_request_headers: bool = False
