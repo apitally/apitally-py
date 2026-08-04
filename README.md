@@ -229,7 +229,7 @@ For further instructions, see our
 
 ## Configuration
 
-The write token and environment can also be provided via the `APITALLY_WRITE_TOKEN` and `APITALLY_ENV` environment variables instead of the `write_token` and `env` arguments. The environment defaults to `prod`.
+The write token and environment can also be provided via the `APITALLY_WRITE_TOKEN` and `APITALLY_ENV` environment variables instead of the `write_token` and `env` arguments. The environment defaults to `dev`.
 
 Out of the box, Apitally captures metrics, request logs, traces, exceptions, application logs, and response headers. Request headers and request and response bodies are *not* captured by default. You can opt in with parameters:
 
