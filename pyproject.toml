@@ -64,7 +64,7 @@ Repository = "https://github.com/apitally/apitally-py"
 [dependency-groups]
 dev = [
     "pre-commit>=4.5.0",
-    "ruff~=0.15.0",
+    "ruff~=0.16.1",
     "ty~=0.0.44",
 ]
 test = [
