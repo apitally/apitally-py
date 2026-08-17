@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from opentelemetry.context import Context
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 from opentelemetry.trace import SpanContext, SpanKind
@@ -337,12 +338,16 @@ def write_url_attributes_from_http_url(span: Span) -> None:
     span.set_attribute("http.target", f"{parsed.path}?{parsed.query}" if parsed.query else parsed.path)
 
 
-def copy_span_with_attributes(span: ReadableSpan, attributes: dict[str, AttributeValue | bytes]) -> ReadableSpan:
+def copy_span_with_attributes(
+    span: ReadableSpan,
+    attributes: dict[str, AttributeValue | bytes],
+    resource: Resource | None = None,
+) -> ReadableSpan:
     return ReadableSpan(
         name=span.name,
         context=span.get_span_context(),
         parent=span.parent,
-        resource=span.resource,
+        resource=resource if resource is not None else span.resource,
         attributes=attributes,
         events=span.events,
         links=span.links,

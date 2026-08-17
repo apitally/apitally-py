@@ -12,7 +12,7 @@ from opentelemetry.trace import SpanKind
 from apitally.shared import activation, sentry
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.span_processor import ApitallySpanProcessor
-from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN
+from tests.conftest import CONTRIB_SCOPE, INSTANCE_ID, WRITE_TOKEN
 
 
 if TYPE_CHECKING:
@@ -56,7 +56,7 @@ def test_sentry_event_id_written_after_server_span_ended():
     assert sentry_scope.global_event_processors.count(sentry.sentry_event_processor) == 1
 
     span_exporter = InMemorySpanExporter()
-    batch_processor = BatchSpanProcessor(ApitallySpanExporter(span_exporter), schedule_delay_millis=60_000)
+    batch_processor = BatchSpanProcessor(ApitallySpanExporter(span_exporter, INSTANCE_ID), schedule_delay_millis=60_000)
     provider = TracerProvider()
     provider.add_span_processor(ApitallySpanProcessor(batch_processor))
     tracer = provider.get_tracer(CONTRIB_SCOPE)

@@ -44,7 +44,15 @@ from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.spool import MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT, MAX_UNCOMPRESSED_FILE_SIZE, Spool
-from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, StubOTLPServer, installed, read_spool_payload, unwrap
+from tests.conftest import (
+    CONTRIB_SCOPE,
+    INSTANCE_ID,
+    WRITE_TOKEN,
+    StubOTLPServer,
+    installed,
+    read_spool_payload,
+    unwrap,
+)
 
 
 @pytest.fixture
@@ -94,7 +102,7 @@ def emit_log(spool: Spool, msg: str) -> None:
 
 def test_span_batch_is_written_to_spool_as_parseable_payload(spool: Spool) -> None:
     provider = TracerProvider(sampler=ALWAYS_ON)
-    provider.add_span_processor(SimpleSpanProcessor(ApitallySpanExporter(SpoolSpanExporter(spool))))
+    provider.add_span_processor(SimpleSpanProcessor(ApitallySpanExporter(SpoolSpanExporter(spool), INSTANCE_ID)))
     with provider.get_tracer(CONTRIB_SCOPE).start_as_current_span("GET /items", kind=SpanKind.SERVER):
         pass
     request = read_trace_request(spool)
@@ -107,7 +115,7 @@ def test_stashed_body_and_headers_reach_spool_redacted(spool: Spool) -> None:
     set_config(write_token=WRITE_TOKEN, capture_request_headers=True, capture_request_body=True)
     provider = TracerProvider(sampler=ALWAYS_ON)
     provider.add_span_processor(
-        ApitallySpanProcessor(SimpleSpanProcessor(ApitallySpanExporter(SpoolSpanExporter(spool))))
+        ApitallySpanProcessor(SimpleSpanProcessor(ApitallySpanExporter(SpoolSpanExporter(spool), INSTANCE_ID)))
     )
     tracer = provider.get_tracer(CONTRIB_SCOPE)
     with tracer.start_as_current_span("POST /login", kind=SpanKind.SERVER) as span:
