@@ -2,6 +2,7 @@ import json
 import logging
 from collections.abc import Callable, Sequence
 
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
@@ -21,8 +22,9 @@ class ApitallySpanExporter(SpanExporter):
     """Applies redaction and attaches stashed headers, bodies and Sentry event IDs on the
     export thread, in front of the delegate exporter."""
 
-    def __init__(self, delegate: SpanExporter) -> None:
+    def __init__(self, delegate: SpanExporter, instance_id: str) -> None:
         self.delegate = delegate
+        self.instance_resource = Resource({"service.instance.id": instance_id})
         self.config = get_config()
         self.redaction = Redaction(
             self.config.mask_query_params, self.config.mask_headers, self.config.mask_body_fields
@@ -44,16 +46,19 @@ class ApitallySpanExporter(SpanExporter):
         stash: RequestStash | None = getattr(span, STASH_ATTRIBUTE, None)
         context = span.get_span_context()
         sentry_event_id = pop_sentry_event_id(context.span_id) if context is not None else None
+        resource = span.resource.merge(self.instance_resource)
+        resource_changed = resource != span.resource
         if (
             stash is None
             and sentry_event_id is None
+            and not resource_changed
             and not any(
                 key in QUERY_ATTRIBUTES or key.startswith(HEADER_ATTRIBUTE_PREFIXES) for key in span.attributes or {}
             )
         ):
             return span
         attributes = dict(span.attributes or {})
-        changed = False
+        changed = resource_changed
         for key, value in attributes.items():
             if key in QUERY_ATTRIBUTES and isinstance(value, str):
                 redacted = self.redaction.redact_query_params(value, assume_query=key == "url.query")
@@ -71,7 +76,7 @@ class ApitallySpanExporter(SpanExporter):
             attributes[SENTRY_EVENT_ID_ATTRIBUTE] = sentry_event_id
             changed = True
         if stash is None:
-            return copy_span_with_attributes(span, attributes) if changed else span
+            return copy_span_with_attributes(span, attributes, resource) if changed else span
         for prefix, headers in (
             ("http.request.header.", stash.request_headers),
             ("http.response.header.", stash.response_headers),
@@ -80,7 +85,7 @@ class ApitallySpanExporter(SpanExporter):
                 for name, values in self.redaction.redact_headers(headers).items():
                     attributes[prefix + name] = values
         # The mask callbacks receive the span as it will be exported, minus the body attributes
-        span = copy_span_with_attributes(span, dict(attributes))
+        span = copy_span_with_attributes(span, dict(attributes), resource)
         if stash.request_body is None and stash.response_body is None:
             return span
         if stash.request_body is not None:

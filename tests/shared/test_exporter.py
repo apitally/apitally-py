@@ -2,6 +2,7 @@ import gzip
 import json
 from urllib.parse import parse_qsl
 
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -14,7 +15,7 @@ from apitally.shared.context import get_server_span_processor
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import STASH_ATTRIBUTE, ApitallySpanProcessor
-from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, create_trace_pipeline, unwrap
+from tests.conftest import CONTRIB_SCOPE, INSTANCE_ID, WRITE_TOKEN, create_trace_pipeline, unwrap
 
 
 def test_forwarded_span_redacted_and_original_unmutated():
@@ -68,7 +69,7 @@ def test_span_without_sensitive_attributes_passes_through_unchanged():
     (span,) = exporter.get_finished_spans()
 
     delegate = InMemorySpanExporter()
-    ApitallySpanExporter(delegate).export([span])
+    ApitallySpanExporter(delegate, INSTANCE_ID).export([span])
     (passed_through,) = delegate.get_finished_spans()
     assert passed_through is span
 
@@ -78,7 +79,9 @@ def test_user_attached_exporters_never_see_captured_headers_and_bodies():
     user_exporter = InMemorySpanExporter()
     apitally_exporter = InMemorySpanExporter()
     provider = TracerProvider(sampler=ALWAYS_ON)
-    provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(ApitallySpanExporter(apitally_exporter))))
+    provider.add_span_processor(
+        ApitallySpanProcessor(SimpleSpanProcessor(ApitallySpanExporter(apitally_exporter, INSTANCE_ID)))
+    )
     provider.add_span_processor(SimpleSpanProcessor(user_exporter))
     tracer = provider.get_tracer(CONTRIB_SCOPE)
 
@@ -102,6 +105,26 @@ def test_user_attached_exporters_never_see_captured_headers_and_bodies():
     assert "hunter2" not in str(attributes)
     assert "secret123" not in str(attributes)
     assert not hasattr(user_span, STASH_ATTRIBUTE)
+
+
+def test_apitally_export_overrides_instance_id_without_changing_user_export():
+    user_resource = Resource.create({"service.instance.id": "user-instance", "service.name": "user-service"})
+    user_exporter = InMemorySpanExporter()
+    apitally_exporter = InMemorySpanExporter()
+    provider = TracerProvider(sampler=ALWAYS_ON, resource=user_resource)
+    provider.add_span_processor(
+        ApitallySpanProcessor(SimpleSpanProcessor(ApitallySpanExporter(apitally_exporter, INSTANCE_ID)))
+    )
+    provider.add_span_processor(SimpleSpanProcessor(user_exporter))
+
+    with provider.get_tracer(CONTRIB_SCOPE).start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        pass
+
+    (apitally_span,) = apitally_exporter.get_finished_spans()
+    assert apitally_span.resource.attributes["service.instance.id"] == INSTANCE_ID
+    assert apitally_span.resource.attributes["service.name"] == "user-service"
+    (user_span,) = user_exporter.get_finished_spans()
+    assert user_span.resource.attributes["service.instance.id"] == "user-instance"
 
 
 def test_non_utf8_body_exported_as_bytes():

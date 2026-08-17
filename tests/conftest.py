@@ -37,6 +37,7 @@ from apitally.shared.spool import Spool, SpoolFile
 
 
 WRITE_TOKEN = "apt_" + "a" * 24
+INSTANCE_ID = "apitally-instance"
 CONTRIB_SCOPE = "opentelemetry.instrumentation.test"
 
 
@@ -292,7 +293,7 @@ def startup_payload(exporters: InMemoryExporters) -> dict[str, Any]:
 def create_tracer(exporter: SpanExporter, sampler: Sampler = ALWAYS_ON, scope: str = CONTRIB_SCOPE) -> Tracer:
     # The Apitally span processor and exporter bind config at construction, so build after configure()
     provider = TracerProvider(sampler=sampler)
-    provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(ApitallySpanExporter(exporter))))
+    provider.add_span_processor(ApitallySpanProcessor(SimpleSpanProcessor(ApitallySpanExporter(exporter, INSTANCE_ID))))
     return provider.get_tracer(scope)
 
 
