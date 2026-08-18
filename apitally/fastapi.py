@@ -67,6 +67,7 @@ def _instrument_app(app: FastAPI) -> None:
             ApitallyASGIMiddleware(
                 build_inner(),  # ty: ignore[invalid-argument-type]
                 resolve_route=_resolve_route,
+                use_scope_client_address=True,
             )
         )
 

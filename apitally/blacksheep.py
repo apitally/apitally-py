@@ -12,7 +12,7 @@ from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from apitally.shared import activation, config, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.context import get_server_span
-from apitally.shared.helpers import capture_exception
+from apitally.shared.helpers import capture_exception, set_request_attribute
 
 
 __all__ = ["init"]
@@ -47,6 +47,7 @@ def init(
             return
 
         _wrap_router(app)
+        _wrap_client_address(app)
         _wrap_error_handler(app)
 
         # Python looks up __call__ on the class, not the instance, so a wrapper assigned to
@@ -96,6 +97,18 @@ def _wrap_router(app: Application) -> None:
         return match
 
     app.router.get_match = get_match  # ty: ignore[invalid-assignment]
+
+
+def _wrap_client_address(app: Application) -> None:
+    original = app.handle
+
+    async def handle(request: Request) -> Response:
+        response = await original(request)
+        if client_address := request.original_client_ip:
+            set_request_attribute("client.address", client_address)
+        return response
+
+    app.handle = handle  # ty: ignore[invalid-assignment]
 
 
 def _wrap_error_handler(app: Application) -> None:

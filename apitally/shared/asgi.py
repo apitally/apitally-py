@@ -34,9 +34,15 @@ class ApitallyASGIMiddleware:
     """Transport middleware. Accesses the SERVER span only in the receive/send/finish callbacks,
     so it works both inside the instrumentor's span and wrapped around the instrumented stack."""
 
-    def __init__(self, app: ASGIApp, resolve_route: Callable[[Scope], str | None] | None = None) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        resolve_route: Callable[[Scope], str | None] | None = None,
+        use_scope_client_address: bool = False,
+    ) -> None:
         self.app = app
         self.resolve_route = resolve_route or resolve_route_from_scope
+        self.use_scope_client_address = use_scope_client_address
         self.config = get_config()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -130,6 +136,10 @@ class ApitallyASGIMiddleware:
                 and (span.is_recording() or deferred_span_id is not None)
             ):
                 extra_attributes: dict[str, str | int] = {}
+                if self.use_scope_client_address:
+                    client = scope.get("client")
+                    if isinstance(client, (list, tuple)) and client and isinstance(client[0], str) and client[0]:
+                        extra_attributes["client.address"] = client[0]
                 if route:
                     # Overwrites the instrumentor's raw route so spans and metrics agree on the template
                     extra_attributes["http.route"] = route

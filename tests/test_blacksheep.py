@@ -1,11 +1,13 @@
 import inspect
 import json
 from importlib.metadata import version
+from ipaddress import ip_address
 from typing import Any
 
 import httpx
 import pytest
 from blacksheep import Application, Request, Response, text
+from blacksheep.server.remotes.forwarding import XForwardedHeadersMiddleware
 from blacksheep.server.routing import Router
 from opentelemetry import context as otel_context
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
@@ -84,6 +86,22 @@ async def test_request_exports_span_with_route_and_records_metrics(
     assert {"method": "GET", "path": "/items/{id}"} in payload["paths"]
     assert {"method": "POST", "path": "/items"} in payload["paths"]
     assert "openapi" not in payload
+
+
+async def test_client_address_uses_framework_resolved_client_ip(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    allow_activation(monkeypatch)
+    app = create_app()
+    app.middlewares.append(XForwardedHeadersMiddleware(known_proxies=[ip_address("127.0.0.1")]))
+    await app.start()
+
+    async with create_client(app) as client:
+        response = await client.get("/items/123", headers={"X-Forwarded-For": "203.0.113.10"})
+    assert response.status_code == 200
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert (span.attributes or {})["client.address"] == "203.0.113.10"
 
 
 async def test_startup_paths_include_sub_router_routes(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

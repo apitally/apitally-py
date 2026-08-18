@@ -30,6 +30,7 @@ from apitally.shared.config import (
 )
 from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
 from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
+from apitally.shared.helpers import set_request_attribute
 from apitally.shared.wsgi import group_headers, parse_content_length
 
 
@@ -185,6 +186,8 @@ class ApitallyDjangoMiddleware:
         if response_size is None and not streaming:
             response_size = len(response.content)
         route = self.get_route(request)
+        if client_address := request.META.get("REMOTE_ADDR"):
+            set_request_attribute("client.address", client_address)
         span = get_server_span()
         if is_server_span_kept() and span is not None and span.is_recording():
             if route is not None:

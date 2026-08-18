@@ -89,7 +89,11 @@ class ApitallyPlugin(InitPluginProtocol):
             # wraps the ASGI handler instead to also cover routing failures (404/405 responses)
             if not isinstance(app.asgi_handler, activation.ASGIActivationShim):
                 app.asgi_handler = activation.ASGIActivationShim(  # ty: ignore[invalid-assignment]
-                    ApitallyASGIMiddleware(app.asgi_handler, resolve_route=_resolve_route)  # ty: ignore[invalid-argument-type]
+                    ApitallyASGIMiddleware(
+                        app.asgi_handler,  # ty: ignore[invalid-argument-type]
+                        resolve_route=_resolve_route,  # ty: ignore[invalid-argument-type]
+                        use_scope_client_address=True,
+                    )
                 )
             startup.set_app_info(
                 framework="litestar",

@@ -1,6 +1,7 @@
 import json
 import sys
 from collections.abc import Iterator
+from typing import Any
 
 import django
 import pytest
@@ -47,6 +48,35 @@ def django_settings() -> Iterator[None]:
 def django_teardown() -> Iterator[None]:
     yield
     teardown_django_instrumentation()
+
+
+class TrustedProxyMiddleware:
+    def __init__(self, get_response: Any) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: Any) -> Any:
+        request.META["REMOTE_ADDR"] = request.headers["X-Forwarded-For"]
+        return self.get_response(request)
+
+
+def test_client_address_uses_framework_resolved_client_ip(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    middleware = "tests.test_django.TrustedProxyMiddleware"
+    settings.MIDDLEWARE.append(middleware)
+    try:
+        init(monkeypatch)
+        response = Client().get(
+            "/items/123/",
+            REMOTE_ADDR="192.0.2.1",
+            headers={"X-Forwarded-For": "203.0.113.10"},
+        )
+    finally:
+        settings.MIDDLEWARE.remove(middleware)
+    assert response.status_code == 200
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["client.address"] == "203.0.113.10"
 
 
 def test_first_request_activates_and_is_recorded(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
