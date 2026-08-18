@@ -18,6 +18,7 @@ from opentelemetry.trace import SpanKind, Tracer
 from apitally.shared.config import set_config
 from apitally.shared.log_processor import (
     MAX_BUFFERED_LOGS,
+    MAX_LOG_VALUE_LENGTH,
     ApitallyLogRecordProcessor,
     install_root_handler,
     uninstall_root_handler,
@@ -79,6 +80,19 @@ def test_logs_in_nested_spans_include_server_span_id(
     assert unwrap(record.attributes)["apitally.request.server_span_id"] == format(
         server.get_span_context().span_id, "016x"
     )
+
+
+def test_log_strings_truncated_before_buffering(
+    tracer: Tracer, log_exporter: InMemoryLogRecordExporter, root_handler: LoggingHandler | None
+):
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        logging.getLogger("myapp").warning(
+            "a" * (MAX_LOG_VALUE_LENGTH + 1),
+            extra={"detail": "b" * (MAX_LOG_VALUE_LENGTH + 1)},
+        )
+    (exported,) = log_exporter.get_finished_logs()
+    assert exported.log_record.body == "a" * MAX_LOG_VALUE_LENGTH
+    assert unwrap(exported.log_record.attributes)["detail"] == "b" * MAX_LOG_VALUE_LENGTH
 
 
 def test_logs_discarded_when_sample_on_response_returns_false(log_exporter: InMemoryLogRecordExporter):

@@ -2,7 +2,7 @@ import atexit
 import logging
 import random
 import threading
-from collections.abc import MutableMapping, Sequence
+from collections.abc import Sequence
 from typing import Any, cast
 
 import requests
@@ -14,10 +14,9 @@ from opentelemetry.sdk._logs import ReadableLogRecord
 from opentelemetry.sdk._logs.export import LogRecordExporter, LogRecordExportResult
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
-from opentelemetry.util.types import AnyValue
 
 from apitally.shared import metrics
-from apitally.shared.log_processor import ApitallyLogRecordProcessor
+from apitally.shared.log_processor import ApitallyLogRecordProcessor, truncate_log_record
 from apitally.shared.providers import DISTRO_VERSION, endpoint_url, export_headers
 from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.spool import Spool, SpoolFile
@@ -27,8 +26,6 @@ logger = logging.getLogger(__name__)
 
 # Small enough that no single append can overshoot the spool's rotation threshold
 ENCODE_CHUNK_SIZE = 32
-
-MAX_LOG_VALUE_LENGTH = 2048
 
 BATCH_SCHEDULE_DELAY_MILLIS = 1_000
 BATCH_MAX_QUEUE_SIZE = 2_048
@@ -243,20 +240,3 @@ def resolve_proxy_urls() -> dict[str, str]:
 
 def chunked(batch: Sequence) -> list[Sequence]:
     return [batch[i : i + ENCODE_CHUNK_SIZE] for i in range(0, len(batch), ENCODE_CHUNK_SIZE)]
-
-
-def truncate_log_record(record: ReadableLogRecord) -> None:
-    if record.instrumentation_scope is not None and record.instrumentation_scope.name == "apitally":
-        return
-    log_record = record.log_record
-    if isinstance(log_record.body, str) and len(log_record.body) > MAX_LOG_VALUE_LENGTH:
-        log_record.body = log_record.body[:MAX_LOG_VALUE_LENGTH]
-    if log_record.attributes:
-        oversized = [
-            (key, value)
-            for key, value in log_record.attributes.items()
-            if isinstance(value, str) and len(value) > MAX_LOG_VALUE_LENGTH
-        ]
-        attributes = cast(MutableMapping[str, AnyValue], log_record.attributes)
-        for key, value in oversized:
-            attributes[key] = value[:MAX_LOG_VALUE_LENGTH]

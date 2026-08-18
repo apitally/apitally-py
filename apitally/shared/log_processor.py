@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, cast
 
 from opentelemetry import trace
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
-from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor, ReadWriteLogRecord
+from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor, ReadableLogRecord, ReadWriteLogRecord
 from opentelemetry.util.types import AnyValue
 
 from apitally.shared.config import get_config
@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 SERVER_SPAN_ID_ATTRIBUTE = "apitally.request.server_span_id"
 SDK_LOGGER_NAMESPACES = ("apitally", "opentelemetry")
 MAX_BUFFERED_LOGS = 1_000
+MAX_LOG_VALUE_LENGTH = 2048
 
 installed_handler: LoggingHandler | None = None
 loguru_sink_id: int | None = None
@@ -139,6 +140,7 @@ class ApitallyLogRecordProcessor(LogRecordProcessor):
             if server_span_id is not None and server_span_id in self.span_processor.pending:
                 buffer = self.pending.setdefault(server_span_id, [])
                 if len(buffer) < MAX_BUFFERED_LOGS:
+                    truncate_log_record(log_record)
                     buffer.append(log_record)
                 else:
                     logger.debug("Apitally log buffer cap reached for request, dropping log record")
@@ -160,3 +162,20 @@ class ApitallyLogRecordProcessor(LogRecordProcessor):
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         return self.downstream.force_flush(timeout_millis)
+
+
+def truncate_log_record(record: ReadableLogRecord | ReadWriteLogRecord) -> None:
+    if record.instrumentation_scope is not None and record.instrumentation_scope.name == "apitally":
+        return
+    log_record = record.log_record
+    if isinstance(log_record.body, str) and len(log_record.body) > MAX_LOG_VALUE_LENGTH:
+        log_record.body = log_record.body[:MAX_LOG_VALUE_LENGTH]
+    if log_record.attributes:
+        oversized = [
+            (key, value)
+            for key, value in log_record.attributes.items()
+            if isinstance(value, str) and len(value) > MAX_LOG_VALUE_LENGTH
+        ]
+        attributes = cast("MutableMapping[str, AnyValue]", log_record.attributes)
+        for key, value in oversized:
+            attributes[key] = value[:MAX_LOG_VALUE_LENGTH]

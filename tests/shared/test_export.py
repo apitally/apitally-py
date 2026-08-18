@@ -32,7 +32,6 @@ from apitally.shared.export import (
     ENCODE_CHUNK_SIZE,
     EXPORT_INTERVAL_HEADER,
     MAX_EXPORT_INTERVAL,
-    MAX_LOG_VALUE_LENGTH,
     MAX_SENDS_PER_CYCLE,
     MIN_EXPORT_INTERVAL,
     ExportWorker,
@@ -41,6 +40,7 @@ from apitally.shared.export import (
     resolve_proxy_urls,
 )
 from apitally.shared.exporter import ApitallySpanExporter
+from apitally.shared.log_processor import MAX_LOG_VALUE_LENGTH
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.spool import MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT, MAX_UNCOMPRESSED_FILE_SIZE, Spool
