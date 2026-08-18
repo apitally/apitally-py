@@ -23,11 +23,13 @@ from apitally.shared.redaction import REDACTED
 from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
+    TrustedProxyASGIMiddleware,
     attach_metric_reader,
     attach_stale_server_span,
     duration_data_points,
     exported_spans,
     startup_payload,
+    unwrap,
 )
 
 
@@ -71,6 +73,18 @@ def make_app(
         plugins=[*(plugins or []), ApitallyPlugin(write_token=WRITE_TOKEN, **plugin_kwargs)],
         middleware=middleware or [],
     )
+
+
+def test_client_address_uses_framework_resolved_client_ip(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    middleware = [DefineMiddleware(TrustedProxyASGIMiddleware, trusted_peer="testclient")]
+    with TestClient(app=make_app(monkeypatch, middleware=middleware)) as client:
+        response = client.get("/users/123", headers={"X-Forwarded-For": "203.0.113.10"})
+    assert response.status_code == 200
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["client.address"] == "203.0.113.10"
 
 
 def test_route_repair_metrics_and_no_noise_spans(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

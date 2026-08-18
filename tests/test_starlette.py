@@ -23,6 +23,7 @@ from apitally.shared.redaction import REDACTED
 from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
+    TrustedProxyASGIMiddleware,
     attach_metric_reader,
     attach_stale_server_span,
     duration_data_points,
@@ -126,6 +127,19 @@ def test_request_body_captured_and_redacted(
     assert json.loads(body) == {"name": "widget", "password": REDACTED}
     body_size = unwrap(span.attributes)["http.request.body.size"]
     assert isinstance(body_size, int) and body_size > 0
+
+
+def test_client_address_uses_framework_resolved_client_ip(
+    app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    app.add_middleware(TrustedProxyASGIMiddleware, trusted_peer="192.0.2.1")
+    init(app, monkeypatch)
+    with TestClient(app, client=("192.0.2.1", 50000)) as client:
+        response = client.get("/items/42", headers={"X-Forwarded-For": "203.0.113.10"})
+    assert response.status_code == 200
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["client.address"] == "203.0.113.10"
 
 
 def test_init_twice_does_not_stack_middleware(

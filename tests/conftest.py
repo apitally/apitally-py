@@ -45,6 +45,20 @@ def installed(*modules: str) -> bool:
     return all(find_spec(module) is not None for module in modules)
 
 
+class TrustedProxyASGIMiddleware:
+    def __init__(self, app: Any, trusted_peer: str) -> None:
+        self.app = app
+        self.trusted_peer = trusted_peer
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        client = scope.get("client")
+        if client and client[0] == self.trusted_peer:
+            headers = dict(scope.get("headers") or [])
+            if forwarded_for := headers.get(b"x-forwarded-for"):
+                scope["client"] = (forwarded_for.decode("latin-1"), client[1])
+        await self.app(scope, receive, send)
+
+
 _T = TypeVar("_T")
 
 

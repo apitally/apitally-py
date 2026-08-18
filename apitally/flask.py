@@ -4,10 +4,11 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from flask import Flask
+from flask import Flask, request
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
 from apitally.shared import activation, config, startup
+from apitally.shared.helpers import set_request_attribute
 from apitally.shared.wsgi import ApitallyWSGIMiddleware
 
 
@@ -43,6 +44,7 @@ def init(
         app.wsgi_app = transport  # ty: ignore[invalid-assignment]
         if not getattr(app, "_is_instrumented_by_opentelemetry", False):
             FlaskInstrumentor().instrument_app(app)
+        app.before_request(_set_client_address)
         app.wsgi_app = activation.WSGIActivationShim(app.wsgi_app)  # ty: ignore[invalid-assignment]
         startup.set_app_info(
             framework="flask",
@@ -51,6 +53,11 @@ def init(
         )
     except Exception:  # pragma: no cover
         logger.exception("Error initializing Apitally for Flask")
+
+
+def _set_client_address() -> None:
+    if client_address := request.remote_addr:
+        set_request_attribute("client.address", client_address)
 
 
 def _create_route_resolver(app: Flask) -> Callable[[WSGIEnvironment], str | None]:

@@ -18,6 +18,7 @@ from apitally.shared.asgi import ApitallyASGIMiddleware
 from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
+    TrustedProxyASGIMiddleware,
     attach_metric_reader,
     attach_stale_server_span,
     duration_data_points,
@@ -86,6 +87,31 @@ def test_request_exports_single_server_span_with_stable_semconv(
     assert unwrap(span.attributes)["http.request.method"] == "GET"
     assert unwrap(span.attributes)["http.route"] == "/items/{item_id}"
     assert unwrap(span.attributes)["http.response.status_code"] == 200
+
+
+def test_client_address_uses_framework_resolved_client_ip(
+    app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    app.add_middleware(TrustedProxyASGIMiddleware, trusted_peer="192.0.2.1")
+    init(app, monkeypatch)
+    with TestClient(app, client=("192.0.2.1", 50000)) as client:
+        response = client.get("/items/42", headers={"X-Forwarded-For": "203.0.113.10"})
+    assert response.status_code == 200
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["client.address"] == "203.0.113.10"
+
+
+def test_untrusted_forwarded_for_does_not_change_client_address(
+    app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch)
+    with TestClient(app, client=("192.0.2.1", 50000)) as client:
+        response = client.get("/items/42", headers={"X-Forwarded-For": "203.0.113.10"})
+    assert response.status_code == 200
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["client.address"] == "192.0.2.1"
 
 
 def test_histogram_attributes_and_log_correlation(

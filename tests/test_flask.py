@@ -7,6 +7,7 @@ from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import SpanKind
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import apitally
 from apitally.shared import activation
@@ -65,6 +66,31 @@ def init(app: Flask, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
 def activate_with_metric_reader() -> InMemoryMetricReader:
     activation.activate()
     return attach_metric_reader()
+
+
+def test_client_address_uses_framework_resolved_client_ip(
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)  # ty: ignore[invalid-assignment]
+    init(app, monkeypatch)
+
+    response = app.test_client().get("/items/42", headers={"X-Forwarded-For": "203.0.113.10"})
+    assert response.get_json() == {"id": 42}
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["client.address"] == "203.0.113.10"
+
+
+def test_untrusted_forwarded_for_does_not_change_client_address(
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch)
+
+    response = app.test_client().get("/items/42", headers={"X-Forwarded-For": "203.0.113.10"})
+    assert response.get_json() == {"id": 42}
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["client.address"] == "127.0.0.1"
 
 
 def test_blueprint_route_includes_url_prefix(app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

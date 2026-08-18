@@ -62,7 +62,14 @@ def _instrument_app(app: Starlette) -> None:
         # Pre-instrumented app: insert the transport middleware just inside the existing
         # OpenTelemetryMiddleware so it runs inside the SERVER span
         index = next(i for i, m in enumerate(app.user_middleware) if m.cls is OpenTelemetryMiddleware)
-        app.user_middleware.insert(index + 1, Middleware(ApitallyASGIMiddleware, resolve_route=_resolve_route))
+        app.user_middleware.insert(
+            index + 1,
+            Middleware(
+                ApitallyASGIMiddleware,
+                resolve_route=_resolve_route,
+                use_scope_client_address=True,
+            ),
+        )
         app.user_middleware.insert(0, Middleware(activation.ASGIActivationShim))
         if app.middleware_stack is not None:
             app.middleware_stack = app.build_middleware_stack()
@@ -88,6 +95,7 @@ def _instrument_app(app: Starlette) -> None:
                     exclude_spans=["receive", "send"],
                 ),
                 resolve_route=_resolve_route,
+                use_scope_client_address=True,
             )
         )
 
