@@ -3,7 +3,7 @@ import time
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
-from apitally.shared import metrics
+from apitally.shared import metrics, server_errors, validation_errors
 from apitally.shared.config import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
@@ -12,6 +12,7 @@ from apitally.shared.config import (
 )
 from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
 from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
+from apitally.shared.validation_errors import ValidationError
 
 
 logger = logging.getLogger(__name__)
@@ -39,10 +40,12 @@ class ApitallyASGIMiddleware:
         app: ASGIApp,
         resolve_route: Callable[[Scope], str | None] | None = None,
         use_scope_client_address: bool = False,
+        validation_error_extractor: Callable[[int, object], list[ValidationError]] | None = None,
     ) -> None:
         self.app = app
         self.resolve_route = resolve_route or resolve_route_from_scope
         self.use_scope_client_address = use_scope_client_address
+        self.validation_error_extractor = validation_error_extractor
         self.config = get_config()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -67,15 +70,19 @@ class ApitallyASGIMiddleware:
         response_size: int | None = None
         response_size_counter = 0
         response_headers: list[tuple[bytes, bytes]] | None = None
+        response_content_encoding: bytes | None = None
         response_body = bytearray()
         response_body_complete = False
         response_too_large = False
         capture_response = False
+        inspect_validation_response = False
         completed = False
         deferred_span_id: int | None = None
+        exception_holder = server_errors.ExceptionHolder()
 
         try:
             init_consumer()
+            exception_holder = server_errors.init_exception_holder()
             request_size = parse_int(get_header(request_headers, b"content-length"))
             capture_request = config.capture_request_body and is_allowed_content_type(
                 get_header(request_headers, b"content-type")
@@ -118,80 +125,107 @@ class ApitallyASGIMiddleware:
             if final_response_size is None and response_started:
                 final_response_size = response_size_counter
             try:
-                route = self.resolve_route(scope)
-            except Exception:  # pragma: no cover
-                logger.exception("Error resolving route in Apitally ASGI middleware")
-                route = None
-            if route:
-                root_path = str(scope.get("root_path") or "")
-                if root_path.startswith(initial_root_path):
-                    route = root_path[len(initial_root_path) :] + route
-            span = get_server_span()
-            processor = get_server_span_processor()
-            if (
-                is_server_span_kept()
-                and span is not None
-                and span.context is not None
-                and processor is not None
-                and (span.is_recording() or deferred_span_id is not None)
-            ):
-                extra_attributes: dict[str, str | int] = {}
-                if self.use_scope_client_address:
-                    client = scope.get("client")
-                    if isinstance(client, (list, tuple)) and client and isinstance(client[0], str) and client[0]:
-                        extra_attributes["client.address"] = client[0]
+                try:
+                    route = self.resolve_route(scope)
+                except Exception:  # pragma: no cover
+                    logger.exception("Error resolving route in Apitally ASGI middleware")
+                    route = None
                 if route:
-                    # Overwrites the instrumentor's raw route so spans and metrics agree on the template
-                    extra_attributes["http.route"] = route
-                    if span.is_recording():
-                        span.update_name(f"{scope.get('method', '')} {route}".strip())
-                if final_request_size is not None:
-                    extra_attributes["http.request.body.size"] = final_request_size
-                if final_response_size is not None:
-                    extra_attributes["http.response.body.size"] = final_response_size
-                # Partial buffers from aborted requests/responses are never exported
-                stash_request_headers = group_headers(request_headers) if config.capture_request_headers else None
-                stash_response_headers = group_headers(response_headers) if response_headers is not None else None
-                stash_request_body = (
-                    BODY_TOO_LARGE
-                    if request_too_large
-                    else (bytes(request_body) if capture_request and request_body and request_body_complete else None)
-                )
-                stash_response_body = (
-                    BODY_TOO_LARGE
-                    if response_too_large
-                    else (
-                        bytes(response_body) if capture_response and response_body and response_body_complete else None
+                    root_path = str(scope.get("root_path") or "")
+                    if root_path.startswith(initial_root_path):
+                        route = root_path[len(initial_root_path) :] + route
+                consumer = get_consumer_identifier()
+                span = get_server_span()
+                processor = get_server_span_processor()
+                if (
+                    is_server_span_kept()
+                    and span is not None
+                    and span.context is not None
+                    and processor is not None
+                    and (span.is_recording() or deferred_span_id is not None)
+                ):
+                    extra_attributes: dict[str, str | int] = {}
+                    if self.use_scope_client_address:
+                        client = scope.get("client")
+                        if isinstance(client, (list, tuple)) and client and isinstance(client[0], str) and client[0]:
+                            extra_attributes["client.address"] = client[0]
+                    if route:
+                        # Overwrites the instrumentor's raw route so spans and metrics agree on the template
+                        extra_attributes["http.route"] = route
+                        if span.is_recording():
+                            span.update_name(f"{scope.get('method', '')} {route}".strip())
+                    if final_request_size is not None:
+                        extra_attributes["http.request.body.size"] = final_request_size
+                    if final_response_size is not None:
+                        extra_attributes["http.response.body.size"] = final_response_size
+                    # Partial buffers from aborted requests/responses are never exported
+                    stash_request_headers = group_headers(request_headers) if config.capture_request_headers else None
+                    stash_response_headers = group_headers(response_headers) if response_headers is not None else None
+                    stash_request_body = (
+                        BODY_TOO_LARGE
+                        if request_too_large
+                        else (
+                            bytes(request_body) if capture_request and request_body and request_body_complete else None
+                        )
                     )
-                )
-                if stash_request_headers or stash_request_body or stash_response_headers or stash_response_body:
-                    processor.update_stash(
-                        span.context.span_id,
-                        request_headers=stash_request_headers,
-                        request_body=stash_request_body,
-                        response_headers=stash_response_headers,
-                        response_body=stash_response_body,
+                    stash_response_body = (
+                        BODY_TOO_LARGE
+                        if capture_response and response_too_large
+                        else (
+                            bytes(response_body)
+                            if capture_response and response_body and response_body_complete
+                            else None
+                        )
                     )
-                if deferred_span_id is not None:
-                    processor.finish_export(deferred_span_id, extra_attributes or None)
-                else:
-                    for key, value in extra_attributes.items():
-                        span.set_attribute(key, value)
-            metrics.record_request(
-                method=scope.get("method", ""),
-                route=route or "",
-                status_code=status,
-                consumer=get_consumer_identifier(),
-                duration=duration,
-                request_size=final_request_size,
-                response_size=final_response_size,
-                scheme=scope.get("scheme"),
-            )
-            reset_consumer()
+                    if stash_request_headers or stash_request_body or stash_response_headers or stash_response_body:
+                        processor.update_stash(
+                            span.context.span_id,
+                            request_headers=stash_request_headers,
+                            request_body=stash_request_body,
+                            response_headers=stash_response_headers,
+                            response_body=stash_response_body,
+                        )
+                    if deferred_span_id is not None:
+                        processor.finish_export(deferred_span_id, extra_attributes or None)
+                    else:
+                        for key, value in extra_attributes.items():
+                            span.set_attribute(key, value)
+                method = str(scope.get("method", ""))
+                if (
+                    inspect_validation_response
+                    and response_body_complete
+                    and not response_too_large
+                    and route
+                    and method.upper() != "OPTIONS"
+                    and self.validation_error_extractor is not None
+                ):
+                    data = validation_errors.decode_json_response(bytes(response_body), response_content_encoding)
+                    if data is not None:
+                        validation_errors.add_validation_errors(
+                            consumer,
+                            method,
+                            route,
+                            self.validation_error_extractor(status, data),
+                        )
+                if status == 500:
+                    server_errors.add_server_error(consumer, method, route, exception_holder)
+                metrics.record_request(
+                    method=method,
+                    route=route or "",
+                    status_code=status,
+                    consumer=consumer,
+                    duration=duration,
+                    request_size=final_request_size,
+                    response_size=final_response_size,
+                    scheme=scope.get("scheme"),
+                )
+            finally:
+                reset_consumer()
 
         async def send_wrapper(message: Message) -> None:
             nonlocal status, response_started, response_size, response_size_counter, response_headers
-            nonlocal response_body, response_body_complete, response_too_large, capture_response, deferred_span_id
+            nonlocal response_content_encoding, response_body, response_body_complete, response_too_large
+            nonlocal capture_response, inspect_validation_response, deferred_span_id
             try:
                 if message["type"] == "http.response.start":
                     response_started = True
@@ -201,14 +235,19 @@ class ApitallyASGIMiddleware:
                     if content_length is not None and get_header(headers, b"transfer-encoding") != b"chunked":
                         response_size = content_length
                     kept = is_server_span_kept()
-                    capture_response = (
-                        kept
-                        and config.capture_response_body
-                        and is_allowed_content_type(get_header(headers, b"content-type"))
+                    content_type = get_header(headers, b"content-type")
+                    capture_response = kept and config.capture_response_body and is_allowed_content_type(content_type)
+                    inspect_validation_response = (
+                        self.validation_error_extractor is not None
+                        and status in (400, 422)
+                        and validation_errors.is_json_content_type(content_type)
                     )
                     response_too_large = (
-                        capture_response and response_size is not None and response_size > MAX_BODY_SIZE
+                        (capture_response or inspect_validation_response)
+                        and response_size is not None
+                        and response_size > MAX_BODY_SIZE
                     )
+                    response_content_encoding = get_header(headers, b"content-encoding")
                     if kept and config.capture_response_headers:
                         response_headers = headers
                     if kept:
@@ -222,7 +261,7 @@ class ApitallyASGIMiddleware:
                 elif message["type"] == "http.response.body":
                     body = message.get("body", b"")
                     response_size_counter += len(body)
-                    if capture_response and not response_too_large:
+                    if (capture_response or inspect_validation_response) and not response_too_large:
                         response_body += body
                         if len(response_body) > MAX_BODY_SIZE:
                             response_too_large = True
@@ -238,14 +277,19 @@ class ApitallyASGIMiddleware:
         wrapped_receive = receive_wrapper if capture_request and not request_too_large else receive
         try:
             await self.app(scope, wrapped_receive, send_wrapper)
-        except BaseException:
-            status = status or 500
+        except BaseException as exc:
+            server_errors.set_exception(exc, exception_holder)
+            if not response_started:
+                status = 500
             raise
         finally:
             try:
                 finish()
             except Exception:  # pragma: no cover
                 logger.exception("Error in Apitally ASGI middleware")
+            # Outer Sentry middleware may add its event ID after this response is finalized.
+            if exception_holder.server_error_key is None:
+                server_errors.reset_exception_holder()
 
 
 def resolve_route_from_scope(scope: Scope) -> str | None:

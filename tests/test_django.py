@@ -1,7 +1,7 @@
 import json
 import sys
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import django
 import pytest
@@ -15,7 +15,7 @@ from opentelemetry.trace import SpanKind
 
 import apitally
 from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, _convert_proxy_objects
-from apitally.shared import activation, config
+from apitally.shared import activation, config, server_errors
 from apitally.shared.config import BODY_TOO_LARGE
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
@@ -24,6 +24,7 @@ from tests.conftest import (
     attach_metric_reader,
     collect_metrics,
     duration_data_points,
+    exported_error_records,
     exported_spans,
     startup_payload,
     unwrap,
@@ -199,6 +200,30 @@ def test_streaming_response_size_and_body_captured(exporters: InMemoryExporters,
     assert size_point.sum == 12
 
 
+def test_streaming_exception_reports_one_server_error_with_late_sentry_id(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(monkeypatch)
+    activate_via_signal()
+
+    response = Client().get("/stream/?fail=1")
+    assert response.status_code == 500
+    iterator = iter(response.streaming_content)  # ty: ignore[unresolved-attribute]
+    assert next(iterator) == b"chunk1"
+    with pytest.raises(RuntimeError, match="stream failed"):
+        next(iterator)
+    server_errors.set_sentry_event_id("late-event-id")
+
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.server_error"
+    body = cast("dict[str, Any]", record.body)
+    assert body["path"] == "/stream/"
+    assert body["type"] == "builtins.RuntimeError"
+    assert body["message"] == "stream failed"
+    assert body["sentry_event_id"] == "late-event-id"
+    assert body["count"] == 1
+
+
 def test_no_response_size_when_client_stops_reading_mid_stream(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
@@ -303,6 +328,12 @@ def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporter
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.response.status_code"] == 500
     assert (point.attributes or {})["error.type"] == "500"
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.server_error"
+    body = cast("dict[str, Any]", record.body)
+    assert body["type"] == "builtins.ValueError"
+    assert body["message"] == "boom"
+    assert body["count"] == 1
 
 
 def test_pre_instrumented_app_adapts_without_duplicate_spans(

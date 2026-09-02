@@ -6,15 +6,18 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
+from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from starlette.middleware.errors import ServerErrorMiddleware
+from starlette.routing import Match
 
-from apitally.shared import activation, config, startup
+from apitally.shared import activation, config, server_errors, startup, validation_errors
 from apitally.shared.asgi import ApitallyASGIMiddleware
 
 
 if TYPE_CHECKING:
     from starlette.routing import BaseRoute
-    from starlette.types import Scope
+    from starlette.types import ASGIApp, Receive, Scope, Send
 
 
 __all__ = ["init"]
@@ -63,15 +66,41 @@ def _instrument_app(app: FastAPI) -> None:
     build_inner = app.build_middleware_stack
 
     def build_with_shim() -> activation.ASGIActivationShim:
+        inner = build_inner()
+        if (
+            isinstance(inner, ServerErrorMiddleware)
+            and isinstance(inner.app, OpenTelemetryMiddleware)
+            and isinstance(inner.app.app, ServerErrorMiddleware)
+        ):
+            inner.app.app.app = _ExceptionRecordingMiddleware(inner.app.app.app)
         return activation.ASGIActivationShim(
             ApitallyASGIMiddleware(
-                build_inner(),  # ty: ignore[invalid-argument-type]
+                inner,  # ty: ignore[invalid-argument-type]
                 resolve_route=_resolve_route,
                 use_scope_client_address=True,
+                validation_error_extractor=_extract_validation_errors,
             )
         )
 
     app.build_middleware_stack = build_with_shim  # ty: ignore[invalid-assignment]
+
+
+class _ExceptionRecordingMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await self.app(scope, receive, send)
+        except Exception as exc:
+            server_errors.set_exception(exc)
+            raise
+
+
+def _extract_validation_errors(status_code: int, data: object) -> list[validation_errors.ValidationError]:
+    if status_code != 422:
+        return []
+    return validation_errors.extract_pydantic_validation_errors(data)
 
 
 def _resolve_route(scope: Scope) -> str | None:
@@ -79,7 +108,28 @@ def _resolve_route(scope: Scope) -> str | None:
     # templated path is only on the effective route context, scope["route"].path lacks the prefix
     context = scope.get("fastapi", {}).get("effective_route_context")
     path = getattr(context, "path", None) or getattr(scope.get("route"), "path", None)
-    return path if isinstance(path, str) else None
+    if isinstance(path, str):
+        return path
+
+    routes = getattr(scope.get("app"), "routes", None)
+    return _resolve_registered_route(scope, routes) if isinstance(routes, list) else None
+
+
+def _resolve_registered_route(scope: Scope, routes: list[BaseRoute]) -> str | None:
+    for registered_route in routes:
+        contexts = getattr(registered_route, "effective_route_contexts", None)
+        routes_to_match = contexts() if callable(contexts) else [registered_route]
+        for route in routes_to_match:
+            match, child_scope = route.matches(scope)
+            if match != Match.FULL:
+                continue
+            if (child_routes := getattr(route, "routes", None)) is not None:
+                path = _resolve_registered_route({**scope, **child_scope}, child_routes)
+                return getattr(route, "path", "") + path if path else None
+            path = getattr(route, "path", None)
+            if isinstance(path, str):
+                return path
+    return None
 
 
 def _get_paths(app: FastAPI) -> list[dict[str, str]]:

@@ -9,7 +9,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind
 
-from apitally.shared import activation, sentry
+from apitally.shared import activation, sentry, server_errors
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.span_processor import ApitallySpanProcessor
 from tests.conftest import CONTRIB_SCOPE, INSTANCE_ID, WRITE_TOKEN
@@ -48,6 +48,13 @@ def initialize_sentry() -> Generator[None]:
     )
     yield
     sentry_sdk.get_client().close()
+
+
+def test_sentry_event_id_reaches_exception_holder_without_retained_span():
+    holder = server_errors.init_exception_holder()
+    sentry.sentry_event_processor({"exception": {}, "event_id": "event-id"}, {})
+    assert holder.sentry_event_id == "event-id"
+    assert sentry.pending_event_ids == {}
 
 
 def test_sentry_event_id_written_after_server_span_ended():

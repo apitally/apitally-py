@@ -25,7 +25,7 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind
 
 import apitally
-from apitally.shared import activation, export, metrics, startup
+from apitally.shared import activation, export, metrics, server_errors, startup, validation_errors
 from apitally.shared.config import set_config
 from apitally.shared.context import get_server_span_processor
 from apitally.shared.export import (
@@ -42,8 +42,10 @@ from apitally.shared.export import (
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.log_processor import MAX_LOG_VALUE_LENGTH
 from apitally.shared.redaction import REDACTED
+from apitally.shared.server_errors import ExceptionHolder
 from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.spool import MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT, MAX_UNCOMPRESSED_FILE_SIZE, Spool
+from apitally.shared.validation_errors import ValidationError
 from tests.conftest import (
     CONTRIB_SCOPE,
     INSTANCE_ID,
@@ -62,10 +64,16 @@ def spool() -> Iterator[Spool]:
     spool.clear()
 
 
-def make_worker(spool: Spool, endpoint: str) -> ExportWorker:
-    set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=endpoint)
+def make_worker(spool: Spool, endpoint: str, **config_kwargs: Any) -> ExportWorker:
+    set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=endpoint, **config_kwargs)
     processor_stub = SimpleNamespace(downstream=SimpleNamespace(force_flush=lambda timeout_millis=30_000: True))
-    return ExportWorker(spool, cast("Any", processor_stub), cast("Any", processor_stub), env="dev")
+    return ExportWorker(
+        spool,
+        cast("Any", processor_stub),
+        cast("Any", processor_stub),
+        make_log_provider(spool).get_logger("apitally"),
+        env="dev",
+    )
 
 
 def read_trace_request(spool: Spool) -> ExportTraceServiceRequest:
@@ -197,6 +205,45 @@ def test_export_cycle_posts_all_three_signals_in_lockstep(spool: Spool, otlp_ser
     assert headers["User-Agent"].startswith("apitally-py/")
     assert gzip.decompress(body) == b"trace-payload"
     assert spool.pending_files() == []
+
+
+def test_export_cycle_emits_structured_error_events_without_trace_context(
+    spool: Spool, otlp_server: StubOTLPServer
+) -> None:
+    worker = make_worker(spool, otlp_server.url, capture_logs=False)
+    validation_errors.add_validation_errors(
+        "consumer",
+        "post",
+        "/items",
+        [ValidationError("body", "name", "required", "missing")],
+    )
+    server_errors.add_server_error(
+        "consumer",
+        "GET",
+        "/items",
+        ExceptionHolder(RuntimeError("boom"), "event-id"),
+    )
+
+    worker.run_cycle(None)
+
+    (request_body,) = [body for path, _, body in otlp_server.requests if path == "/v1/logs"]
+    request = ExportLogsServiceRequest.FromString(gzip.decompress(request_body))
+    scope_logs = [scope_logs for resource in request.resource_logs for scope_logs in resource.scope_logs]
+    assert {scope.scope.name for scope in scope_logs} == {"apitally"}
+    records = [record for scope in scope_logs for record in scope.log_records]
+    assert {record.event_name for record in records} == {
+        validation_errors.EVENT_NAME,
+        server_errors.EVENT_NAME,
+    }
+    for record in records:
+        assert record.time_unix_nano > 0
+        assert record.trace_id == b""
+        assert record.span_id == b""
+        assert record.body.WhichOneof("value") == "kvlist_value"
+        keys = {entry.key for entry in record.body.kvlist_value.values}
+        assert {"method", "path", "count"} < keys
+    assert validation_errors.drain_validation_errors() == []
+    assert server_errors.drain_server_errors() == []
 
 
 def test_failed_send_retries_next_cycle_with_identical_bytes(spool: Spool, otlp_server: StubOTLPServer) -> None:
@@ -336,7 +383,13 @@ def test_export_cycle_suppresses_instrumentation(spool: Spool, otlp_server: Stub
             force_flush=lambda timeout_millis=30_000: suppressed_flags.append(not is_instrumentation_enabled())
         )
     )
-    worker = ExportWorker(spool, cast("Any", processor_stub), cast("Any", processor_stub), env="dev")
+    worker = ExportWorker(
+        spool,
+        cast("Any", processor_stub),
+        cast("Any", processor_stub),
+        make_log_provider(spool).get_logger("apitally"),
+        env="dev",
+    )
     worker.session.hooks["response"] = [
         lambda response, **kwargs: suppressed_flags.append(not is_instrumentation_enabled())
     ]
@@ -346,16 +399,36 @@ def test_export_cycle_suppresses_instrumentation(spool: Spool, otlp_server: Stub
     assert is_instrumentation_enabled()
 
 
-def test_shutdown_performs_final_drain_and_stops_thread(
+def test_shutdown_waits_for_active_cycle_and_emits_pending_error_groups(
     spool: Spool, otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
+    cycle_started = threading.Event()
+    release_cycle = threading.Event()
+
+    def block_cycle(path: str) -> tuple[int, dict[str, str]]:
+        if path == "/v1/traces" and not release_cycle.is_set():
+            cycle_started.set()
+            release_cycle.wait(5)
+        return (200, {})
+
+    otlp_server.respond = block_cycle
+    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 0.01)
     worker = make_worker(spool, otlp_server.url)
-    worker.start()
     spool.append("traces", b"final-payload")
-    worker.shutdown()
+    worker.start()
+    assert cycle_started.wait(5)
+    server_errors.add_server_error(None, "GET", "/items", ExceptionHolder(RuntimeError("boom")))
+
+    shutdown_thread = threading.Thread(target=worker.shutdown)
+    shutdown_thread.start()
+    shutdown_thread.join(0.05)
+    assert shutdown_thread.is_alive()
+    release_cycle.set()
+    shutdown_thread.join(5)
+
+    assert not shutdown_thread.is_alive()
     assert unwrap(worker.thread).is_alive() is False
-    assert otlp_server.paths() == ["/v1/traces"]
+    assert sorted(otlp_server.paths()) == ["/v1/logs", "/v1/traces"]
     assert spool.pending_files() == []
 
 
@@ -427,6 +500,7 @@ def test_export_worker_uses_proxies(spool: Spool, otlp_server: StubOTLPServer, m
         spool,
         cast("Any", processor_stub),
         cast("Any", processor_stub),
+        make_log_provider(spool).get_logger("apitally"),
         env="dev",
         proxy_urls=resolve_proxy_urls(),
     )

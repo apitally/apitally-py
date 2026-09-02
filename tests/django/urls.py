@@ -1,4 +1,5 @@
 import json
+from collections.abc import Iterator
 
 from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.urls import include, path
@@ -16,6 +17,13 @@ def create_item(request: HttpRequest) -> JsonResponse:
 
 
 def stream(request: HttpRequest) -> StreamingHttpResponse:
+    if "fail" in request.GET:
+
+        def content() -> Iterator[bytes]:
+            yield b"chunk1"
+            raise RuntimeError("stream failed")
+
+        return StreamingHttpResponse(content(), status=500, content_type="text/plain")
     return StreamingHttpResponse(iter([b"chunk1", b"chunk2"]), content_type="text/plain")
 
 
