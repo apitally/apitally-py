@@ -9,15 +9,19 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler, TraceIdRatioBased
 from opentelemetry.trace import SpanKind, Tracer
 
-from apitally.shared import config, metrics
+from apitally.shared import config, metrics, server_errors, validation_errors
 from apitally.shared.asgi import ApitallyASGIMiddleware
-from apitally.shared.config import BODY_TOO_LARGE, set_config
+from apitally.shared.config import BODY_TOO_LARGE, MAX_BODY_SIZE, set_config
 from apitally.shared.consumer import set_consumer
 from apitally.shared.redaction import REDACTED
 from tests.conftest import WRITE_TOKEN, collect_metrics, create_trace_pipeline, setup_metric_reader
 
 
 JSON_HEADERS = [("content-type", "application/json")]
+
+
+def extract_validation_errors(status_code: int, data: object) -> list[validation_errors.ValidationError]:
+    return validation_errors.extract_pydantic_validation_errors(data)
 
 
 @pytest.fixture(autouse=True)
@@ -83,13 +87,14 @@ def make_scope(
 
 async def send_request(
     tracer: Tracer,
-    app: EchoApp,
+    app: Any,
     request_headers: list[tuple[str, str]] | None = None,
     request_chunks: list[bytes] | None = None,
     method: str = "POST",
     route: str = "/items",
+    validation_error_extractor: Any = None,
 ) -> list[dict[str, Any]]:
-    middleware = ApitallyASGIMiddleware(app)
+    middleware = ApitallyASGIMiddleware(app, validation_error_extractor=validation_error_extractor)
     scope = make_scope(method=method, route=route, headers=request_headers)
     chunks = request_chunks or [b""]
     messages = [
@@ -448,3 +453,175 @@ async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricRe
     assert isinstance(duration_metric.data, ExponentialHistogram)
     (point,) = duration_metric.data.data_points
     assert point.count == 1
+
+
+async def test_validation_response_buffer_is_independent_of_trace_body_capture():
+    set_config(write_token=WRITE_TOKEN)
+    tracer, exporter = create_trace_pipeline()
+    app = EchoApp(
+        status=422,
+        response_headers=JSON_HEADERS,
+        response_chunks=[b'{"detail":[{"loc":["body","name"],"msg":"required","type":"missing"}]}'],
+    )
+    await send_request(
+        tracer,
+        app,
+        validation_error_extractor=extract_validation_errors,
+    )
+
+    assert validation_errors.drain_validation_errors() == [
+        {
+            "method": "POST",
+            "path": "/items",
+            "source": "body",
+            "field": "name",
+            "message": "required",
+            "type": "missing",
+            "count": 1,
+        }
+    ]
+    (span,) = exporter.get_finished_spans()
+    assert "apitally.response.body" not in (span.attributes or {})
+
+
+@pytest.mark.parametrize("response", ["non-json", "ineligible", "over-cap", "incomplete"])
+async def test_ineligible_validation_responses_produce_no_occurrence_or_trace_stash(response: str):
+    set_config(write_token=WRITE_TOKEN)
+    tracer, exporter = create_trace_pipeline()
+    body = b'{"detail":[{"loc":["body","name"],"msg":"required","type":"missing"}]}'
+    status = 200 if response == "ineligible" else 422
+    headers = [("content-type", "text/plain")] if response == "non-json" else JSON_HEADERS
+    if response == "over-cap":
+        body = b'{"detail":[],"padding":"' + b"x" * MAX_BODY_SIZE + b'"}'
+    if response == "incomplete":
+
+        async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 422,
+                    "headers": [(b"content-type", b"application/json")],
+                }
+            )
+            await send({"type": "http.response.body", "body": body, "more_body": True})
+
+    else:
+        app = EchoApp(status=status, response_headers=headers, response_chunks=[body])
+    await send_request(
+        tracer,
+        app,
+        validation_error_extractor=extract_validation_errors,
+    )
+
+    assert validation_errors.drain_validation_errors() == []
+    (span,) = exporter.get_finished_spans()
+    assert "apitally.response.body" not in (span.attributes or {})
+
+
+@pytest.mark.parametrize("error_kind", ["validation", "server"])
+@pytest.mark.parametrize("drop_kind", ["response", "user-sampler"])
+async def test_error_aggregation_does_not_require_exported_trace(error_kind: str, drop_kind: str):
+    config_kwargs = {"sample_on_response": lambda span: False} if drop_kind == "response" else {}
+    sampler = TraceIdRatioBased(0.0) if drop_kind == "user-sampler" else ALWAYS_ON
+    set_config(write_token=WRITE_TOKEN, **config_kwargs)
+    tracer, exporter = create_trace_pipeline(sampler=sampler)
+    if error_kind == "validation":
+        app: Any = EchoApp(
+            status=422,
+            response_headers=JSON_HEADERS,
+            response_chunks=[b'{"detail":[{"loc":["query","page"],"msg":"invalid","type":"int"}]}'],
+        )
+        extractor = extract_validation_errors
+    else:
+
+        async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+            raise RuntimeError("boom")
+
+        extractor = None
+
+    if error_kind == "server":
+        with pytest.raises(RuntimeError):
+            await send_request(tracer, app, method="GET", validation_error_extractor=extractor)
+    else:
+        await send_request(tracer, app, method="GET", validation_error_extractor=extractor)
+
+    assert exporter.get_finished_spans() == ()
+    validation_events = validation_errors.drain_validation_errors()
+    server_events = server_errors.drain_server_errors()
+    assert len(validation_events if error_kind == "validation" else server_events) == 1
+    assert (server_events if error_kind == "validation" else validation_events) == []
+
+
+async def test_asgi_exception_before_response_uses_500_and_accepts_late_sentry_id():
+    set_config(write_token=WRITE_TOKEN)
+    tracer, _ = create_trace_pipeline()
+
+    async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        raise RuntimeError("before")
+
+    with pytest.raises(RuntimeError):
+        await send_request(tracer, app, method="GET")
+    server_errors.set_sentry_event_id("late-event-id")
+    (event,) = server_errors.drain_server_errors()
+    assert event["message"] == "before"
+    assert event["sentry_event_id"] == "late-event-id"
+
+
+async def test_asgi_exception_after_response_start_adds_no_server_error():
+    set_config(write_token=WRITE_TOKEN)
+    tracer, _ = create_trace_pipeline()
+
+    async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        raise RuntimeError("after")
+
+    with pytest.raises(RuntimeError):
+        await send_request(tracer, app, method="GET")
+    assert server_errors.drain_server_errors() == []
+
+
+@pytest.mark.parametrize("error_kind", ["validation", "server"])
+@pytest.mark.parametrize(("method", "route"), [("OPTIONS", "/items"), ("GET", "")])
+async def test_options_and_unmatched_routes_add_no_error_groups(error_kind: str, method: str, route: str):
+    set_config(write_token=WRITE_TOKEN)
+    tracer, _ = create_trace_pipeline()
+    if error_kind == "validation":
+        app: Any = EchoApp(
+            status=422,
+            response_headers=JSON_HEADERS,
+            response_chunks=[b'{"detail":[{"loc":["query","page"],"msg":"invalid","type":"int"}]}'],
+        )
+        await send_request(
+            tracer,
+            app,
+            method=method,
+            route=route,
+            validation_error_extractor=extract_validation_errors,
+        )
+    else:
+
+        async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+            raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError):
+            await send_request(tracer, app, method=method, route=route)
+    assert validation_errors.drain_validation_errors() == []
+    assert server_errors.drain_server_errors() == []
+
+
+async def test_terminal_completion_adds_once_and_ignores_later_exception():
+    set_config(write_token=WRITE_TOKEN)
+    tracer, _ = create_trace_pipeline()
+
+    async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        server_errors.set_exception(RuntimeError("boom"))
+        await send({"type": "http.response.start", "status": 500, "headers": []})
+        await send({"type": "http.response.body", "body": b"error", "more_body": False})
+        server_errors.set_exception(RuntimeError("late"))
+        server_errors.set_sentry_event_id("late-event-id")
+
+    await send_request(tracer, app, method="GET")
+    (event,) = server_errors.drain_server_errors()
+    assert event["message"] == "boom"
+    assert "sentry_event_id" not in event
+    assert event["count"] == 1

@@ -2,6 +2,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally import capture_exception, set_request_attribute
+from apitally.shared import server_errors
 from apitally.shared.context import get_server_span
 from tests.conftest import unwrap
 
@@ -16,6 +17,13 @@ def test_set_request_attribute_targets_server_span(tracer: Tracer, span_exporter
 def test_set_request_attribute_outside_request_is_silent_noop():
     assert get_server_span() is None
     set_request_attribute("tenant", "acme")
+
+
+def test_capture_exception_updates_holder_without_recording_span():
+    holder = server_errors.init_exception_holder()
+    exception = ValueError("x")
+    capture_exception(exception)
+    assert holder.exception is exception
 
 
 def test_capture_exception_records_event_on_server_span(tracer: Tracer, span_exporter: InMemorySpanExporter):

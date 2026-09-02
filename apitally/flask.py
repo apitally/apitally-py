@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from flask import Flask, request
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
-from apitally.shared import activation, config, startup
+from apitally.shared import activation, config, server_errors, startup
 from apitally.shared.helpers import set_request_attribute
 from apitally.shared.wsgi import ApitallyWSGIMiddleware
 
@@ -40,6 +40,13 @@ def init(
             return
         if isinstance(app.wsgi_app, activation.WSGIActivationShim):
             return
+        original_handle_exception = app.handle_exception
+
+        def handle_exception(exception: Exception) -> Any:
+            server_errors.set_exception(exception)
+            return original_handle_exception(exception)
+
+        app.handle_exception = handle_exception  # ty: ignore[invalid-assignment]
         transport = ApitallyWSGIMiddleware(app.wsgi_app, get_route=_create_route_resolver(app))
         app.wsgi_app = transport  # ty: ignore[invalid-assignment]
         if not getattr(app, "_is_instrumented_by_opentelemetry", False):

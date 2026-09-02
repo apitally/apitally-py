@@ -1,5 +1,6 @@
 import json
 from collections.abc import Iterator
+from typing import Any, cast
 
 import pytest
 from django.test import Client
@@ -9,6 +10,7 @@ from tests.conftest import (
     InMemoryExporters,
     attach_metric_reader,
     duration_data_points,
+    exported_error_records,
     exported_spans,
     startup_payload,
 )
@@ -64,3 +66,18 @@ def test_request_flow(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPa
     assert span.attributes["http.response.status_code"] == 200
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.route"] == "/api/foo/{bar}"
+
+
+def test_validation_error_uses_path_source_and_route(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(monkeypatch)
+    activate_via_signal()
+
+    response = Client().get("/api/foo/not-an-int")
+    assert response.status_code == 422
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.validation_error"
+    body = cast("dict[str, Any]", record.body)
+    assert body["path"] == "/api/foo/{bar}"
+    assert body["source"] == "path"
+    assert body["field"] == "bar"
+    assert body["count"] == 1

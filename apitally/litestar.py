@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING
 
 from litestar.exceptions import HTTPException
@@ -15,7 +15,7 @@ from litestar.plugins.opentelemetry import (
 )
 from litestar.routes import HTTPRoute
 
-from apitally.shared import activation, config, startup
+from apitally.shared import activation, config, startup, validation_errors
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.context import get_server_span
 from apitally.shared.helpers import capture_exception
@@ -93,6 +93,7 @@ class ApitallyPlugin(InitPluginProtocol):
                         app.asgi_handler,  # ty: ignore[invalid-argument-type]
                         resolve_route=_resolve_route,  # ty: ignore[invalid-argument-type]
                         use_scope_client_address=True,
+                        validation_error_extractor=_extract_validation_errors,
                     )
                 )
             startup.set_app_info(
@@ -141,6 +142,33 @@ def _after_exception(exception: Exception, scope: Scope) -> None:
     if isinstance(exception, HTTPException) and exception.status_code < 500:
         return
     capture_exception(exception)
+
+
+def _extract_validation_errors(status_code: int, data: object) -> list[validation_errors.ValidationError]:
+    if status_code != 400 or not isinstance(data, Mapping):
+        return []
+    detail = data.get("detail")
+    extra = data.get("extra")
+    if not isinstance(detail, str) or "validation" not in detail.lower() or not isinstance(extra, list):
+        return []
+    errors = []
+    for error in extra:
+        if not isinstance(error, Mapping):
+            continue
+        source = error.get("source", "body")
+        key = error.get("key")
+        message = error.get("message")
+        if not isinstance(key, str) or not key or not isinstance(message, str) or not message:
+            continue
+        errors.append(
+            validation_errors.ValidationError(
+                source=validation_errors.SOURCE_ALIASES.get(source.lower(), "") if isinstance(source, str) else "",
+                field=key,
+                message=message,
+                type="",
+            )
+        )
+    return errors
 
 
 def _resolve_route(scope: Scope) -> str | None:

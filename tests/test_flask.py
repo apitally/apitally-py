@@ -1,5 +1,5 @@
 import json
-from typing import Any, Iterator
+from typing import Any, Iterator, cast
 
 import pytest
 from flask import Blueprint, Flask, Response, jsonify
@@ -18,6 +18,7 @@ from tests.conftest import (
     InMemoryExporters,
     attach_metric_reader,
     duration_data_points,
+    exported_error_records,
     exported_spans,
     startup_payload,
     unwrap,
@@ -307,6 +308,11 @@ def test_unhandled_exception_recorded_on_server_span(
     (event,) = [e for e in span.events if e.name == "exception"]
     assert (event.attributes or {})["exception.type"] == "ValueError"
     assert (event.attributes or {})["exception.message"] == "boom"
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.server_error"
+    body = cast("dict[str, Any]", record.body)
+    assert body["type"] == "builtins.ValueError"
+    assert body["message"] == "boom"
 
 
 def test_pre_instrumented_app_adapts_without_duplicate_spans(
@@ -323,3 +329,39 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     assert attributes["http.route"] == "/items/<int:item_id>"
     # The Apitally middleware still sets its attributes on the span created by the user's instrumentation
     assert "http.response.header.content-type" in attributes
+
+    error_response = app.test_client().get("/error")
+    assert error_response.status_code == 500
+    assert error_response.data
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.server_error"
+    body = cast("dict[str, Any]", record.body)
+    assert body["message"] == "boom"
+
+
+def test_sample_rate_zero_drops_trace_but_keeps_server_error(
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch, sample_rate=0.0)
+    response = app.test_client().get("/error")
+    assert response.status_code == 500
+    assert response.data
+    assert exported_spans(exporters) == []
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.server_error"
+    body = cast("dict[str, Any]", record.body)
+    assert body["message"] == "boom"
+
+
+def test_deliberate_503_without_exception_does_not_report(
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    @app.get("/unavailable")
+    def unavailable() -> tuple[str, int]:
+        return "unavailable", 503
+
+    init(app, monkeypatch)
+    response = app.test_client().get("/unavailable")
+    assert response.status_code == 503
+    assert response.data
+    assert exported_error_records(exporters) == []

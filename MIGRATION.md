@@ -65,7 +65,6 @@ All options move to keyword arguments of `apitally.init(...)` (or `ApitallyPlugi
 | `exclude_paths` | `exclude_paths` (unchanged) |
 | `exclude_callback` | Removed. Replaced by the sampling API: `sample_rate`, `sample_on_request` / `sample_on_response` (see below). |
 | `apitally.client.*` imports | Removed. The Hub transport is replaced by OTLP export; there is no public API under `apitally.client`. |
-| Validation and server error capture | No SDK-side API anymore. Apitally derives these server-side from standard OpenTelemetry exception events on traces. |
 
 ## Consumers
 
