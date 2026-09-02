@@ -89,17 +89,17 @@ def test_each_validation_error_identity_field_separates_groups() -> None:
     assert len(validation_errors.drain_validation_errors()) == len(variants)
 
 
-def test_character_limits_are_applied_before_validation_error_grouping() -> None:
+def test_validation_error_character_limits_are_applied_before_grouping() -> None:
     prefix = "é"
     first = ValidationError(prefix * 32 + "a", prefix * 2_048 + "a", prefix * 2_048 + "a", prefix * 128 + "a")
     second = ValidationError(prefix * 32 + "b", prefix * 2_048 + "b", prefix * 2_048 + "b", prefix * 128 + "b")
-    validation_errors.add_validation_errors(None, prefix * 12 + "a", prefix * 2_000 + "a", [first])
-    validation_errors.add_validation_errors(None, prefix * 12 + "b", prefix * 2_000 + "b", [second])
+    validation_errors.add_validation_errors(None, "POST", "/items", [first])
+    validation_errors.add_validation_errors(None, "POST", "/items", [second])
 
     (body,) = validation_errors.drain_validation_errors()
     assert body == {
-        "method": prefix.upper() * 12,
-        "path": prefix * 2_000,
+        "method": "POST",
+        "path": "/items",
         "source": prefix * 32,
         "field": prefix * 2_048,
         "message": prefix * 2_048,

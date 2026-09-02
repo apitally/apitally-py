@@ -16,11 +16,10 @@ def test_mutable_exception_holder_is_shared_with_copied_context() -> None:
 def test_exception_replacement_collapse_and_sentry_id_rules() -> None:
     holder = server_errors.init_exception_holder()
     first = ValueError("first")
-    server_errors.set_sentry_event_id(" a" * 32)
+    server_errors.set_sentry_event_id(" a ")
     server_errors.set_exception(first)
     first_event_id = holder.sentry_event_id
-    assert first_event_id is not None
-    assert len(first_event_id) == server_errors.MAX_SENTRY_EVENT_ID_LENGTH
+    assert first_event_id == "a"
 
     exception_group_type: Any = server_errors.exception_group_types[0]
     server_errors.set_exception(exception_group_type("group", [first]))
@@ -105,17 +104,15 @@ def test_each_server_error_identity_field_separates_groups() -> None:
     assert len(server_errors.drain_server_errors()) == len(variants) + 1
 
 
-def test_character_limits_are_applied_before_server_error_grouping() -> None:
+def test_exception_character_limits_are_applied_before_server_error_grouping() -> None:
     first = RuntimeError("é" * server_errors.MAX_STACKTRACE_LENGTH + "a")
     second = RuntimeError("é" * server_errors.MAX_STACKTRACE_LENGTH + "b")
-    server_errors.add_server_error(None, "é" * 12 + "a", "é" * 2_000 + "a", ExceptionHolder(first))
-    server_errors.add_server_error(None, "é" * 12 + "b", "é" * 2_000 + "b", ExceptionHolder(second))
+    server_errors.add_server_error(None, "GET", "/items", ExceptionHolder(first))
+    server_errors.add_server_error(None, "GET", "/items", ExceptionHolder(second))
 
     events = server_errors.drain_server_errors()
     assert len(events) == 1
     assert events[0]["count"] == 2
-    assert len(events[0]["method"]) == 12
-    assert len(events[0]["path"]) == 2_000
     assert len(events[0]["message"]) == server_errors.MAX_EXCEPTION_MESSAGE_LENGTH
     assert len(events[0]["stacktrace"]) <= server_errors.MAX_STACKTRACE_LENGTH
 

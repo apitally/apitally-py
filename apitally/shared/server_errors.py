@@ -20,12 +20,9 @@ else:  # pragma: no cover
 
 EVENT_NAME = "apitally.request.server_error"
 MAX_GROUPS = 100
-MAX_METHOD_LENGTH = 12
-MAX_PATH_LENGTH = 2_000
 MAX_EXCEPTION_TYPE_LENGTH = 256
 MAX_EXCEPTION_MESSAGE_LENGTH = 2_048
 MAX_STACKTRACE_LENGTH = 65_536
-MAX_SENTRY_EVENT_ID_LENGTH = 32
 MAX_COUNT = 2**32 - 1
 MESSAGE_TRUNCATION_SUFFIX = "... (truncated)"
 STACKTRACE_TRUNCATION_PREFIX = "... (truncated) ...\n"
@@ -79,7 +76,7 @@ def set_sentry_event_id(event_id: str) -> None:
     holder = exception_holder_var.get()
     if holder is None:
         return
-    event_id = event_id.strip()[:MAX_SENTRY_EVENT_ID_LENGTH]
+    event_id = event_id.strip()
     if not event_id:
         return
     holder.sentry_event_id = event_id
@@ -110,8 +107,8 @@ def add_server_error(
     exception = exception_holder.exception
     key = ServerErrorKey(
         consumer=consumer,
-        method=method[:MAX_METHOD_LENGTH],
-        path=path[:MAX_PATH_LENGTH],
+        method=method,
+        path=path,
         type=format_exception_type(exception),
         message=format_exception_message(exception),
         stacktrace=format_exception_stacktrace(exception),

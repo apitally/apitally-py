@@ -13,8 +13,6 @@ from apitally.shared.config import MAX_BODY_SIZE
 
 EVENT_NAME = "apitally.request.validation_error"
 MAX_GROUPS = 100
-MAX_METHOD_LENGTH = 12
-MAX_PATH_LENGTH = 2_000
 MAX_SOURCE_LENGTH = 32
 MAX_FIELD_LENGTH = 2_048
 MAX_MESSAGE_LENGTH = 2_048
@@ -66,8 +64,7 @@ def add_validation_errors(
 ) -> None:
     if not validation_errors:
         return
-    method = method.upper()[:MAX_METHOD_LENGTH]
-    path = path[:MAX_PATH_LENGTH]
+    method = method.upper()
     with validation_error_lock:
         for error in validation_errors:
             key = ValidationErrorKey(
