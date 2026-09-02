@@ -36,9 +36,12 @@ def stream_sized(request: HttpRequest) -> StreamingHttpResponse:
 async def stream_async(request: HttpRequest) -> StreamingHttpResponse:
     async def content():
         yield b"chunk1"
+        if "fail" in request.GET:
+            raise RuntimeError("stream failed")
         yield b"chunk2"
 
-    return StreamingHttpResponse(content(), content_type="text/plain")
+    status = 500 if "fail" in request.GET else 200
+    return StreamingHttpResponse(content(), status=status, content_type="text/plain")
 
 
 def whoami(request: HttpRequest) -> HttpResponse:

@@ -133,9 +133,9 @@ def test_request_body_captured_and_redacted(
 def test_client_address_uses_framework_resolved_client_ip(
     app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    app.add_middleware(TrustedProxyASGIMiddleware, trusted_peer="192.0.2.1")
+    app.add_middleware(TrustedProxyASGIMiddleware, trusted_peer="testclient")
     init(app, monkeypatch)
-    with TestClient(app, client=("192.0.2.1", 50000)) as client:
+    with TestClient(app) as client:
         response = client.get("/items/42", headers={"X-Forwarded-For": "203.0.113.10"})
     assert response.status_code == 200
 

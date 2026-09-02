@@ -10,7 +10,7 @@ from typing import Any
 
 if sys.version_info >= (3, 11):
     exception_group_types: tuple[type[BaseExceptionGroup], ...] = (BaseExceptionGroup,)  # noqa: F821
-else:
+else:  # pragma: no cover
     try:
         from exceptiongroup import BaseExceptionGroup as BackportBaseExceptionGroup
 

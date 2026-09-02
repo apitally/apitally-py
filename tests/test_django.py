@@ -70,7 +70,7 @@ def test_client_address_uses_framework_resolved_client_ip(
         response = Client().get(
             "/items/123/",
             REMOTE_ADDR="192.0.2.1",
-            headers={"X-Forwarded-For": "203.0.113.10"},
+            HTTP_X_FORWARDED_FOR="203.0.113.10",
         )
     finally:
         settings.MIDDLEWARE.remove(middleware)
@@ -280,6 +280,27 @@ async def test_span_export_waits_for_async_streaming_response_to_complete(
     assert span.attributes["apitally.response.body"] == "chunk1chunk2"
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.route"] == "/stream-async/"
+
+
+@pytest.mark.skipif(django.VERSION < (4, 2), reason="async streaming responses require Django 4.2")
+async def test_async_streaming_exception_reports_server_error(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(monkeypatch)
+    activate_via_signal()
+
+    response = await AsyncClient().get("/stream-async/?fail=1")
+    assert response.status_code == 500
+    iterator = response.streaming_content.__aiter__()  # ty: ignore[unresolved-attribute]
+    assert await anext(iterator) == b"chunk1"
+    with pytest.raises(RuntimeError, match="stream failed"):
+        await anext(iterator)
+
+    (record,) = exported_error_records(exporters)
+    body = cast("dict[str, Any]", record.body)
+    assert body["path"] == "/stream-async/"
+    assert body["type"] == "builtins.RuntimeError"
+    assert body["message"] == "stream failed"
 
 
 def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

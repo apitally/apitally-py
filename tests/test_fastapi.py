@@ -93,9 +93,9 @@ def test_request_exports_single_server_span_with_stable_semconv(
 def test_client_address_uses_framework_resolved_client_ip(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    app.add_middleware(TrustedProxyASGIMiddleware, trusted_peer="192.0.2.1")
+    app.add_middleware(TrustedProxyASGIMiddleware, trusted_peer="testclient")
     init(app, monkeypatch)
-    with TestClient(app, client=("192.0.2.1", 50000)) as client:
+    with TestClient(app) as client:
         response = client.get("/items/42", headers={"X-Forwarded-For": "203.0.113.10"})
     assert response.status_code == 200
 
@@ -107,12 +107,12 @@ def test_untrusted_forwarded_for_does_not_change_client_address(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch)
-    with TestClient(app, client=("192.0.2.1", 50000)) as client:
+    with TestClient(app) as client:
         response = client.get("/items/42", headers={"X-Forwarded-For": "203.0.113.10"})
     assert response.status_code == 200
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
-    assert unwrap(span.attributes)["client.address"] == "192.0.2.1"
+    assert unwrap(span.attributes)["client.address"] == "testclient"
 
 
 def test_histogram_attributes_and_log_correlation(
