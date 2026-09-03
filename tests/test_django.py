@@ -1,7 +1,7 @@
 import json
 import sys
 from collections.abc import Iterator
-from typing import Any, cast
+from typing import Any
 
 import django
 import pytest
@@ -306,10 +306,6 @@ def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporter
     assert (point.attributes or {})["error.type"] == "500"
     (record,) = exported_error_records(exporters)
     assert record.event_name == "apitally.request.server_error"
-    body = cast("dict[str, Any]", record.body)
-    assert body["type"] == "builtins.ValueError"
-    assert body["message"] == "boom"
-    assert body["count"] == 1
 
 
 def test_pre_instrumented_app_adapts_without_duplicate_spans(

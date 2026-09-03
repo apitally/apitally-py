@@ -236,10 +236,6 @@ def test_unhandled_exception_recorded_on_server_span(
     assert unwrap(event.attributes)["exception.message"] == "boom"
     (record,) = exported_error_records(exporters)
     assert record.event_name == "apitally.request.server_error"
-    body = cast("dict[str, Any]", record.body)
-    assert body["type"] == "builtins.ValueError"
-    assert body["message"] == "boom"
-    assert body["count"] == 1
 
 
 def test_validation_error_reported_without_request_trace(

@@ -6,17 +6,15 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
-from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from starlette.middleware.errors import ServerErrorMiddleware
 
-from apitally.shared import activation, config, server_errors, startup, validation_errors
+from apitally.shared import activation, config, startup, validation_errors
 from apitally.shared.asgi import ApitallyASGIMiddleware
 
 
 if TYPE_CHECKING:
     from starlette.routing import BaseRoute
-    from starlette.types import ASGIApp, Receive, Scope, Send
+    from starlette.types import Scope
 
 
 __all__ = ["init"]
@@ -66,12 +64,6 @@ def _instrument_app(app: FastAPI) -> None:
 
     def build_with_shim() -> activation.ASGIActivationShim:
         inner = build_inner()
-        if (
-            isinstance(inner, ServerErrorMiddleware)
-            and isinstance(inner.app, OpenTelemetryMiddleware)
-            and isinstance(inner.app.app, ServerErrorMiddleware)
-        ):
-            inner.app.app.app = _ExceptionRecordingMiddleware(inner.app.app.app)
         return activation.ASGIActivationShim(
             ApitallyASGIMiddleware(
                 inner,  # ty: ignore[invalid-argument-type]
@@ -83,18 +75,6 @@ def _instrument_app(app: FastAPI) -> None:
         )
 
     app.build_middleware_stack = build_with_shim  # ty: ignore[invalid-assignment]
-
-
-class _ExceptionRecordingMiddleware:
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        try:
-            await self.app(scope, receive, send)
-        except Exception as exc:
-            server_errors.set_exception(exc)
-            raise
 
 
 def _resolve_route(scope: Scope) -> str | None:

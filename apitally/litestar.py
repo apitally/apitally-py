@@ -15,7 +15,7 @@ from litestar.plugins.opentelemetry import (
 )
 from litestar.routes import HTTPRoute
 
-from apitally.shared import activation, config, startup, validation_errors
+from apitally.shared import activation, config, server_errors, startup, validation_errors
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.context import get_server_span
 from apitally.shared.helpers import capture_exception
@@ -142,6 +142,7 @@ def _after_exception(exception: Exception, scope: Scope) -> None:
     """Litestar turns handler exceptions into responses before the OTel middleware sees anything raised."""
     if isinstance(exception, HTTPException) and exception.status_code < 500:
         return
+    server_errors.set_exception(exception)
     capture_exception(exception)
 
 

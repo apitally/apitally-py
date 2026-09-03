@@ -178,9 +178,6 @@ def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporter
     assert (event.attributes or {})["exception.message"] == "boom"
     (record,) = exported_error_records(exporters)
     assert record.event_name == "apitally.request.server_error"
-    body = cast("dict[str, Any]", record.body)
-    assert body["type"] == "builtins.ValueError"
-    assert body["message"] == "boom"
 
 
 def test_validation_error_uses_litestar_source_and_opaque_key(

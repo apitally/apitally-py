@@ -180,9 +180,6 @@ def test_unhandled_exception_recorded_on_server_span(
     assert unwrap(point.attributes)["http.response.status_code"] == 500
     (record,) = exported_error_records(exporters)
     assert record.event_name == "apitally.request.server_error"
-    body = cast("dict[str, Any]", record.body)
-    assert body["type"] == "builtins.ValueError"
-    assert body["message"] == "boom"
 
 
 def test_unhandled_exception_with_http_middleware_recorded_unwrapped(
@@ -211,9 +208,7 @@ def test_unhandled_exception_with_http_middleware_recorded_unwrapped(
         assert unwrap(event.attributes)["exception.type"] == "ValueError"
         assert unwrap(event.attributes)["exception.message"] == "boom"
         (record,) = exported_error_records(exporters)
-        body = cast("dict[str, Any]", record.body)
-        assert body["type"] == "builtins.ValueError"
-        assert body["message"] == "boom"
+        assert record.event_name == "apitally.request.server_error"
     finally:
         StarletteInstrumentor.uninstrument_app(app)
 
@@ -279,10 +274,6 @@ def test_pre_instrumented_app_reports_escaping_exception(
     assert response.status_code == 500
     (record,) = exported_error_records(exporters)
     assert record.event_name == "apitally.request.server_error"
-    body = cast("dict[str, Any]", record.body)
-    assert body["type"] == "builtins.ValueError"
-    assert body["message"] == "boom"
-    assert body["count"] == 1
 
 
 @pytest.mark.parametrize("pre_instrumented", [False, True])

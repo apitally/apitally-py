@@ -5,30 +5,13 @@ from apitally.shared.config import MAX_BODY_SIZE
 from apitally.shared.validation_errors import ValidationError
 
 
-def test_pydantic_validation_errors_are_extracted() -> None:
-    locations = [["body", "user", 0, "email"], ["querystring", "page"], ["custom", "value"], "body.email"]
-    assert [validation_errors.format_location(location) for location in locations] == [
-        ("body", "user.0.email"),
-        ("query", "page"),
-        ("", "custom.value"),
-        ("", ""),
-    ]
-    assert validation_errors.extract_pydantic_validation_errors(
-        {
-            "detail": [
-                {"loc": ["path", "item_id"], "msg": "invalid", "type": "int_parsing", "input": "x"},
-                {"loc": ["custom", "value"], "msg": 1, "type": None},
-                {"message": "ignored"},
-            ]
-        }
-    ) == [
-        ValidationError("path", "item_id", "invalid", "int_parsing"),
-        ValidationError("", "custom.value", "", ""),
-    ]
-
-
 def test_validation_errors_are_recorded_aggregated_and_drained() -> None:
-    body = gzip.compress(b'{"detail":[{"loc":["body","name"],"msg":"required","type":"missing"}]}')
+    body = gzip.compress(
+        b'{"detail":['
+        b'{"loc":["body","user",0,"email"],"msg":"required","type":"missing"},'
+        b'{"loc":["querystring","page"],"msg":"invalid","type":"int_parsing"}'
+        b"]}"
+    )
     for _ in range(2):
         validation_errors.record_validation_response(
             "consumer",
@@ -46,11 +29,21 @@ def test_validation_errors_are_recorded_aggregated_and_drained() -> None:
             "method": "POST",
             "path": "/items",
             "source": "body",
-            "field": "name",
+            "field": "user.0.email",
             "message": "required",
             "type": "missing",
             "count": 2,
-        }
+        },
+        {
+            "consumer": "consumer",
+            "method": "POST",
+            "path": "/items",
+            "source": "query",
+            "field": "page",
+            "message": "invalid",
+            "type": "int_parsing",
+            "count": 2,
+        },
     ]
 
 

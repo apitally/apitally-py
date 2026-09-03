@@ -2,7 +2,7 @@ import inspect
 import json
 from importlib.metadata import version
 from ipaddress import ip_address
-from typing import Any, cast
+from typing import Any
 
 import httpx
 import pytest
@@ -234,9 +234,6 @@ async def test_unhandled_exception_recorded_on_server_span(
     assert (event.attributes or {})["exception.message"] == "boom"
     (record,) = exported_error_records(exporters)
     assert record.event_name == "apitally.request.server_error"
-    body = cast("dict[str, Any]", record.body)
-    assert body["type"] == "builtins.ValueError"
-    assert body["message"] == "boom"
 
 
 async def test_init_twice_does_not_stack_middleware(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

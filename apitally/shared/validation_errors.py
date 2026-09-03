@@ -62,8 +62,6 @@ def add_validation_errors(
     path: str,
     validation_errors: list[ValidationError],
 ) -> None:
-    if not validation_errors:
-        return
     method = method.upper()
     with validation_error_lock:
         for error in validation_errors:

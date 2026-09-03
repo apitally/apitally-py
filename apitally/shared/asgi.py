@@ -81,11 +81,10 @@ class ApitallyASGIMiddleware:
         inspect_validation_response = False
         completed = False
         deferred_span_id: int | None = None
-        exception_holder = server_errors.ExceptionHolder()
 
+        init_consumer()
+        exception_holder = server_errors.init_exception_holder()
         try:
-            init_consumer()
-            exception_holder = server_errors.init_exception_holder()
             request_size = parse_int(get_header(request_headers, b"content-length"))
             capture_request = config.capture_request_body and is_allowed_content_type(
                 get_header(request_headers, b"content-type")
@@ -247,11 +246,7 @@ class ApitallyASGIMiddleware:
                         and status == self.validation_error_status
                         and validation_errors.is_json_content_type(response_content_type)
                     )
-                    response_too_large = (
-                        (capture_response or inspect_validation_response)
-                        and response_size is not None
-                        and response_size > MAX_BODY_SIZE
-                    )
+                    response_too_large = response_size is not None and response_size > MAX_BODY_SIZE
                     response_content_encoding = get_header(headers, b"content-encoding")
                     if kept and config.capture_response_headers:
                         response_headers = headers
@@ -273,7 +268,8 @@ class ApitallyASGIMiddleware:
                             response_body = bytearray()
                     if not message.get("more_body", False):
                         response_body_complete = True
-                        finish()
+                        if status != 500:
+                            finish()
             except Exception:  # pragma: no cover
                 logger.exception("Error in Apitally ASGI middleware")
             await send(message)

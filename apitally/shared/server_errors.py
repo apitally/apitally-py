@@ -76,9 +76,6 @@ def set_sentry_event_id(event_id: str) -> None:
     holder = exception_holder_var.get()
     if holder is None:
         return
-    event_id = event_id.strip()
-    if not event_id:
-        return
     holder.sentry_event_id = event_id
     if holder.server_error_key is not None:
         with server_error_lock:

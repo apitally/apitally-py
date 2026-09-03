@@ -13,7 +13,7 @@ from starlette.middleware.errors import ServerErrorMiddleware
 from starlette.routing import Match
 from starlette.schemas import SchemaGenerator
 
-from apitally.shared import activation, config, startup, validation_errors
+from apitally.shared import activation, config, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.helpers import capture_exception
 
@@ -69,8 +69,6 @@ def _instrument_app(app: Starlette) -> None:
                 ApitallyASGIMiddleware,
                 resolve_route=_resolve_route,
                 use_scope_client_address=True,
-                validation_error_status=422,
-                validation_error_extractor=validation_errors.extract_pydantic_validation_errors,
             ),
         )
         app.user_middleware.insert(0, Middleware(activation.ASGIActivationShim))
@@ -99,8 +97,6 @@ def _instrument_app(app: Starlette) -> None:
                 ),
                 resolve_route=_resolve_route,
                 use_scope_client_address=True,
-                validation_error_status=422,
-                validation_error_extractor=validation_errors.extract_pydantic_validation_errors,
             )
         )
 

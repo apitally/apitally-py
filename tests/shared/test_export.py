@@ -42,10 +42,8 @@ from apitally.shared.export import (
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.log_processor import MAX_LOG_VALUE_LENGTH
 from apitally.shared.redaction import REDACTED
-from apitally.shared.server_errors import ExceptionHolder
 from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.spool import MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT, MAX_UNCOMPRESSED_FILE_SIZE, Spool
-from apitally.shared.validation_errors import ValidationError
 from tests.conftest import (
     CONTRIB_SCOPE,
     INSTANCE_ID,
@@ -64,8 +62,8 @@ def spool() -> Iterator[Spool]:
     spool.clear()
 
 
-def make_worker(spool: Spool, endpoint: str, **config_kwargs: Any) -> ExportWorker:
-    set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=endpoint, **config_kwargs)
+def make_worker(spool: Spool, endpoint: str) -> ExportWorker:
+    set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=endpoint)
     processor_stub = SimpleNamespace(downstream=SimpleNamespace(force_flush=lambda timeout_millis=30_000: True))
     return ExportWorker(
         spool,
@@ -205,45 +203,6 @@ def test_export_cycle_posts_all_three_signals_in_lockstep(spool: Spool, otlp_ser
     assert headers["User-Agent"].startswith("apitally-py/")
     assert gzip.decompress(body) == b"trace-payload"
     assert spool.pending_files() == []
-
-
-def test_export_cycle_emits_structured_error_events_without_trace_context(
-    spool: Spool, otlp_server: StubOTLPServer
-) -> None:
-    worker = make_worker(spool, otlp_server.url, capture_logs=False)
-    validation_errors.add_validation_errors(
-        "consumer",
-        "post",
-        "/items",
-        [ValidationError("body", "name", "required", "missing")],
-    )
-    server_errors.add_server_error(
-        "consumer",
-        "GET",
-        "/items",
-        ExceptionHolder(RuntimeError("boom"), "event-id"),
-    )
-
-    worker.run_cycle(None)
-
-    (request_body,) = [body for path, _, body in otlp_server.requests if path == "/v1/logs"]
-    request = ExportLogsServiceRequest.FromString(gzip.decompress(request_body))
-    scope_logs = [scope_logs for resource in request.resource_logs for scope_logs in resource.scope_logs]
-    assert {scope.scope.name for scope in scope_logs} == {"apitally"}
-    records = [record for scope in scope_logs for record in scope.log_records]
-    assert {record.event_name for record in records} == {
-        validation_errors.EVENT_NAME,
-        server_errors.EVENT_NAME,
-    }
-    for record in records:
-        assert record.time_unix_nano > 0
-        assert record.trace_id == b""
-        assert record.span_id == b""
-        assert record.body.WhichOneof("value") == "kvlist_value"
-        keys = {entry.key for entry in record.body.kvlist_value.values}
-        assert {"method", "path", "count"} < keys
-    assert validation_errors.drain_validation_errors() == []
-    assert server_errors.drain_server_errors() == []
 
 
 def test_failed_send_retries_next_cycle_with_identical_bytes(spool: Spool, otlp_server: StubOTLPServer) -> None:
@@ -476,33 +435,43 @@ def test_export_worker_uses_proxies(spool: Spool, otlp_server: StubOTLPServer, m
     assert otlp_server.paths() == [f"{endpoint}/v1/traces"]
 
 
-starlette_required = pytest.mark.skipif(
-    not installed("starlette", "opentelemetry.instrumentation.starlette"),
-    reason="end-to-end tests use the Starlette adapter",
+fastapi_required = pytest.mark.skipif(
+    not installed("fastapi", "opentelemetry.instrumentation.fastapi"),
+    reason="end-to-end tests use the FastAPI adapter",
 )
 
 
-def create_starlette_client(otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> Any:
-    from starlette.applications import Starlette
-    from starlette.requests import Request
-    from starlette.responses import JSONResponse
-    from starlette.routing import Route
-    from starlette.testclient import TestClient
+def create_fastapi_client(
+    otlp_server: StubOTLPServer,
+    monkeypatch: pytest.MonkeyPatch,
+    raise_server_exceptions: bool = True,
+    **kwargs: Any,
+) -> Any:
+    from fastapi import FastAPI, Request
+    from fastapi.responses import JSONResponse
+    from fastapi.testclient import TestClient
 
-    async def get_item(request: Request) -> JSONResponse:
+    app = FastAPI()
+
+    @app.get("/items/{item_id}")
+    async def get_item(item_id: int) -> JSONResponse:
         logging.getLogger("myapp").warning("handling item")
-        return JSONResponse({"item_id": request.path_params["item_id"]})
+        return JSONResponse({"item_id": item_id})
 
+    @app.post("/login")
     async def login(request: Request) -> JSONResponse:
         await request.json()
         return JSONResponse({"ok": True})
 
-    app = Starlette(routes=[Route("/items/{item_id}", get_item), Route("/login", login, methods=["POST"])])
+    @app.get("/error")
+    async def error() -> None:
+        raise ValueError("boom")
+
     monkeypatch.setenv("APITALLY_OTLP_ENDPOINT", otlp_server.url)
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
     apitally.init(app, write_token=WRITE_TOKEN, **kwargs)
-    return TestClient(app)
+    return TestClient(app, raise_server_exceptions=raise_server_exceptions)
 
 
 def decoded_records(otlp_server: StubOTLPServer, path: str, message_type: Any) -> list[Any]:
@@ -513,11 +482,11 @@ def decoded_records(otlp_server: StubOTLPServer, path: str, message_type: Any) -
     ]
 
 
-@starlette_required
+@fastapi_required
 def test_end_to_end_request_delivers_all_three_signals_decoded(
     otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    with create_starlette_client(otlp_server, monkeypatch) as client:
+    with create_fastapi_client(otlp_server, monkeypatch) as client:
         assert client.get("/items/42").status_code == 200
         assert unwrap(activation.spool).in_memory is False
         assert otlp_server.requests == []
@@ -549,11 +518,56 @@ def test_end_to_end_request_delivers_all_three_signals_decoded(
     assert "http.server.request.duration" in metric_names
 
 
-@starlette_required
+@fastapi_required
+def test_end_to_end_structured_errors_have_no_trace_context(
+    otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with create_fastapi_client(
+        otlp_server,
+        monkeypatch,
+        raise_server_exceptions=False,
+        sample_rate=0.0,
+    ) as client:
+        assert client.get("/items/not-an-int").status_code == 422
+        assert client.get("/error").status_code == 500
+
+    assert "/v1/traces" not in otlp_server.paths()
+    log_requests = decoded_records(otlp_server, "/v1/logs", ExportLogsServiceRequest)
+    records = [
+        record
+        for request in log_requests
+        for resource in request.resource_logs
+        for scope in resource.scope_logs
+        for record in scope.log_records
+    ]
+    error_records = {
+        record.event_name: record
+        for record in records
+        if record.event_name in {validation_errors.EVENT_NAME, server_errors.EVENT_NAME}
+    }
+    assert set(error_records) == {validation_errors.EVENT_NAME, server_errors.EVENT_NAME}
+    for record in error_records.values():
+        assert record.time_unix_nano > 0
+        assert record.trace_id == b""
+        assert record.span_id == b""
+        assert record.body.WhichOneof("value") == "kvlist_value"
+
+    validation_body = {
+        entry.key: entry.value for entry in error_records[validation_errors.EVENT_NAME].body.kvlist_value.values
+    }
+    assert validation_body["path"].string_value == "/items/{item_id}"
+    assert validation_body["source"].string_value == "path"
+    assert validation_body["field"].string_value == "item_id"
+    server_body = {entry.key: entry.value for entry in error_records[server_errors.EVENT_NAME].body.kvlist_value.values}
+    assert server_body["path"].string_value == "/error"
+    assert server_body["message"].string_value == "boom"
+
+
+@fastapi_required
 def test_end_to_end_sensitive_body_redacted_in_spool_files_and_sent_payloads(
     otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    with create_starlette_client(otlp_server, monkeypatch, capture_request_body=True) as client:
+    with create_fastapi_client(otlp_server, monkeypatch, capture_request_body=True) as client:
         assert client.post("/login", json={"password": "hunter2"}).status_code == 200
         spool = unwrap(activation.spool)
         unwrap(activation.span_processor).downstream.force_flush()
@@ -570,12 +584,12 @@ def test_end_to_end_sensitive_body_redacted_in_spool_files_and_sent_payloads(
     assert REDACTED.encode() in sent_payloads
 
 
-@starlette_required
+@fastapi_required
 def test_end_to_end_downtime_data_delivered_byte_identical_after_recovery(
     otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     otlp_server.respond = lambda path: (503, {})
-    with create_starlette_client(otlp_server, monkeypatch) as client:
+    with create_fastapi_client(otlp_server, monkeypatch) as client:
         assert client.get("/items/42").status_code == 200
         worker = unwrap(activation.export_worker)
         worker.run_cycle(None)

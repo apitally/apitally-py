@@ -9,7 +9,7 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler, TraceIdRatioBased
 from opentelemetry.trace import SpanKind, Tracer
 
-from apitally.shared import config, metrics, server_errors, validation_errors
+from apitally.shared import config, metrics, server_errors
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.config import BODY_TOO_LARGE, set_config
 from apitally.shared.consumer import set_consumer
@@ -88,13 +88,8 @@ async def send_request(
     request_chunks: list[bytes] | None = None,
     method: str = "POST",
     route: str = "/items",
-    validation_error_extractor: Any = None,
 ) -> list[dict[str, Any]]:
-    middleware = ApitallyASGIMiddleware(
-        app,
-        validation_error_status=422 if validation_error_extractor is not None else None,
-        validation_error_extractor=validation_error_extractor,
-    )
+    middleware = ApitallyASGIMiddleware(app)
     scope = make_scope(method=method, route=route, headers=request_headers)
     chunks = request_chunks or [b""]
     messages = [
@@ -454,35 +449,6 @@ async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricRe
     assert isinstance(duration_metric.data, ExponentialHistogram)
     (point,) = duration_metric.data.data_points
     assert point.count == 1
-
-
-async def test_validation_response_buffer_is_independent_of_trace_body_capture():
-    set_config(write_token=WRITE_TOKEN)
-    tracer, exporter = create_trace_pipeline()
-    app = EchoApp(
-        status=422,
-        response_headers=JSON_HEADERS,
-        response_chunks=[b'{"detail":[{"loc":["body","name"],"msg":"required","type":"missing"}]}'],
-    )
-    await send_request(
-        tracer,
-        app,
-        validation_error_extractor=validation_errors.extract_pydantic_validation_errors,
-    )
-
-    assert validation_errors.drain_validation_errors() == [
-        {
-            "method": "POST",
-            "path": "/items",
-            "source": "body",
-            "field": "name",
-            "message": "required",
-            "type": "missing",
-            "count": 1,
-        }
-    ]
-    (span,) = exporter.get_finished_spans()
-    assert "apitally.response.body" not in (span.attributes or {})
 
 
 async def test_asgi_exception_before_response_uses_500_and_accepts_late_sentry_id():

@@ -150,7 +150,6 @@ class ApitallyDjangoMiddleware:
 
     def process_exception(self, request: HttpRequest, exception: Exception) -> None:
         server_errors.set_exception(exception)
-        return None
 
     def capture_request_body(
         self, request: HttpRequest, config: ApitallyConfig, request_size: int | None
