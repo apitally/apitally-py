@@ -18,6 +18,7 @@ from tests.conftest import (
     InMemoryExporters,
     attach_metric_reader,
     duration_data_points,
+    exported_error_records,
     exported_spans,
     startup_payload,
     unwrap,
@@ -301,12 +302,18 @@ def test_unhandled_exception_recorded_on_server_span(
 
     assert response.status_code == 500
     assert response.data
+    response.close()
     (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     assert attributes["http.response.status_code"] == 500
     (event,) = [e for e in span.events if e.name == "exception"]
     assert (event.attributes or {})["exception.type"] == "ValueError"
     assert (event.attributes or {})["exception.message"] == "boom"
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.server_error"
+    body: Any = record.body
+    assert isinstance(body, dict)
+    assert body["count"] == 1
 
 
 def test_pre_instrumented_app_adapts_without_duplicate_spans(
@@ -323,3 +330,18 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     assert attributes["http.route"] == "/items/<int:item_id>"
     # The Apitally middleware still sets its attributes on the span created by the user's instrumentation
     assert "http.response.header.content-type" in attributes
+
+
+def test_sample_rate_zero_drops_trace_but_keeps_server_error(
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch, sample_rate=0.0)
+    response = app.test_client().get("/error")
+    assert response.status_code == 500
+    assert response.data
+    assert exported_spans(exporters) == []
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.server_error"
+    body: Any = record.body
+    assert isinstance(body, dict)
+    assert body["message"] == "boom"

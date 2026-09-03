@@ -27,6 +27,7 @@ from tests.conftest import (
     attach_metric_reader,
     attach_stale_server_span,
     duration_data_points,
+    exported_error_records,
     exported_spans,
     startup_payload,
     unwrap,
@@ -175,6 +176,26 @@ def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporter
     (event,) = [event for event in span.events if event.name == "exception"]
     assert (event.attributes or {})["exception.type"] == "ValueError"
     assert (event.attributes or {})["exception.message"] == "boom"
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.server_error"
+
+
+def test_validation_error_uses_litestar_source_and_opaque_key(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    with TestClient(app=make_app(monkeypatch)) as client:
+        response = client.post("/users", json=[])
+    assert response.status_code == 400
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.validation_error"
+    body: Any = record.body
+    assert isinstance(body, dict)
+    assert body["path"] == "/users"
+    assert body["source"] == "body"
+    assert body["field"] == "data"
+    assert body["message"]
+    assert body["type"] == ""
+    assert body["count"] == 1
 
 
 def test_route_includes_router_path_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

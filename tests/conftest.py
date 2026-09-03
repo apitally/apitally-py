@@ -28,7 +28,7 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler
 from opentelemetry.test.globals_test import reset_trace_globals
 from opentelemetry.trace import SpanKind, Tracer
 
-from apitally.shared import activation, config, export, metrics, providers, startup
+from apitally.shared import activation, config, export, metrics, providers, server_errors, startup, validation_errors
 from apitally.shared.consumer import consumer_holder_var
 from apitally.shared.context import server_span_kept_var, server_span_processor_var, server_span_var
 from apitally.shared.exporter import ApitallySpanExporter
@@ -177,7 +177,7 @@ def exporters(monkeypatch: pytest.MonkeyPatch) -> InMemoryExporters:
     monkeypatch.setattr(export, "create_span_exporter", span_exporter)
     monkeypatch.setattr(export, "create_log_exporter", log_exporter)
     monkeypatch.setattr(export.ExportWorker, "start", lambda self: None)
-    monkeypatch.setattr(export.ExportWorker, "send_pending", lambda self, stop_event: None)
+    monkeypatch.setattr(export.ExportWorker, "send_pending", lambda self, stop_event, cap=True: None)
     return created
 
 
@@ -296,6 +296,12 @@ def exported_spans(exporters: InMemoryExporters, kind: SpanKind | None = None) -
 def exported_log_records(exporters: InMemoryExporters) -> list[LogRecord]:
     unwrap(activation.log_processor).force_flush()
     return [exported.log_record for exporter in exporters.log for exported in exporter.get_finished_logs()]
+
+
+def exported_error_records(exporters: InMemoryExporters) -> list[LogRecord]:
+    unwrap(activation.export_worker).run_cycle(None)
+    event_names = {validation_errors.EVENT_NAME, server_errors.EVENT_NAME}
+    return [record for record in exported_log_records(exporters) if record.event_name in event_names]
 
 
 def startup_payload(exporters: InMemoryExporters) -> dict[str, Any]:

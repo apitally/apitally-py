@@ -2,11 +2,13 @@ import atexit
 import logging
 import random
 import threading
+import time
 from collections.abc import Sequence
 from typing import Any, cast
 
 import requests
 from opentelemetry import context as otel_context
+from opentelemetry._logs import Logger
 from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.exporter.otlp.proto.common._log_encoder import encode_logs
 from opentelemetry.exporter.otlp.proto.common.trace_encoder import encode_spans
@@ -14,8 +16,9 @@ from opentelemetry.sdk._logs import ReadableLogRecord
 from opentelemetry.sdk._logs.export import LogRecordExporter, LogRecordExportResult
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+from opentelemetry.trace import INVALID_SPAN, set_span_in_context
 
-from apitally.shared import metrics
+from apitally.shared import metrics, server_errors, validation_errors
 from apitally.shared.log_processor import ApitallyLogRecordProcessor, truncate_log_record
 from apitally.shared.providers import DISTRO_VERSION, endpoint_url, export_headers
 from apitally.shared.span_processor import ApitallySpanProcessor
@@ -86,12 +89,14 @@ class ExportWorker:
         spool: Spool,
         span_processor: ApitallySpanProcessor,
         log_processor: ApitallyLogRecordProcessor,
+        error_logger: Logger,
         env: str,
         proxy_urls: dict[str, str] | None = None,
     ) -> None:
         self.spool = spool
         self.span_processor = span_processor
         self.log_processor = log_processor
+        self.error_logger = error_logger
         self.interval: float = DEFAULT_EXPORT_INTERVAL
         self.session = requests.Session()
         # Environment lookups per request would call macOS's _scproxy in forked workers, which crashes the process
@@ -121,7 +126,7 @@ class ExportWorker:
         self.thread.start()
         atexit.register(self.shutdown)
 
-    def stop(self, timeout: float = 5.0) -> None:
+    def stop(self, timeout: float | None = 5.0) -> None:
         atexit.unregister(self.shutdown)
         self.stop_event.set()
         if self.thread is not None and self.thread.is_alive():
@@ -129,7 +134,7 @@ class ExportWorker:
 
     def shutdown(self) -> None:
         """Stop the thread and attempt one final unpaced drain-and-send pass."""
-        self.stop()
+        self.stop(timeout=None)
         try:
             self.run_cycle(None, final=True)
         except Exception:  # pragma: no cover
@@ -150,6 +155,17 @@ class ExportWorker:
         token = otel_context.attach(otel_context.set_value(_SUPPRESS_INSTRUMENTATION_KEY, True))
         try:
             self.span_processor.downstream.force_flush()
+            for event_name, drain in (
+                (validation_errors.EVENT_NAME, validation_errors.drain_validation_errors),
+                (server_errors.EVENT_NAME, server_errors.drain_server_errors),
+            ):
+                for body in drain():
+                    self.error_logger.emit(
+                        timestamp=time.time_ns(),
+                        context=set_span_in_context(INVALID_SPAN),
+                        body=body,
+                        event_name=event_name,
+                    )
             self.log_processor.downstream.force_flush()
             if metrics.reader is not None:
                 metrics.reader.collect()

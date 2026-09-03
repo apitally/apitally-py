@@ -20,7 +20,7 @@ from django.utils.functional import Promise
 from django.views.generic.base import View
 from opentelemetry.instrumentation.django import DjangoInstrumentor
 
-from apitally.shared import activation, config, metrics, startup
+from apitally.shared import activation, config, metrics, server_errors, startup, validation_errors
 from apitally.shared.config import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
@@ -130,21 +130,26 @@ class ApitallyDjangoMiddleware:
         start_time = time.perf_counter()
         request_size: int | None = None
         request_body: bytes | None = None
+        init_consumer()
+        exception_holder = server_errors.init_exception_holder()
         try:
-            init_consumer()
-            request_size = parse_content_length(request.headers.get("Content-Length"))
-            request_body = self.capture_request_body(request, config, request_size)
-        except Exception:  # pragma: no cover
-            logger.exception("Error in Apitally Django middleware")
-        response = self.get_response(request)
-        try:
-            self.finalize(request, response, config, start_time, request_size, request_body)
-        except Exception:  # pragma: no cover
-            logger.exception("Error in Apitally Django middleware")
+            try:
+                request_size = parse_content_length(request.headers.get("Content-Length"))
+                request_body = self.capture_request_body(request, config, request_size)
+            except Exception:  # pragma: no cover
+                logger.exception("Error in Apitally Django middleware")
+            response = self.get_response(request)
+            try:
+                self.finalize(request, response, config, start_time, request_size, request_body, exception_holder)
+            except Exception:  # pragma: no cover
+                logger.exception("Error in Apitally Django middleware")
+            return response
         finally:
-            # finalize_streaming has already snapshotted the consumer for streaming responses
             reset_consumer()
-        return response
+            server_errors.reset_exception_holder()
+
+    def process_exception(self, request: HttpRequest, exception: Exception) -> None:
+        server_errors.set_exception(exception)
 
     def capture_request_body(
         self, request: HttpRequest, config: ApitallyConfig, request_size: int | None
@@ -180,12 +185,14 @@ class ApitallyDjangoMiddleware:
         start_time: float,
         request_size: int | None,
         request_body: bytes | None,
+        exception_holder: server_errors.ExceptionHolder,
     ) -> None:
         streaming = getattr(response, "streaming", False)
         response_size = parse_content_length(response.get("Content-Length"))
         if response_size is None and not streaming:
             response_size = len(response.content)
         route = self.get_route(request)
+        consumer = get_consumer_identifier()
         if client_address := request.META.get("REMOTE_ADDR"):
             set_request_attribute("client.address", client_address)
         span = get_server_span()
@@ -222,11 +229,24 @@ class ApitallyDjangoMiddleware:
                 span,
             )
             return
+        method = request.method or ""
+        if response.status_code == 422:
+            validation_errors.record_validation_response(
+                consumer,
+                method,
+                route,
+                response.content,
+                response.get("Content-Type"),
+                response.get("Content-Encoding"),
+                validation_errors.extract_pydantic_validation_errors,
+            )
+        if response.status_code == 500:
+            server_errors.add_server_error(consumer, method, route, exception_holder)
         metrics.record_request(
-            method=request.method or "",
+            method=method,
             route=route or "",
             status_code=response.status_code,
-            consumer=get_consumer_identifier(),
+            consumer=consumer,
             duration=time.perf_counter() - start_time,
             request_size=request_size,
             response_size=response_size,

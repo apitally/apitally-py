@@ -16,7 +16,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from apitally.shared import config, export, metrics, providers, sentry
+from apitally.shared import config, export, metrics, providers, sentry, server_errors, validation_errors
 from apitally.shared.config import TRUE_VALUES, ApitallyConfig
 from apitally.shared.consumer import consumer_holder_var
 from apitally.shared.context import server_span_kept_var, server_span_processor_var, server_span_var
@@ -234,7 +234,8 @@ def start_pipelines() -> None:
     log_processor = ApitallyLogRecordProcessor(create_batch_log_processor(spool), span_processor)
     logger_provider = providers.create_logger_provider(resource, [log_processor])
     install_root_handler(logger_provider, span_processor)
-    export_worker = ExportWorker(spool, span_processor, log_processor, env, proxy_urls=proxy_urls)
+    error_logger = logger_provider.get_logger("apitally")
+    export_worker = ExportWorker(spool, span_processor, log_processor, error_logger, env, proxy_urls=proxy_urls)
     export_worker.start()
 
 
@@ -284,6 +285,8 @@ def after_fork_in_child() -> None:
     global span_processor, log_processor, logger_provider, inherited_span_processor
     global spool, export_worker
     activation_lock = threading.Lock()
+    validation_errors.reset()
+    server_errors.reset()
     if not activated:  # pragma: no cover
         return
     try:
@@ -310,9 +313,11 @@ def reset() -> None:
     global spool, export_worker, proxy_urls
     activation_lock = threading.Lock()
     uninstall_root_handler()
-    metrics.reset()
     if export_worker is not None:
         export_worker.stop(timeout=1.0)
+    validation_errors.reset()
+    server_errors.reset()
+    metrics.reset()
     if span_processor is not None:
         span_processor.downstream.shutdown()
     if log_processor is not None:

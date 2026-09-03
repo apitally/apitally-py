@@ -1,3 +1,4 @@
+import asyncio
 import contextvars
 import json
 from collections.abc import Iterator
@@ -9,7 +10,7 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler, TraceIdRatioBased
 from opentelemetry.trace import SpanKind, Tracer
 
-from apitally.shared import config, metrics
+from apitally.shared import config, metrics, server_errors
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.config import BODY_TOO_LARGE, set_config
 from apitally.shared.consumer import set_consumer
@@ -83,7 +84,7 @@ def make_scope(
 
 async def send_request(
     tracer: Tracer,
-    app: EchoApp,
+    app: Any,
     request_headers: list[tuple[str, str]] | None = None,
     request_chunks: list[bytes] | None = None,
     method: str = "POST",
@@ -269,6 +270,7 @@ async def test_aborted_response_exports_headers_and_size_but_not_body():
     assert header_values(span, "http.request.header.user-agent") == ("test",)
     assert header_values(span, "http.response.header.content-type") == ("application/json",)
     assert "apitally.response.body" not in span.attributes
+    assert server_errors.drain_server_errors() == []
 
 
 async def test_invalid_user_pattern_dropped_and_request_succeeds():
@@ -448,3 +450,30 @@ async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricRe
     assert isinstance(duration_metric.data, ExponentialHistogram)
     (point,) = duration_metric.data.data_points
     assert point.count == 1
+
+
+async def test_asgi_exception_before_response_uses_500_and_accepts_late_sentry_id():
+    set_config(write_token=WRITE_TOKEN)
+    tracer, _ = create_trace_pipeline()
+
+    async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        raise RuntimeError("before")
+
+    with pytest.raises(RuntimeError):
+        await send_request(tracer, app, method="GET")
+    server_errors.set_sentry_event_id("late-event-id")
+    (event,) = server_errors.drain_server_errors()
+    assert event["message"] == "before"
+    assert event["sentry_event_id"] == "late-event-id"
+
+
+async def test_cancelled_request_is_not_recorded_as_server_error():
+    set_config(write_token=WRITE_TOKEN)
+    tracer, _ = create_trace_pipeline()
+
+    async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        await send_request(tracer, app, method="GET")
+    assert server_errors.drain_server_errors() == []

@@ -71,7 +71,7 @@ def resolve_value(value: T | Callable[[], T] | None) -> T | None:
     if not callable(value):
         return value
     try:
-        return cast("Callable[[], T]", value)()
+        return cast(Callable[[], T], value)()
     except Exception:  # pragma: no cover
         logger.exception("Error resolving Apitally app info for the startup event")
         return None

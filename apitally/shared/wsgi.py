@@ -4,10 +4,10 @@ import io
 import logging
 import time
 from collections.abc import Callable, Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from apitally.shared import metrics
+from apitally.shared import metrics, server_errors
 from apitally.shared.config import (
     BODY_TOO_LARGE,
     MAX_BODY_SIZE,
@@ -41,9 +41,11 @@ class ApitallyWSGIMiddleware:
 
     def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
         config = self.config
-        state = RequestState()
+        start_time = time.perf_counter()
+        init_consumer()
+        exception_holder = server_errors.init_exception_holder()
+        state = RequestState(start_time, exception_holder)
         try:
-            init_consumer()
             state.request_size = parse_content_length(environ.get("CONTENT_LENGTH"))
             state.request_body = self.capture_request_body(environ, config, state.request_size)
         except Exception:  # pragma: no cover
@@ -60,9 +62,12 @@ class ApitallyWSGIMiddleware:
 
         try:
             response = self.app(environ, wrapped_start_response)
-        except BaseException:
+        except BaseException as exc:
             # No ResponseWrapper is created, so finalize here to release the deferral and record metrics
-            state.status_code = state.status_code or 500
+            if isinstance(exc, Exception):
+                server_errors.set_exception(exc, state.exception_holder)
+                if not state.status_code:
+                    state.status_code = 500
             self.finalize(environ, state)
             raise
         return ResponseWrapper(response, self, environ, state)
@@ -155,11 +160,15 @@ class ApitallyWSGIMiddleware:
             if state.deferred_span_id is not None and processor is not None:
                 processor.finish_export(state.deferred_span_id, extra or None)
             route = self.get_route(environ) if self.get_route is not None else None
+            method = environ.get("REQUEST_METHOD", "")
+            consumer = get_consumer_identifier()
+            if state.status_code == 500:
+                server_errors.add_server_error(consumer, method, route, state.exception_holder)
             metrics.record_request(
-                method=environ.get("REQUEST_METHOD", ""),
+                method=method,
                 route=route or "",
                 status_code=state.status_code,
-                consumer=get_consumer_identifier(),
+                consumer=consumer,
                 duration=duration,
                 request_size=state.request_size,
                 response_size=state.response_size,
@@ -168,8 +177,9 @@ class ApitallyWSGIMiddleware:
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally WSGI middleware")
         finally:
-            # A reused worker thread keeps its context; the holder must not survive into the next request
+            # A reused worker thread keeps its context; the holders must not survive into the next request
             reset_consumer()
+            server_errors.reset_exception_holder()
 
 
 class ResponseWrapper:
@@ -215,7 +225,8 @@ class ResponseWrapper:
 
 @dataclass(slots=True)
 class RequestState:
-    start_time: float = field(default_factory=time.perf_counter)
+    start_time: float
+    exception_holder: server_errors.ExceptionHolder
     status_code: int = 0
     request_size: int | None = None
     request_body: bytes | None = None

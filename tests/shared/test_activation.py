@@ -18,11 +18,12 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind
 
-from apitally.shared import activation, export, log_processor, metrics
+from apitally.shared import activation, export, log_processor, metrics, server_errors, validation_errors
 from apitally.shared.asgi import Message, Receive, Scope, Send
 from apitally.shared.consumer import ConsumerHolder, consumer_holder_var
 from apitally.shared.context import server_span_kept_var, server_span_processor_var, server_span_var
 from apitally.shared.span_processor import ApitallySpanProcessor
+from apitally.shared.validation_errors import ValidationError
 from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
@@ -340,6 +341,10 @@ def test_child_reactivation_clears_inherited_request_state(
 ):
     configure_and_activate(monkeypatch)
     span = trace.get_tracer("test").start_span("GET /items", kind=SpanKind.SERVER)  # in flight at fork
+    holder = server_errors.init_exception_holder()
+    server_errors.set_exception(RuntimeError("inherited"), holder)
+    server_errors.add_server_error(None, "GET", "/items", holder)
+    validation_errors.add_validation_errors(None, "POST", "/items", [ValidationError("body", "name", "x", "")])
 
     activation.before_fork()
     activation.after_fork_in_child()
@@ -348,6 +353,9 @@ def test_child_reactivation_clears_inherited_request_state(
     assert activation.span_processor is not None
     assert not activation.span_processor.spans
     assert not activation.span_processor.pending
+    assert server_errors.exception_holder_var.get() is None
+    assert server_errors.drain_server_errors() == []
+    assert validation_errors.drain_validation_errors() == []
     span.end()
     assert exporters.span[-1].get_finished_spans() == ()
 
@@ -431,6 +439,10 @@ def test_reset_stops_worker_and_removes_spool_files(otlp_server: StubOTLPServer,
     activation.configure(write_token=WRITE_TOKEN, otlp_endpoint=otlp_server.url)
     activation.activate()
     assert len(set(threading.enumerate()) - threads_before) == 3
+    holder = server_errors.init_exception_holder()
+    server_errors.set_exception(RuntimeError("pending"), holder)
+    server_errors.add_server_error(None, "GET", "/items", holder)
+    validation_errors.add_validation_errors(None, "POST", "/items", [ValidationError("body", "name", "x", "")])
     with trace.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
         pass
     spool = unwrap(activation.spool)
@@ -441,3 +453,6 @@ def test_reset_stops_worker_and_removes_spool_files(otlp_server: StubOTLPServer,
     activation.reset()
     assert not any(thread.name == "ApitallyExportWorker" and thread.is_alive() for thread in threading.enumerate())
     assert not any(path.exists() for path in paths)
+    assert server_errors.exception_holder_var.get() is None
+    assert server_errors.drain_server_errors() == []
+    assert validation_errors.drain_validation_errors() == []

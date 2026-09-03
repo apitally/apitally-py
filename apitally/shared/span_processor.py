@@ -1,5 +1,4 @@
 import logging
-import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import lru_cache, partial
@@ -13,6 +12,7 @@ from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 from opentelemetry.trace import SpanContext, SpanKind
 from opentelemetry.util.types import AttributeValue
 
+from apitally.shared import server_errors
 from apitally.shared.config import get_config
 from apitally.shared.consumer import consumer_holder_var, write_consumer_span_attributes
 from apitally.shared.context import (
@@ -23,16 +23,6 @@ from apitally.shared.context import (
 )
 from apitally.shared.redaction import combine_patterns, compile_patterns, matches_any
 
-
-if sys.version_info >= (3, 11):
-    _exception_group_types: tuple[type[BaseExceptionGroup], ...] = (BaseExceptionGroup,)  # noqa: F821
-else:
-    try:
-        from exceptiongroup import BaseExceptionGroup as _BaseExceptionGroup
-
-        _exception_group_types = (_BaseExceptionGroup,)
-    except ImportError:  # pragma: no cover
-        _exception_group_types = ()
 
 logger = logging.getLogger(__name__)
 
@@ -89,9 +79,7 @@ def record_collapsed_exception(
     record_exception: Callable[..., None], exception: BaseException, *args: Any, **kwargs: Any
 ) -> None:
     """Unwraps single-leaf ExceptionGroups before recording the exception on the span."""
-    while isinstance(exception, _exception_group_types) and len(exception.exceptions) == 1:  # ty: ignore[unresolved-attribute]
-        exception = exception.exceptions[0]  # ty: ignore[unresolved-attribute]
-    record_exception(exception, *args, **kwargs)
+    record_exception(server_errors.collapse_exception_group(exception), *args, **kwargs)
 
 
 class ApitallySpanProcessor(SpanProcessor):

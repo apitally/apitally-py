@@ -27,6 +27,7 @@ from tests.conftest import (
     attach_metric_reader,
     attach_stale_server_span,
     duration_data_points,
+    exported_error_records,
     exported_log_records,
     exported_spans,
     unwrap,
@@ -132,9 +133,9 @@ def test_request_body_captured_and_redacted(
 def test_client_address_uses_framework_resolved_client_ip(
     app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    app.add_middleware(TrustedProxyASGIMiddleware, trusted_peer="192.0.2.1")
+    app.add_middleware(TrustedProxyASGIMiddleware, trusted_peer="testclient")
     init(app, monkeypatch)
-    with TestClient(app, client=("192.0.2.1", 50000)) as client:
+    with TestClient(app) as client:
         response = client.get("/items/42", headers={"X-Forwarded-For": "203.0.113.10"})
     assert response.status_code == 200
 
@@ -177,6 +178,8 @@ def test_unhandled_exception_recorded_on_server_span(
     assert unwrap(event.attributes)["exception.message"] == "boom"
     (point,) = duration_data_points(reader)
     assert unwrap(point.attributes)["http.response.status_code"] == 500
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.server_error"
 
 
 def test_unhandled_exception_with_http_middleware_recorded_unwrapped(
@@ -204,6 +207,8 @@ def test_unhandled_exception_with_http_middleware_recorded_unwrapped(
         (event,) = [e for e in span.events if e.name == "exception"]
         assert unwrap(event.attributes)["exception.type"] == "ValueError"
         assert unwrap(event.attributes)["exception.message"] == "boom"
+        (record,) = exported_error_records(exporters)
+        assert record.event_name == "apitally.request.server_error"
     finally:
         StarletteInstrumentor.uninstrument_app(app)
 
@@ -257,6 +262,18 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     assert isinstance(response_body_size, int) and response_body_size > 0
     (point,) = duration_data_points(reader)
     assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
+
+
+def test_pre_instrumented_app_reports_escaping_exception(
+    app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    StarletteInstrumentor.instrument_app(app)
+    init(app, monkeypatch)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/error")
+    assert response.status_code == 500
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.server_error"
 
 
 @pytest.mark.parametrize("pre_instrumented", [False, True])
