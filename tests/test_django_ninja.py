@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from django.test import Client
@@ -76,7 +76,8 @@ def test_validation_error_uses_path_source_and_route(exporters: InMemoryExporter
     assert response.status_code == 422
     (record,) = exported_error_records(exporters)
     assert record.event_name == "apitally.request.validation_error"
-    body = cast("dict[str, Any]", record.body)
+    body: Any = record.body
+    assert isinstance(body, dict)
     assert body["path"] == "/api/foo/{bar}"
     assert body["source"] == "path"
     assert body["field"] == "bar"

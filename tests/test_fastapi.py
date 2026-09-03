@@ -1,7 +1,7 @@
 import json
 import logging
 from collections.abc import Iterator
-from typing import Any, cast
+from typing import Any
 
 import httpx
 import pytest
@@ -248,7 +248,8 @@ def test_validation_error_reported_without_request_trace(
     assert exported_spans(exporters) == []
     (record,) = exported_error_records(exporters)
     assert record.event_name == "apitally.request.validation_error"
-    body = cast("dict[str, Any]", record.body)
+    body: Any = record.body
+    assert isinstance(body, dict)
     assert body["method"] == "GET"
     assert body["path"] == "/items/{item_id}"
     assert body["source"] == "path"

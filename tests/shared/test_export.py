@@ -6,7 +6,7 @@ import time
 from collections import deque
 from collections.abc import Iterator
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
@@ -64,11 +64,11 @@ def spool() -> Iterator[Spool]:
 
 def make_worker(spool: Spool, endpoint: str) -> ExportWorker:
     set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=endpoint)
-    processor_stub = SimpleNamespace(downstream=SimpleNamespace(force_flush=lambda timeout_millis=30_000: True))
+    processor_stub: Any = SimpleNamespace(downstream=SimpleNamespace(force_flush=lambda timeout_millis=30_000: True))
     return ExportWorker(
         spool,
-        cast("Any", processor_stub),
-        cast("Any", processor_stub),
+        processor_stub,
+        processor_stub,
         make_log_provider(spool).get_logger("apitally"),
         env="dev",
     )
@@ -337,15 +337,15 @@ def test_first_export_fires_shortly_after_start(
 def test_export_cycle_suppresses_instrumentation(spool: Spool, otlp_server: StubOTLPServer) -> None:
     set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=otlp_server.url)
     suppressed_flags: list[bool] = []
-    processor_stub = SimpleNamespace(
+    processor_stub: Any = SimpleNamespace(
         downstream=SimpleNamespace(
             force_flush=lambda timeout_millis=30_000: suppressed_flags.append(not is_instrumentation_enabled())
         )
     )
     worker = ExportWorker(
         spool,
-        cast("Any", processor_stub),
-        cast("Any", processor_stub),
+        processor_stub,
+        processor_stub,
         make_log_provider(spool).get_logger("apitally"),
         env="dev",
     )
@@ -421,11 +421,11 @@ def test_export_worker_uses_proxies(spool: Spool, otlp_server: StubOTLPServer, m
     monkeypatch.delenv("NO_PROXY", raising=False)
     monkeypatch.delenv("no_proxy", raising=False)
     set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=endpoint)
-    processor_stub = SimpleNamespace(downstream=SimpleNamespace(force_flush=lambda timeout_millis=30_000: True))
+    processor_stub: Any = SimpleNamespace(downstream=SimpleNamespace(force_flush=lambda timeout_millis=30_000: True))
     worker = ExportWorker(
         spool,
-        cast("Any", processor_stub),
-        cast("Any", processor_stub),
+        processor_stub,
+        processor_stub,
         make_log_provider(spool).get_logger("apitally"),
         env="dev",
         proxy_urls=resolve_proxy_urls(),
