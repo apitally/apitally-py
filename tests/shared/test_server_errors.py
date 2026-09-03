@@ -1,3 +1,4 @@
+import threading
 from typing import Any
 
 from apitally.shared import server_errors
@@ -52,6 +53,27 @@ def test_exception_output_is_bounded() -> None:
     assert len(stacktrace) <= server_errors.MAX_STACKTRACE_LENGTH
     assert stacktrace.startswith(server_errors.STACKTRACE_TRUNCATION_PREFIX.strip())
     assert stacktrace.endswith("RuntimeError: final")
+
+
+def test_concurrent_server_error_add_and_drain_preserves_count() -> None:
+    start = threading.Event()
+
+    def add_errors() -> None:
+        start.wait()
+        for _ in range(1_000):
+            server_errors.add_server_error(None, "GET", "/items", ExceptionHolder(RuntimeError("boom")))
+
+    threads = [threading.Thread(target=add_errors) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    start.set()
+    count = 0
+    while any(thread.is_alive() for thread in threads):
+        count += sum(event["count"] for event in server_errors.drain_server_errors())
+    for thread in threads:
+        thread.join()
+    count += sum(event["count"] for event in server_errors.drain_server_errors())
+    assert count == 4_000
 
 
 def test_server_error_groups_are_bounded() -> None:

@@ -38,7 +38,8 @@ def install() -> None:
 def sentry_event_processor(event: Event, hint: Hint) -> Event:
     try:
         if "exception" in event and (event_id := event.get("event_id")):
-            server_errors.set_sentry_event_id(event_id)
+            if exc_info := hint.get("exc_info"):
+                server_errors.set_sentry_event_id(event_id, exc_info[1])
             span = get_server_span()
             if span is not None and span.context is not None and is_server_span_kept():
                 if len(pending_event_ids) >= MAX_PENDING_EVENT_IDS:  # pragma: no cover

@@ -50,11 +50,22 @@ def initialize_sentry() -> Generator[None]:
     sentry_sdk.get_client().close()
 
 
-def test_sentry_event_id_reaches_exception_holder_without_retained_span():
+def test_sentry_event_id_only_applies_to_matching_server_exception():
     holder = server_errors.init_exception_holder()
-    sentry.sentry_event_processor({"exception": {}, "event_id": "event-id"}, {})
-    assert holder.sentry_event_id == "event-id"
-    assert sentry.pending_event_ids == {}
+    server_exception = RuntimeError("server error")
+    handled_exception = ValueError("handled error")
+
+    sentry.sentry_event_processor(
+        {"exception": {}, "event_id": "server-event-id"},
+        {"exc_info": (RuntimeError, server_exception, None)},
+    )
+    server_errors.set_exception(server_exception)
+    sentry.sentry_event_processor(
+        {"exception": {}, "event_id": "other-event-id"},
+        {"exc_info": (ValueError, handled_exception, None)},
+    )
+
+    assert holder.sentry_event_id == "server-event-id"
 
 
 def test_sentry_event_id_written_after_server_span_ended():

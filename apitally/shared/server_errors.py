@@ -32,6 +32,7 @@ STACKTRACE_TRUNCATION_PREFIX = "... (truncated) ...\n"
 class ExceptionHolder:
     exception: BaseException | None = None
     sentry_event_id: str | None = None
+    sentry_event_exception: BaseException | None = None
     # Allows outer Sentry middleware to enrich an aggregate after request finalization.
     server_error_key: ServerErrorKey | None = None
 
@@ -66,16 +67,24 @@ def set_exception(exception: BaseException, holder: ExceptionHolder | None = Non
     if holder is None:
         return
     exception = collapse_exception_group(exception)
-    if holder.exception is not None and holder.exception is not exception:
+    if (holder.exception is not None and holder.exception is not exception) or (
+        holder.sentry_event_exception is not None and holder.sentry_event_exception is not exception
+    ):
         holder.sentry_event_id = None
+        holder.sentry_event_exception = None
         holder.server_error_key = None
     holder.exception = exception
 
 
-def set_sentry_event_id(event_id: str) -> None:
+def set_sentry_event_id(event_id: str, exception: BaseException | None = None) -> None:
     holder = exception_holder_var.get()
     if holder is None:
         return
+    if exception is not None:
+        exception = collapse_exception_group(exception)
+        if holder.exception is not None and holder.exception is not exception:
+            return
+        holder.sentry_event_exception = exception
     holder.sentry_event_id = event_id
     if holder.server_error_key is not None:
         with server_error_lock:

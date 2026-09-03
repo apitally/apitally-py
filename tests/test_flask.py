@@ -302,6 +302,7 @@ def test_unhandled_exception_recorded_on_server_span(
 
     assert response.status_code == 500
     assert response.data
+    response.close()
     (span,) = exported_spans(exporters)
     attributes = dict(span.attributes or {})
     assert attributes["http.response.status_code"] == 500
@@ -310,6 +311,7 @@ def test_unhandled_exception_recorded_on_server_span(
     assert (event.attributes or {})["exception.message"] == "boom"
     (record,) = exported_error_records(exporters)
     assert record.event_name == "apitally.request.server_error"
+    assert cast("dict[str, Any]", record.body)["count"] == 1
 
 
 def test_pre_instrumented_app_adapts_without_duplicate_spans(
