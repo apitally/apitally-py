@@ -15,6 +15,7 @@ from starlette.schemas import SchemaGenerator
 
 from apitally.shared import activation, config, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
+from apitally.shared.helpers import capture_exception
 
 
 if TYPE_CHECKING:
@@ -113,9 +114,9 @@ class _ExceptionRecordingMiddleware:
         try:
             await self.app(scope, receive, send)
         except Exception as exc:
+            capture_exception(exc)
             span = trace.get_current_span()
             if span.is_recording():
-                span.record_exception(exc)
                 span.set_status(Status(StatusCode.ERROR, f"{type(exc).__name__}: {exc}"))
             raise
 

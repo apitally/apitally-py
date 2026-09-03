@@ -9,7 +9,7 @@ from blacksheep.server.openapi.v3 import Info, OpenAPIHandler, Operation
 from blacksheep.server.routing import RouteMatch
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 
-from apitally.shared import activation, config, startup
+from apitally.shared import activation, config, server_errors, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.context import get_server_span
 from apitally.shared.helpers import capture_exception, set_request_attribute
@@ -119,6 +119,7 @@ def _wrap_error_handler(app: Application) -> None:
     original = app.handle_internal_server_error
 
     async def handle_internal_server_error(request: Request, exc: Exception) -> Response:
+        server_errors.set_exception(exc)
         capture_exception(exc)
         return await original(request, exc)
 

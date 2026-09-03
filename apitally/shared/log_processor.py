@@ -135,7 +135,7 @@ class ApitallyLogRecordProcessor(LogRecordProcessor):
                     return
             elif record.attributes is not None:
                 # ReadWriteLogRecord.__post_init__ replaces attributes with mutable BoundedAttributes
-                attributes = cast("MutableMapping[str, AnyValue]", record.attributes)
+                attributes = cast(MutableMapping[str, AnyValue], record.attributes)
                 attributes[SERVER_SPAN_ID_ATTRIBUTE] = format(server_span_id, "016x")
             if server_span_id is not None and server_span_id in self.span_processor.pending:
                 buffer = self.pending.setdefault(server_span_id, [])
@@ -176,6 +176,6 @@ def truncate_log_record(record: ReadableLogRecord | ReadWriteLogRecord) -> None:
             for key, value in log_record.attributes.items()
             if isinstance(value, str) and len(value) > MAX_LOG_VALUE_LENGTH
         ]
-        attributes = cast("MutableMapping[str, AnyValue]", log_record.attributes)
+        attributes = cast(MutableMapping[str, AnyValue], log_record.attributes)
         for key, value in oversized:
             attributes[key] = value[:MAX_LOG_VALUE_LENGTH]

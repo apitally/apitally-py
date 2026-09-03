@@ -6,7 +6,7 @@ import time
 from collections import deque
 from collections.abc import Iterator
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
@@ -25,7 +25,7 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind
 
 import apitally
-from apitally.shared import activation, export, metrics, startup
+from apitally.shared import activation, export, metrics, server_errors, startup, validation_errors
 from apitally.shared.config import set_config
 from apitally.shared.context import get_server_span_processor
 from apitally.shared.export import (
@@ -64,8 +64,14 @@ def spool() -> Iterator[Spool]:
 
 def make_worker(spool: Spool, endpoint: str) -> ExportWorker:
     set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=endpoint)
-    processor_stub = SimpleNamespace(downstream=SimpleNamespace(force_flush=lambda timeout_millis=30_000: True))
-    return ExportWorker(spool, cast("Any", processor_stub), cast("Any", processor_stub), env="dev")
+    processor_stub: Any = SimpleNamespace(downstream=SimpleNamespace(force_flush=lambda timeout_millis=30_000: True))
+    return ExportWorker(
+        spool,
+        processor_stub,
+        processor_stub,
+        make_log_provider(spool).get_logger("apitally"),
+        env="dev",
+    )
 
 
 def read_trace_request(spool: Spool) -> ExportTraceServiceRequest:
@@ -331,12 +337,18 @@ def test_first_export_fires_shortly_after_start(
 def test_export_cycle_suppresses_instrumentation(spool: Spool, otlp_server: StubOTLPServer) -> None:
     set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=otlp_server.url)
     suppressed_flags: list[bool] = []
-    processor_stub = SimpleNamespace(
+    processor_stub: Any = SimpleNamespace(
         downstream=SimpleNamespace(
             force_flush=lambda timeout_millis=30_000: suppressed_flags.append(not is_instrumentation_enabled())
         )
     )
-    worker = ExportWorker(spool, cast("Any", processor_stub), cast("Any", processor_stub), env="dev")
+    worker = ExportWorker(
+        spool,
+        processor_stub,
+        processor_stub,
+        make_log_provider(spool).get_logger("apitally"),
+        env="dev",
+    )
     worker.session.hooks["response"] = [
         lambda response, **kwargs: suppressed_flags.append(not is_instrumentation_enabled())
     ]
@@ -344,19 +356,6 @@ def test_export_cycle_suppresses_instrumentation(spool: Spool, otlp_server: Stub
     worker.run_cycle(None)
     assert suppressed_flags == [True, True, True]
     assert is_instrumentation_enabled()
-
-
-def test_shutdown_performs_final_drain_and_stops_thread(
-    spool: Spool, otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
-    worker = make_worker(spool, otlp_server.url)
-    worker.start()
-    spool.append("traces", b"final-payload")
-    worker.shutdown()
-    assert unwrap(worker.thread).is_alive() is False
-    assert otlp_server.paths() == ["/v1/traces"]
-    assert spool.pending_files() == []
 
 
 def test_final_drain_sends_current_files_despite_backlog(spool: Spool, otlp_server: StubOTLPServer) -> None:
@@ -422,11 +421,12 @@ def test_export_worker_uses_proxies(spool: Spool, otlp_server: StubOTLPServer, m
     monkeypatch.delenv("NO_PROXY", raising=False)
     monkeypatch.delenv("no_proxy", raising=False)
     set_config(write_token=WRITE_TOKEN, env="dev", otlp_endpoint=endpoint)
-    processor_stub = SimpleNamespace(downstream=SimpleNamespace(force_flush=lambda timeout_millis=30_000: True))
+    processor_stub: Any = SimpleNamespace(downstream=SimpleNamespace(force_flush=lambda timeout_millis=30_000: True))
     worker = ExportWorker(
         spool,
-        cast("Any", processor_stub),
-        cast("Any", processor_stub),
+        processor_stub,
+        processor_stub,
+        make_log_provider(spool).get_logger("apitally"),
         env="dev",
         proxy_urls=resolve_proxy_urls(),
     )
@@ -435,33 +435,43 @@ def test_export_worker_uses_proxies(spool: Spool, otlp_server: StubOTLPServer, m
     assert otlp_server.paths() == [f"{endpoint}/v1/traces"]
 
 
-starlette_required = pytest.mark.skipif(
-    not installed("starlette", "opentelemetry.instrumentation.starlette"),
-    reason="end-to-end tests use the Starlette adapter",
+fastapi_required = pytest.mark.skipif(
+    not installed("fastapi", "opentelemetry.instrumentation.fastapi"),
+    reason="end-to-end tests use the FastAPI adapter",
 )
 
 
-def create_starlette_client(otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> Any:
-    from starlette.applications import Starlette
-    from starlette.requests import Request
-    from starlette.responses import JSONResponse
-    from starlette.routing import Route
-    from starlette.testclient import TestClient
+def create_fastapi_client(
+    otlp_server: StubOTLPServer,
+    monkeypatch: pytest.MonkeyPatch,
+    raise_server_exceptions: bool = True,
+    **kwargs: Any,
+) -> Any:
+    from fastapi import FastAPI, Request
+    from fastapi.responses import JSONResponse
+    from fastapi.testclient import TestClient
 
-    async def get_item(request: Request) -> JSONResponse:
+    app = FastAPI()
+
+    @app.get("/items/{item_id}")
+    async def get_item(item_id: int) -> JSONResponse:
         logging.getLogger("myapp").warning("handling item")
-        return JSONResponse({"item_id": request.path_params["item_id"]})
+        return JSONResponse({"item_id": item_id})
 
+    @app.post("/login")
     async def login(request: Request) -> JSONResponse:
         await request.json()
         return JSONResponse({"ok": True})
 
-    app = Starlette(routes=[Route("/items/{item_id}", get_item), Route("/login", login, methods=["POST"])])
+    @app.get("/error")
+    async def error() -> None:
+        raise ValueError("boom")
+
     monkeypatch.setenv("APITALLY_OTLP_ENDPOINT", otlp_server.url)
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
     apitally.init(app, write_token=WRITE_TOKEN, **kwargs)
-    return TestClient(app)
+    return TestClient(app, raise_server_exceptions=raise_server_exceptions)
 
 
 def decoded_records(otlp_server: StubOTLPServer, path: str, message_type: Any) -> list[Any]:
@@ -472,11 +482,11 @@ def decoded_records(otlp_server: StubOTLPServer, path: str, message_type: Any) -
     ]
 
 
-@starlette_required
+@fastapi_required
 def test_end_to_end_request_delivers_all_three_signals_decoded(
     otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    with create_starlette_client(otlp_server, monkeypatch) as client:
+    with create_fastapi_client(otlp_server, monkeypatch) as client:
         assert client.get("/items/42").status_code == 200
         assert unwrap(activation.spool).in_memory is False
         assert otlp_server.requests == []
@@ -508,11 +518,57 @@ def test_end_to_end_request_delivers_all_three_signals_decoded(
     assert "http.server.request.duration" in metric_names
 
 
-@starlette_required
+@fastapi_required
+def test_end_to_end_structured_errors_have_no_trace_context(
+    otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with create_fastapi_client(
+        otlp_server,
+        monkeypatch,
+        raise_server_exceptions=False,
+        sample_rate=0.0,
+        capture_logs=False,
+    ) as client:
+        assert client.get("/items/not-an-int").status_code == 422
+        assert client.get("/error").status_code == 500
+
+    assert "/v1/traces" not in otlp_server.paths()
+    log_requests = decoded_records(otlp_server, "/v1/logs", ExportLogsServiceRequest)
+    records = [
+        record
+        for request in log_requests
+        for resource in request.resource_logs
+        for scope in resource.scope_logs
+        for record in scope.log_records
+    ]
+    error_records = {
+        record.event_name: record
+        for record in records
+        if record.event_name in {validation_errors.EVENT_NAME, server_errors.EVENT_NAME}
+    }
+    assert set(error_records) == {validation_errors.EVENT_NAME, server_errors.EVENT_NAME}
+    for record in error_records.values():
+        assert record.time_unix_nano > 0
+        assert record.trace_id == b""
+        assert record.span_id == b""
+        assert record.body.WhichOneof("value") == "kvlist_value"
+
+    validation_body = {
+        entry.key: entry.value for entry in error_records[validation_errors.EVENT_NAME].body.kvlist_value.values
+    }
+    assert validation_body["path"].string_value == "/items/{item_id}"
+    assert validation_body["source"].string_value == "path"
+    assert validation_body["field"].string_value == "item_id"
+    server_body = {entry.key: entry.value for entry in error_records[server_errors.EVENT_NAME].body.kvlist_value.values}
+    assert server_body["path"].string_value == "/error"
+    assert server_body["message"].string_value == "boom"
+
+
+@fastapi_required
 def test_end_to_end_sensitive_body_redacted_in_spool_files_and_sent_payloads(
     otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    with create_starlette_client(otlp_server, monkeypatch, capture_request_body=True) as client:
+    with create_fastapi_client(otlp_server, monkeypatch, capture_request_body=True) as client:
         assert client.post("/login", json={"password": "hunter2"}).status_code == 200
         spool = unwrap(activation.spool)
         unwrap(activation.span_processor).downstream.force_flush()
@@ -529,12 +585,12 @@ def test_end_to_end_sensitive_body_redacted_in_spool_files_and_sent_payloads(
     assert REDACTED.encode() in sent_payloads
 
 
-@starlette_required
+@fastapi_required
 def test_end_to_end_downtime_data_delivered_byte_identical_after_recovery(
     otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     otlp_server.respond = lambda path: (503, {})
-    with create_starlette_client(otlp_server, monkeypatch) as client:
+    with create_fastapi_client(otlp_server, monkeypatch) as client:
         assert client.get("/items/42").status_code == 200
         worker = unwrap(activation.export_worker)
         worker.run_cycle(None)

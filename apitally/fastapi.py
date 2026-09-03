@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-from apitally.shared import activation, config, startup
+from apitally.shared import activation, config, startup, validation_errors
 from apitally.shared.asgi import ApitallyASGIMiddleware
 
 
@@ -63,11 +63,14 @@ def _instrument_app(app: FastAPI) -> None:
     build_inner = app.build_middleware_stack
 
     def build_with_shim() -> activation.ASGIActivationShim:
+        inner = build_inner()
         return activation.ASGIActivationShim(
             ApitallyASGIMiddleware(
-                build_inner(),  # ty: ignore[invalid-argument-type]
+                inner,  # ty: ignore[invalid-argument-type]
                 resolve_route=_resolve_route,
                 use_scope_client_address=True,
+                validation_error_status=422,
+                validation_error_extractor=validation_errors.extract_pydantic_validation_errors,
             )
         )
 

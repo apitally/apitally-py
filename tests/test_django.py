@@ -24,6 +24,7 @@ from tests.conftest import (
     attach_metric_reader,
     collect_metrics,
     duration_data_points,
+    exported_error_records,
     exported_spans,
     startup_payload,
     unwrap,
@@ -69,7 +70,7 @@ def test_client_address_uses_framework_resolved_client_ip(
         response = Client().get(
             "/items/123/",
             REMOTE_ADDR="192.0.2.1",
-            headers={"X-Forwarded-For": "203.0.113.10"},
+            HTTP_X_FORWARDED_FOR="203.0.113.10",
         )
     finally:
         settings.MIDDLEWARE.remove(middleware)
@@ -303,6 +304,8 @@ def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporter
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.response.status_code"] == 500
     assert (point.attributes or {})["error.type"] == "500"
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.server_error"
 
 
 def test_pre_instrumented_app_adapts_without_duplicate_spans(

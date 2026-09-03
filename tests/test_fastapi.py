@@ -22,6 +22,7 @@ from tests.conftest import (
     attach_metric_reader,
     attach_stale_server_span,
     duration_data_points,
+    exported_error_records,
     exported_log_records,
     exported_spans,
     startup_payload,
@@ -92,9 +93,9 @@ def test_request_exports_single_server_span_with_stable_semconv(
 def test_client_address_uses_framework_resolved_client_ip(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    app.add_middleware(TrustedProxyASGIMiddleware, trusted_peer="192.0.2.1")
+    app.add_middleware(TrustedProxyASGIMiddleware, trusted_peer="testclient")
     init(app, monkeypatch)
-    with TestClient(app, client=("192.0.2.1", 50000)) as client:
+    with TestClient(app) as client:
         response = client.get("/items/42", headers={"X-Forwarded-For": "203.0.113.10"})
     assert response.status_code == 200
 
@@ -106,12 +107,12 @@ def test_untrusted_forwarded_for_does_not_change_client_address(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch)
-    with TestClient(app, client=("192.0.2.1", 50000)) as client:
+    with TestClient(app) as client:
         response = client.get("/items/42", headers={"X-Forwarded-For": "203.0.113.10"})
     assert response.status_code == 200
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
-    assert unwrap(span.attributes)["client.address"] == "192.0.2.1"
+    assert unwrap(span.attributes)["client.address"] == "testclient"
 
 
 def test_histogram_attributes_and_log_correlation(
@@ -233,6 +234,27 @@ def test_unhandled_exception_recorded_on_server_span(
     (event,) = [e for e in span.events if e.name == "exception"]
     assert unwrap(event.attributes)["exception.type"] == "ValueError"
     assert unwrap(event.attributes)["exception.message"] == "boom"
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.server_error"
+
+
+def test_validation_error_reported_without_request_trace(
+    app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch, sample_rate=0.0)
+    with TestClient(app) as client:
+        response = client.get("/items/not-an-int")
+    assert response.status_code == 422
+    assert exported_spans(exporters) == []
+    (record,) = exported_error_records(exporters)
+    assert record.event_name == "apitally.request.validation_error"
+    body: Any = record.body
+    assert isinstance(body, dict)
+    assert body["method"] == "GET"
+    assert body["path"] == "/items/{item_id}"
+    assert body["source"] == "path"
+    assert body["field"] == "item_id"
+    assert body["count"] == 1
 
 
 def test_unhandled_exception_with_http_middleware_recorded_unwrapped(

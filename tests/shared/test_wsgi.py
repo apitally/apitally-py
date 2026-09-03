@@ -13,7 +13,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind, Tracer
 
-from apitally.shared import metrics
+from apitally.shared import metrics, server_errors
 from apitally.shared.config import BODY_TOO_LARGE, set_config
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import ApitallySpanProcessor
@@ -350,3 +350,4 @@ def test_exception_after_response_start_records_metrics(
     (point,) = duration_metric.data.data_points
     assert point.count == 1
     assert (point.attributes or {})["http.response.status_code"] == 200
+    assert server_errors.drain_server_errors() == []
