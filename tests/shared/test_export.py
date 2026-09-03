@@ -527,6 +527,7 @@ def test_end_to_end_structured_errors_have_no_trace_context(
         monkeypatch,
         raise_server_exceptions=False,
         sample_rate=0.0,
+        capture_logs=False,
     ) as client:
         assert client.get("/items/not-an-int").status_code == 422
         assert client.get("/error").status_code == 500

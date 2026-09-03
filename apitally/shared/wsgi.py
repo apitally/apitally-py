@@ -64,9 +64,10 @@ class ApitallyWSGIMiddleware:
             response = self.app(environ, wrapped_start_response)
         except BaseException as exc:
             # No ResponseWrapper is created, so finalize here to release the deferral and record metrics
-            server_errors.set_exception(exc, state.exception_holder)
-            if not state.status_code:
-                state.status_code = 500
+            if isinstance(exc, Exception):
+                server_errors.set_exception(exc, state.exception_holder)
+                if not state.status_code:
+                    state.status_code = 500
             self.finalize(environ, state)
             raise
         return ResponseWrapper(response, self, environ, state)

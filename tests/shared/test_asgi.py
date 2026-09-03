@@ -1,3 +1,4 @@
+import asyncio
 import contextvars
 import json
 from collections.abc import Iterator
@@ -464,3 +465,15 @@ async def test_asgi_exception_before_response_uses_500_and_accepts_late_sentry_i
     (event,) = server_errors.drain_server_errors()
     assert event["message"] == "before"
     assert event["sentry_event_id"] == "late-event-id"
+
+
+async def test_cancelled_request_is_not_recorded_as_server_error():
+    set_config(write_token=WRITE_TOKEN)
+    tracer, _ = create_trace_pipeline()
+
+    async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        await send_request(tracer, app, method="GET")
+    assert server_errors.drain_server_errors() == []

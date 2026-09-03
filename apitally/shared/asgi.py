@@ -279,9 +279,10 @@ class ApitallyASGIMiddleware:
         try:
             await self.app(scope, wrapped_receive, send_wrapper)
         except BaseException as exc:
-            server_errors.set_exception(exc, exception_holder)
-            if not response_started:
-                status = 500
+            if isinstance(exc, Exception):
+                server_errors.set_exception(exc, exception_holder)
+                if not response_started:
+                    status = 500
             raise
         finally:
             try:
