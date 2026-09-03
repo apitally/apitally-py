@@ -205,12 +205,6 @@ class ResponseWrapper:
             self.state.completed = True
             self.middleware.finalize(self.environ, self.state)
             raise
-        except BaseException as exc:
-            server_errors.set_exception(exc, self.state.exception_holder)
-            if not self.state.status_code:
-                self.state.status_code = 500
-            self.middleware.finalize(self.environ, self.state)
-            raise
         try:
             self.state.bytes_sent += len(chunk)
             if isinstance(self.state.response_body, bytearray):

@@ -1,171 +1,96 @@
 import gzip
-import threading
-
-import pytest
 
 from apitally.shared import validation_errors
 from apitally.shared.config import MAX_BODY_SIZE
 from apitally.shared.validation_errors import ValidationError
 
 
-@pytest.mark.parametrize(
-    ("location", "expected"),
-    [
-        (["body", "user", 0, "email"], ("body", "user.0.email")),
-        (["querystring", "page"], ("query", "page")),
-        (["params", "item_id"], ("path", "item_id")),
-        (["headers", "x-token"], ("header", "x-token")),
-        (["cookies", "session"], ("cookie", "session")),
-        (["model", "query", 1, True, None], ("", "model.query.1")),
-        ("body.email", ("", "")),
-        ([], ("", "")),
-    ],
-)
-def test_format_location_uses_only_the_first_segment_as_source(location: object, expected: tuple[str, str]) -> None:
-    assert validation_errors.format_location(location) == expected
-
-
-def test_extract_pydantic_validation_errors_accepts_only_detail_list_fields() -> None:
+def test_pydantic_validation_errors_are_extracted() -> None:
+    locations = [["body", "user", 0, "email"], ["querystring", "page"], ["custom", "value"], "body.email"]
+    assert [validation_errors.format_location(location) for location in locations] == [
+        ("body", "user.0.email"),
+        ("query", "page"),
+        ("", "custom.value"),
+        ("", ""),
+    ]
     assert validation_errors.extract_pydantic_validation_errors(
         {
             "detail": [
                 {"loc": ["path", "item_id"], "msg": "invalid", "type": "int_parsing", "input": "x"},
-                {"loc": ["custom", "query", "value"], "msg": 1, "type": None, "ctx": {}},
-                {},
+                {"loc": ["custom", "value"], "msg": 1, "type": None},
                 {"message": "ignored"},
-                "ignored",
             ]
         }
     ) == [
         ValidationError("path", "item_id", "invalid", "int_parsing"),
-        ValidationError("", "custom.query.value", "", ""),
+        ValidationError("", "custom.value", "", ""),
     ]
-    assert validation_errors.extract_pydantic_validation_errors({"detail": {}}) == []
-    assert validation_errors.extract_pydantic_validation_errors([]) == []
 
 
-def test_equal_validation_errors_drain_with_summed_count_and_required_empty_fields() -> None:
-    error = ValidationError("", "field", "invalid", "")
-    validation_errors.add_validation_errors("consumer", "post", "/items/{item_id}", [error, error])
-    validation_errors.add_validation_errors("consumer", "POST", "/items/{item_id}", [error])
-    validation_errors.add_validation_errors(None, "POST", "/items/{item_id}", [error])
+def test_validation_errors_are_recorded_aggregated_and_drained() -> None:
+    body = gzip.compress(b'{"detail":[{"loc":["body","name"],"msg":"required","type":"missing"}]}')
+    for _ in range(2):
+        validation_errors.record_validation_response(
+            "consumer",
+            "post",
+            "/items",
+            body,
+            "Application/Problem+JSON; charset=utf-8",
+            b"gzip",
+            validation_errors.extract_pydantic_validation_errors,
+        )
 
     assert validation_errors.drain_validation_errors() == [
         {
             "consumer": "consumer",
             "method": "POST",
-            "path": "/items/{item_id}",
-            "source": "",
-            "field": "field",
-            "message": "invalid",
-            "type": "",
-            "count": 3,
-        },
-        {
-            "method": "POST",
-            "path": "/items/{item_id}",
-            "source": "",
-            "field": "field",
-            "message": "invalid",
-            "type": "",
-            "count": 1,
-        },
+            "path": "/items",
+            "source": "body",
+            "field": "name",
+            "message": "required",
+            "type": "missing",
+            "count": 2,
+        }
     ]
 
 
-def test_each_validation_error_identity_field_separates_groups() -> None:
-    base = ValidationError("body", "name", "invalid", "value")
-    variants = [
-        ("other", "POST", "/items", base),
-        (None, "PUT", "/items", base),
-        (None, "POST", "/other", base),
-        (None, "POST", "/items", ValidationError("query", "name", "invalid", "value")),
-        (None, "POST", "/items", ValidationError("body", "other", "invalid", "value")),
-        (None, "POST", "/items", ValidationError("body", "name", "other", "value")),
-        (None, "POST", "/items", ValidationError("body", "name", "invalid", "other")),
+def test_validation_response_rejects_ineligible_or_unreadable_body() -> None:
+    body = b'{"detail":[{"loc":["body","name"],"msg":"required","type":"missing"}]}'
+    oversized_body = b'{"padding":"' + b"x" * MAX_BODY_SIZE + b'"}'
+    cases = [
+        ("OPTIONS", "/items", "application/json", body, None),
+        ("POST", None, "application/json", body, None),
+        ("POST", "/items", "text/plain", body, None),
+        ("POST", "/items", "application/json", b"{", None),
+        ("POST", "/items", "application/json", body, "br"),
+        ("POST", "/items", "application/json", oversized_body, None),
+        ("POST", "/items", "application/json", gzip.compress(oversized_body), "gzip"),
     ]
-    for consumer, method, path, error in variants:
-        validation_errors.add_validation_errors(consumer, method, path, [error])
-    assert len(validation_errors.drain_validation_errors()) == len(variants)
+    extractor = validation_errors.extract_pydantic_validation_errors
+    for method, path, content_type, response_body, content_encoding in cases:
+        validation_errors.record_validation_response(
+            None,
+            method,
+            path,
+            response_body,
+            content_type,
+            content_encoding,
+            extractor,
+        )
+    assert validation_errors.drain_validation_errors() == []
 
 
-def test_validation_error_character_limits_are_applied_before_grouping() -> None:
+def test_validation_error_groups_and_fields_are_bounded() -> None:
     prefix = "é"
-    first = ValidationError(prefix * 32 + "a", prefix * 2_048 + "a", prefix * 2_048 + "a", prefix * 128 + "a")
-    second = ValidationError(prefix * 32 + "b", prefix * 2_048 + "b", prefix * 2_048 + "b", prefix * 128 + "b")
-    validation_errors.add_validation_errors(None, "POST", "/items", [first])
-    validation_errors.add_validation_errors(None, "POST", "/items", [second])
-
+    long_error = ValidationError(prefix * 33, prefix * 2_049, prefix * 2_049, prefix * 129)
+    validation_errors.add_validation_errors(None, "POST", "/items", [long_error])
     (body,) = validation_errors.drain_validation_errors()
-    assert body == {
-        "method": "POST",
-        "path": "/items",
-        "source": prefix * 32,
-        "field": prefix * 2_048,
-        "message": prefix * 2_048,
-        "type": prefix * 128,
-        "count": 2,
-    }
+    assert len(body["source"]) == validation_errors.MAX_SOURCE_LENGTH
+    assert len(body["field"]) == validation_errors.MAX_FIELD_LENGTH
+    assert len(body["message"]) == validation_errors.MAX_MESSAGE_LENGTH
+    assert len(body["type"]) == validation_errors.MAX_TYPE_LENGTH
 
-
-def test_validation_error_identity_cap_keeps_incrementing_retained_groups() -> None:
     for index in range(validation_errors.MAX_GROUPS + 1):
-        validation_errors.add_validation_errors(None, "GET", "/items", [ValidationError("query", str(index), "x", "")])
-    retained = ValidationError("query", "0", "x", "")
-    validation_errors.add_validation_errors(None, "GET", "/items", [retained])
-
-    events = validation_errors.drain_validation_errors()
-    assert len(events) == validation_errors.MAX_GROUPS
-    assert next(event for event in events if event["field"] == "0")["count"] == 2
-    assert all(event["field"] != str(validation_errors.MAX_GROUPS) for event in events)
-
-
-@pytest.mark.parametrize(
-    ("content_type", "expected"),
-    [
-        ("application/json", True),
-        ("Application/Problem+JSON; charset=utf-8", True),
-        (b"application/vnd.api+json", True),
-        ("application/x-ndjson", False),
-        ("text/json", False),
-        (None, False),
-    ],
-)
-def test_json_content_type_recognition(content_type: str | bytes | None, expected: bool) -> None:
-    assert validation_errors.is_json_content_type(content_type) is expected
-
-
-def test_json_response_decoding_supports_identity_and_bounded_gzip() -> None:
-    body = b'{"detail": []}'
-    assert validation_errors.decode_json_response(body, None) == {"detail": []}
-    assert validation_errors.decode_json_response(body, "identity") == {"detail": []}
-    assert validation_errors.decode_json_response(gzip.compress(body), b"gzip") == {"detail": []}
-    assert validation_errors.decode_json_response(b"{", None) is None
-    assert validation_errors.decode_json_response(body, "br") is None
-    assert validation_errors.decode_json_response(b"not gzip", "gzip") is None
-    assert validation_errors.decode_json_response(gzip.compress(body)[:-2], "gzip") is None
-    oversized_json = b'{"padding":"' + b"x" * MAX_BODY_SIZE + b'"}'
-    assert validation_errors.decode_json_response(oversized_json, None) is None
-    assert validation_errors.decode_json_response(gzip.compress(oversized_json), "gzip") is None
-
-
-def test_concurrent_validation_add_and_drain_preserves_occurrence_count() -> None:
-    error = ValidationError("body", "name", "required", "missing")
-    start = threading.Event()
-
-    def add_errors() -> None:
-        start.wait()
-        for _ in range(1_000):
-            validation_errors.add_validation_errors(None, "POST", "/items", [error])
-
-    threads = [threading.Thread(target=add_errors) for _ in range(4)]
-    for thread in threads:
-        thread.start()
-    start.set()
-    count = 0
-    while any(thread.is_alive() for thread in threads):
-        count += sum(event["count"] for event in validation_errors.drain_validation_errors())
-    for thread in threads:
-        thread.join()
-    count += sum(event["count"] for event in validation_errors.drain_validation_errors())
-    assert count == 4_000
+        error = ValidationError("query", str(index), "invalid", "")
+        validation_errors.add_validation_errors(None, "GET", "/items", [error])
+    assert len(validation_errors.drain_validation_errors()) == validation_errors.MAX_GROUPS

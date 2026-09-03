@@ -3,7 +3,7 @@ from __future__ import annotations
 import gzip
 import json
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any
@@ -80,6 +80,22 @@ def add_validation_errors(
                 validation_error_counts[key] += 1
             elif len(validation_error_counts) < MAX_GROUPS:
                 validation_error_counts[key] = 1
+
+
+def record_validation_response(
+    consumer: str | None,
+    method: str,
+    path: str | None,
+    body: bytes,
+    content_type: str | bytes | None,
+    content_encoding: str | bytes | None,
+    extractor: Callable[[object], list[ValidationError]],
+) -> None:
+    if method.upper() == "OPTIONS" or not path or not is_json_content_type(content_type):
+        return
+    data = decode_json_response(body, content_encoding)
+    if data is not None:
+        add_validation_errors(consumer, method, path, extractor(data))
 
 
 def drain_validation_errors() -> list[dict[str, Any]]:

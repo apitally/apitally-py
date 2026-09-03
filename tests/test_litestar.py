@@ -17,7 +17,7 @@ from litestar.testing import AsyncTestClient, TestClient
 from opentelemetry import context as otel_context
 from opentelemetry.trace import SpanKind, StatusCode
 
-from apitally.litestar import ApitallyPlugin, _extract_validation_errors
+from apitally.litestar import ApitallyPlugin
 from apitally.shared import activation, config
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
@@ -198,20 +198,6 @@ def test_validation_error_uses_litestar_source_and_opaque_key(
     assert body["message"]
     assert body["type"] == ""
     assert body["count"] == 1
-
-
-def test_validation_error_extractor_rejects_invalid_payloads():
-    assert _extract_validation_errors(422, {}) == []
-    assert (
-        _extract_validation_errors(
-            400,
-            {
-                "detail": "Validation failed",
-                "extra": [None, {"key": "", "message": "required"}],
-            },
-        )
-        == []
-    )
 
 
 def test_route_includes_router_path_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

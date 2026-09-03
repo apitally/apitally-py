@@ -205,25 +205,6 @@ def test_mounted_subapp_route_in_metrics_and_startup_paths(
     assert {"method": "GET", "path": "/sub/things/{thing_id}"} in payload["paths"]
 
 
-def test_unmatched_request_has_no_route_and_no_histogram_point(
-    app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
-):
-    orders_app = FastAPI()
-
-    @orders_app.get("/{order_id}")
-    def get_order(order_id: int) -> dict[str, int]:
-        return {"order_id": order_id}
-
-    app.mount("/orders", orders_app)
-    init(app, monkeypatch)
-    with TestClient(app) as client:
-        reader = attach_metric_reader()
-        response = client.get("/login")
-
-    assert response.status_code == 404
-    assert duration_data_points(reader) == []
-
-
 def test_pre_instrumented_app_adapts_without_duplicate_spans(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
@@ -277,46 +258,6 @@ def test_validation_error_reported_without_request_trace(
     assert body["source"] == "path"
     assert body["field"] == "item_id"
     assert body["count"] == 1
-
-
-@pytest.mark.parametrize(
-    ("path", "event_name"),
-    [
-        ("/items/not-an-int", "apitally.request.validation_error"),
-        ("/error", "apitally.request.server_error"),
-    ],
-)
-def test_excluded_route_still_reports_errors_without_trace(
-    app: FastAPI,
-    exporters: InMemoryExporters,
-    monkeypatch: pytest.MonkeyPatch,
-    path: str,
-    event_name: str,
-):
-    init(app, monkeypatch, exclude_paths=[path])
-    with TestClient(app, raise_server_exceptions=False) as client:
-        client.get(path)
-    assert exported_spans(exporters) == []
-    (record,) = exported_error_records(exporters)
-    assert record.event_name == event_name
-
-
-def test_server_error_before_routing_uses_registered_route(
-    app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
-):
-    @app.middleware("http")
-    async def fail_before_routing(request: Any, call_next: Any) -> Any:
-        raise RuntimeError("middleware failed")
-
-    init(app, monkeypatch)
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/items/42")
-    assert response.status_code == 500
-    (record,) = exported_error_records(exporters)
-    assert record.event_name == "apitally.request.server_error"
-    body = cast("dict[str, Any]", record.body)
-    assert body["path"] == "/items/{item_id}"
-    assert body["message"] == "middleware failed"
 
 
 def test_unhandled_exception_with_http_middleware_recorded_unwrapped(

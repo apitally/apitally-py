@@ -40,11 +40,13 @@ class ApitallyASGIMiddleware:
         app: ASGIApp,
         resolve_route: Callable[[Scope], str | None] | None = None,
         use_scope_client_address: bool = False,
-        validation_error_extractor: Callable[[int, object], list[ValidationError]] | None = None,
+        validation_error_status: int | None = None,
+        validation_error_extractor: Callable[[object], list[ValidationError]] | None = None,
     ) -> None:
         self.app = app
         self.resolve_route = resolve_route or resolve_route_from_scope
         self.use_scope_client_address = use_scope_client_address
+        self.validation_error_status = validation_error_status
         self.validation_error_extractor = validation_error_extractor
         self.config = get_config()
 
@@ -70,6 +72,7 @@ class ApitallyASGIMiddleware:
         response_size: int | None = None
         response_size_counter = 0
         response_headers: list[tuple[bytes, bytes]] | None = None
+        response_content_type: bytes | None = None
         response_content_encoding: bytes | None = None
         response_body = bytearray()
         response_body_complete = False
@@ -195,18 +198,17 @@ class ApitallyASGIMiddleware:
                     inspect_validation_response
                     and response_body_complete
                     and not response_too_large
-                    and route
-                    and method.upper() != "OPTIONS"
                     and self.validation_error_extractor is not None
                 ):
-                    data = validation_errors.decode_json_response(bytes(response_body), response_content_encoding)
-                    if data is not None:
-                        validation_errors.add_validation_errors(
-                            consumer,
-                            method,
-                            route,
-                            self.validation_error_extractor(status, data),
-                        )
+                    validation_errors.record_validation_response(
+                        consumer,
+                        method,
+                        route,
+                        bytes(response_body),
+                        response_content_type,
+                        response_content_encoding,
+                        self.validation_error_extractor,
+                    )
                 if status == 500:
                     server_errors.add_server_error(consumer, method, route, exception_holder)
                 metrics.record_request(
@@ -224,7 +226,8 @@ class ApitallyASGIMiddleware:
 
         async def send_wrapper(message: Message) -> None:
             nonlocal status, response_started, response_size, response_size_counter, response_headers
-            nonlocal response_content_encoding, response_body, response_body_complete, response_too_large
+            nonlocal response_content_type, response_content_encoding, response_body, response_body_complete
+            nonlocal response_too_large
             nonlocal capture_response, inspect_validation_response, deferred_span_id
             try:
                 if message["type"] == "http.response.start":
@@ -235,12 +238,14 @@ class ApitallyASGIMiddleware:
                     if content_length is not None and get_header(headers, b"transfer-encoding") != b"chunked":
                         response_size = content_length
                     kept = is_server_span_kept()
-                    content_type = get_header(headers, b"content-type")
-                    capture_response = kept and config.capture_response_body and is_allowed_content_type(content_type)
+                    response_content_type = get_header(headers, b"content-type")
+                    capture_response = (
+                        kept and config.capture_response_body and is_allowed_content_type(response_content_type)
+                    )
                     inspect_validation_response = (
                         self.validation_error_extractor is not None
-                        and status in (400, 422)
-                        and validation_errors.is_json_content_type(content_type)
+                        and status == self.validation_error_status
+                        and validation_errors.is_json_content_type(response_content_type)
                     )
                     response_too_large = (
                         (capture_response or inspect_validation_response)

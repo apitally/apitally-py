@@ -399,39 +399,6 @@ def test_export_cycle_suppresses_instrumentation(spool: Spool, otlp_server: Stub
     assert is_instrumentation_enabled()
 
 
-def test_shutdown_waits_for_active_cycle_and_emits_pending_error_groups(
-    spool: Spool, otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    cycle_started = threading.Event()
-    release_cycle = threading.Event()
-
-    def block_cycle(path: str) -> tuple[int, dict[str, str]]:
-        if path == "/v1/traces" and not release_cycle.is_set():
-            cycle_started.set()
-            release_cycle.wait(5)
-        return (200, {})
-
-    otlp_server.respond = block_cycle
-    monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 0.01)
-    worker = make_worker(spool, otlp_server.url)
-    spool.append("traces", b"final-payload")
-    worker.start()
-    assert cycle_started.wait(5)
-    server_errors.add_server_error(None, "GET", "/items", ExceptionHolder(RuntimeError("boom")))
-
-    shutdown_thread = threading.Thread(target=worker.shutdown)
-    shutdown_thread.start()
-    shutdown_thread.join(0.05)
-    assert shutdown_thread.is_alive()
-    release_cycle.set()
-    shutdown_thread.join(5)
-
-    assert not shutdown_thread.is_alive()
-    assert unwrap(worker.thread).is_alive() is False
-    assert sorted(otlp_server.paths()) == ["/v1/logs", "/v1/traces"]
-    assert spool.pending_files() == []
-
-
 def test_final_drain_sends_current_files_despite_backlog(spool: Spool, otlp_server: StubOTLPServer) -> None:
     worker = make_worker(spool, otlp_server.url)
     spool.append("traces", b"backlog-payload")

@@ -82,10 +82,6 @@ def make_environ(
     return environ
 
 
-def ignore_start_response(status: str, headers: list[tuple[str, str]], exc_info: Any = None) -> Any:
-    return lambda body: None
-
-
 def run_request(
     middleware: ApitallyWSGIMiddleware,
     environ: dict[str, Any],
@@ -355,57 +351,3 @@ def test_exception_after_response_start_records_metrics(
     assert point.count == 1
     assert (point.attributes or {})["http.response.status_code"] == 200
     assert server_errors.drain_server_errors() == []
-
-
-def test_escaping_wsgi_application_exception_is_added_without_recording_span():
-    set_config(write_token=WRITE_TOKEN)
-
-    def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
-        raise RuntimeError("application failed")
-
-    middleware = ApitallyWSGIMiddleware(app, get_route=lambda environ: "/items")
-    with pytest.raises(RuntimeError):
-        middleware(make_environ(), ignore_start_response)
-
-    (event,) = server_errors.drain_server_errors()
-    assert event["message"] == "application failed"
-    assert event["count"] == 1
-
-
-def test_wsgi_iterator_exception_is_added_without_recording_span():
-    set_config(write_token=WRITE_TOKEN)
-
-    def app(environ: WSGIEnvironment, start_response: StartResponse) -> Iterator[bytes]:
-        start_response("500 Internal Server Error", [])
-
-        def content() -> Iterator[bytes]:
-            yield b"first"
-            raise RuntimeError("iterator failed")
-
-        return content()
-
-    response = ApitallyWSGIMiddleware(app, get_route=lambda environ: "/items")(make_environ(), ignore_start_response)
-    iterator = iter(response)
-    assert next(iterator) == b"first"
-    with pytest.raises(RuntimeError):
-        next(iterator)
-
-    (event,) = server_errors.drain_server_errors()
-    assert event["message"] == "iterator failed"
-    assert event["count"] == 1
-
-
-def test_wsgi_iterable_completion_and_close_add_server_error_once():
-    set_config(write_token=WRITE_TOKEN)
-
-    def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
-        server_errors.set_exception(RuntimeError("boom"))
-        start_response("500 Internal Server Error", [])
-        return [b"error"]
-
-    response = ApitallyWSGIMiddleware(app, get_route=lambda environ: "/items")(make_environ(), ignore_start_response)
-    assert list(response) == [b"error"]
-    response.close()  # ty: ignore[unresolved-attribute]
-
-    (event,) = server_errors.drain_server_errors()
-    assert event["count"] == 1

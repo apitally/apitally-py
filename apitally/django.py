@@ -145,7 +145,6 @@ class ApitallyDjangoMiddleware:
                 logger.exception("Error in Apitally Django middleware")
             return response
         finally:
-            # finalize_streaming retains the holder and consumer after this request context is reset
             reset_consumer()
             server_errors.reset_exception_holder()
 
@@ -229,24 +228,19 @@ class ApitallyDjangoMiddleware:
                 response_size,
                 route,
                 span,
-                exception_holder,
             )
             return
         method = request.method or ""
-        if (
-            response.status_code == 422
-            and route
-            and method.upper() != "OPTIONS"
-            and validation_errors.is_json_content_type(response.get("Content-Type"))
-        ):
-            data = validation_errors.decode_json_response(response.content, response.get("Content-Encoding"))
-            if data is not None:
-                validation_errors.add_validation_errors(
-                    consumer,
-                    method,
-                    route,
-                    validation_errors.extract_pydantic_validation_errors(data),
-                )
+        if response.status_code == 422:
+            validation_errors.record_validation_response(
+                consumer,
+                method,
+                route,
+                response.content,
+                response.get("Content-Type"),
+                response.get("Content-Encoding"),
+                validation_errors.extract_pydantic_validation_errors,
+            )
         if response.status_code == 500:
             server_errors.add_server_error(consumer, method, route, exception_holder)
         metrics.record_request(
@@ -270,7 +264,6 @@ class ApitallyDjangoMiddleware:
         response_size: int | None,
         route: str | None,
         span: Span | None,
-        exception_holder: server_errors.ExceptionHolder,
     ) -> None:
         """Defer the span export and record metrics once the streamed content completes,
         after the OTel middleware has ended the SERVER span."""
@@ -305,8 +298,6 @@ class ApitallyDjangoMiddleware:
                     processor.update_stash(span_id, response_body=bytes(body))
                 if processor is not None and span_id is not None:
                     processor.finish_export(span_id, extra or None)
-                if status_code == 500:
-                    server_errors.add_server_error(consumer, method, route, exception_holder)
                 metrics.record_request(
                     method=method,
                     route=route or "",
@@ -327,7 +318,6 @@ class ApitallyDjangoMiddleware:
                 bytes_sent = 0
                 body: bytearray | bytes | None = bytearray() if capture_body else None
                 completed = False
-                holder_token = server_errors.exception_holder_var.set(exception_holder)
                 try:
                     async for chunk in async_content:
                         bytes_sent += len(chunk)
@@ -337,14 +327,8 @@ class ApitallyDjangoMiddleware:
                                 body = BODY_TOO_LARGE
                         yield chunk
                     completed = True
-                except Exception as exc:
-                    server_errors.set_exception(exc, exception_holder)
-                    raise
                 finally:
                     finish(bytes_sent, body, completed)
-                    # A failed stream retains the holder for an event ID from outer Sentry middleware.
-                    if completed or exception_holder.server_error_key is None:
-                        server_errors.exception_holder_var.reset(holder_token)
 
             response.streaming_content = async_stream_wrapper()
         else:
@@ -354,7 +338,6 @@ class ApitallyDjangoMiddleware:
                 bytes_sent = 0
                 body: bytearray | bytes | None = bytearray() if capture_body else None
                 completed = False
-                holder_token = server_errors.exception_holder_var.set(exception_holder)
                 try:
                     for chunk in content:
                         bytes_sent += len(chunk)
@@ -364,14 +347,8 @@ class ApitallyDjangoMiddleware:
                                 body = BODY_TOO_LARGE
                         yield chunk
                     completed = True
-                except Exception as exc:
-                    server_errors.set_exception(exc, exception_holder)
-                    raise
                 finally:
                     finish(bytes_sent, body, completed)
-                    # A failed stream retains the holder for an event ID from outer Sentry middleware.
-                    if completed or exception_holder.server_error_key is None:
-                        server_errors.exception_holder_var.reset(holder_token)
 
             response.streaming_content = stream_wrapper()
 

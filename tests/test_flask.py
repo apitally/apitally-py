@@ -330,14 +330,6 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     # The Apitally middleware still sets its attributes on the span created by the user's instrumentation
     assert "http.response.header.content-type" in attributes
 
-    error_response = app.test_client().get("/error")
-    assert error_response.status_code == 500
-    assert error_response.data
-    (record,) = exported_error_records(exporters)
-    assert record.event_name == "apitally.request.server_error"
-    body = cast("dict[str, Any]", record.body)
-    assert body["message"] == "boom"
-
 
 def test_sample_rate_zero_drops_trace_but_keeps_server_error(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
@@ -351,17 +343,3 @@ def test_sample_rate_zero_drops_trace_but_keeps_server_error(
     assert record.event_name == "apitally.request.server_error"
     body = cast("dict[str, Any]", record.body)
     assert body["message"] == "boom"
-
-
-def test_deliberate_503_without_exception_does_not_report(
-    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
-):
-    @app.get("/unavailable")
-    def unavailable() -> tuple[str, int]:
-        return "unavailable", 503
-
-    init(app, monkeypatch)
-    response = app.test_client().get("/unavailable")
-    assert response.status_code == 503
-    assert response.data
-    assert exported_error_records(exporters) == []

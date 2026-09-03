@@ -93,6 +93,7 @@ class ApitallyPlugin(InitPluginProtocol):
                         app.asgi_handler,  # ty: ignore[invalid-argument-type]
                         resolve_route=_resolve_route,  # ty: ignore[invalid-argument-type]
                         use_scope_client_address=True,
+                        validation_error_status=400,
                         validation_error_extractor=_extract_validation_errors,
                     )
                 )
@@ -144,8 +145,8 @@ def _after_exception(exception: Exception, scope: Scope) -> None:
     capture_exception(exception)
 
 
-def _extract_validation_errors(status_code: int, data: object) -> list[validation_errors.ValidationError]:
-    if status_code != 400 or not isinstance(data, Mapping):
+def _extract_validation_errors(data: object) -> list[validation_errors.ValidationError]:
+    if not isinstance(data, Mapping):
         return []
     detail = data.get("detail")
     extra = data.get("extra")

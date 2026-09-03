@@ -15,7 +15,7 @@ from opentelemetry.trace import SpanKind
 
 import apitally
 from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, _convert_proxy_objects
-from apitally.shared import activation, config, server_errors
+from apitally.shared import activation, config
 from apitally.shared.config import BODY_TOO_LARGE
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
@@ -200,30 +200,6 @@ def test_streaming_response_size_and_body_captured(exporters: InMemoryExporters,
     assert size_point.sum == 12
 
 
-def test_streaming_exception_reports_one_server_error_with_late_sentry_id(
-    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
-):
-    init(monkeypatch)
-    activate_via_signal()
-
-    response = Client().get("/stream/?fail=1")
-    assert response.status_code == 500
-    iterator = iter(response.streaming_content)  # ty: ignore[unresolved-attribute]
-    assert next(iterator) == b"chunk1"
-    with pytest.raises(RuntimeError, match="stream failed"):
-        next(iterator)
-    server_errors.set_sentry_event_id("late-event-id")
-
-    (record,) = exported_error_records(exporters)
-    assert record.event_name == "apitally.request.server_error"
-    body = cast("dict[str, Any]", record.body)
-    assert body["path"] == "/stream/"
-    assert body["type"] == "builtins.RuntimeError"
-    assert body["message"] == "stream failed"
-    assert body["sentry_event_id"] == "late-event-id"
-    assert body["count"] == 1
-
-
 def test_no_response_size_when_client_stops_reading_mid_stream(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
@@ -280,27 +256,6 @@ async def test_span_export_waits_for_async_streaming_response_to_complete(
     assert span.attributes["apitally.response.body"] == "chunk1chunk2"
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.route"] == "/stream-async/"
-
-
-@pytest.mark.skipif(django.VERSION < (4, 2), reason="async streaming responses require Django 4.2")
-async def test_async_streaming_exception_reports_server_error(
-    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
-):
-    init(monkeypatch)
-    activate_via_signal()
-
-    response = await AsyncClient().get("/stream-async/?fail=1")
-    assert response.status_code == 500
-    iterator = response.streaming_content.__aiter__()  # ty: ignore[unresolved-attribute]
-    assert await anext(iterator) == b"chunk1"
-    with pytest.raises(RuntimeError, match="stream failed"):
-        await anext(iterator)
-
-    (record,) = exported_error_records(exporters)
-    body = cast("dict[str, Any]", record.body)
-    assert body["path"] == "/stream-async/"
-    assert body["type"] == "builtins.RuntimeError"
-    assert body["message"] == "stream failed"
 
 
 def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

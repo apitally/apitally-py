@@ -69,7 +69,8 @@ def _instrument_app(app: Starlette) -> None:
                 ApitallyASGIMiddleware,
                 resolve_route=_resolve_route,
                 use_scope_client_address=True,
-                validation_error_extractor=_extract_validation_errors,
+                validation_error_status=422,
+                validation_error_extractor=validation_errors.extract_pydantic_validation_errors,
             ),
         )
         app.user_middleware.insert(0, Middleware(activation.ASGIActivationShim))
@@ -98,7 +99,8 @@ def _instrument_app(app: Starlette) -> None:
                 ),
                 resolve_route=_resolve_route,
                 use_scope_client_address=True,
-                validation_error_extractor=_extract_validation_errors,
+                validation_error_status=422,
+                validation_error_extractor=validation_errors.extract_pydantic_validation_errors,
             )
         )
 
@@ -121,12 +123,6 @@ class _ExceptionRecordingMiddleware:
             if span.is_recording():
                 span.set_status(Status(StatusCode.ERROR, f"{type(exc).__name__}: {exc}"))
             raise
-
-
-def _extract_validation_errors(status_code: int, data: object) -> list[validation_errors.ValidationError]:
-    if status_code != 422:
-        return []
-    return validation_errors.extract_pydantic_validation_errors(data)
 
 
 def _get_default_span_details(scope: Scope) -> tuple[str, dict[str, Any]]:
