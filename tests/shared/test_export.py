@@ -444,7 +444,6 @@ fastapi_required = pytest.mark.skipif(
 def create_fastapi_client(
     otlp_server: StubOTLPServer,
     monkeypatch: pytest.MonkeyPatch,
-    raise_server_exceptions: bool = True,
     **kwargs: Any,
 ) -> Any:
     from fastapi import FastAPI, Request
@@ -464,14 +463,15 @@ def create_fastapi_client(
         return JSONResponse({"ok": True})
 
     @app.get("/error")
-    async def error() -> None:
-        raise ValueError("boom")
+    async def error() -> JSONResponse:
+        apitally.capture_exception(ValueError("boom"))
+        return JSONResponse({"error": "boom"}, status_code=500)
 
     monkeypatch.setenv("APITALLY_OTLP_ENDPOINT", otlp_server.url)
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
     apitally.init(app, write_token=WRITE_TOKEN, **kwargs)
-    return TestClient(app, raise_server_exceptions=raise_server_exceptions)
+    return TestClient(app)
 
 
 def decoded_records(otlp_server: StubOTLPServer, path: str, message_type: Any) -> list[Any]:
@@ -525,7 +525,6 @@ def test_end_to_end_structured_errors_have_no_trace_context(
     with create_fastapi_client(
         otlp_server,
         monkeypatch,
-        raise_server_exceptions=False,
         sample_rate=0.0,
         capture_logs=False,
     ) as client:
