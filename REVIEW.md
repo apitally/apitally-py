@@ -148,7 +148,7 @@ For WSGI frameworks and Django, `activate()` runs in the first request (`WSGIAct
 
 ### M7. `env` default disagrees between code and migration guide
 
-**Status:** Open.
+**Status:** Fixed. The intended default is `dev`, which the code, the `init` docstring and the README already state. The migration guide row now says the default is unchanged.
 
 **Where:** [config.py:37](apitally/shared/config.py:37) (`env: str = "dev"`), [__init__.py:63-64](apitally/__init__.py:63) ("falling back to `dev`"), [MIGRATION.md:38](MIGRATION.md:38) ("default changed to `prod`")
 

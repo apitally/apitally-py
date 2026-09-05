@@ -35,7 +35,7 @@ All options move to keyword arguments of `apitally.init(...)` (or `ApitallyPlugi
 | 0.x | 1.x |
 | --- | --- |
 | `client_id` | `write_token` (new credential, from the Apitally dashboard, or `APITALLY_WRITE_TOKEN`) |
-| `env` (default `"dev"`) | `env` (default changed to `"prod"`, or `APITALLY_ENV`) |
+| `env` (default `"dev"`) | `env` (default `"dev"`, unchanged, or `APITALLY_ENV`) |
 | `app_version` | `app_version` (unchanged) |
 | `openapi_url` (FastAPI) | Removed. The configured FastAPI OpenAPI schema is captured automatically. |
 | `consumer_callback` | Removed. Call `set_consumer(...)` from your auth middleware or dependencies (see below). |
