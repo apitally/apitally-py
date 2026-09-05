@@ -43,6 +43,8 @@ class ApitallyMetricReader(MetricReader):
     def collect(self, timeout_millis: float = 10_000) -> None:  # ty: ignore[override-of-final-method]
         if self._collect is not None:
             super().collect(timeout_millis=timeout_millis)
+            if meter_provider is not None:
+                drop_histogram_aggregations(meter_provider, self)
 
     def _receive_metrics(self, metrics_data: MetricsData, timeout_millis: float = 10_000, **kwargs: Any) -> None:
         if metrics_data is None or not metrics_data.resource_metrics:  # pragma: no cover
@@ -109,6 +111,17 @@ def record_request(
         request_body_size.record(request_size, attributes)
     if response_size is not None and response_size >= 0:
         response_body_size.record(response_size, attributes)
+
+
+def drop_histogram_aggregations(provider: MeterProvider, metric_reader: MetricReader) -> None:
+    """DELTA histograms carry nothing across cycles, but the SDK never evicts per-attribute-set
+    aggregations, so distinct consumer identifiers would grow memory without bound."""
+    storage = provider._measurement_consumer._reader_storages[metric_reader]
+    for instrument, matches in storage._instrument_view_instrument_matches.items():
+        if isinstance(instrument, SDKHistogram):
+            for match in matches:
+                with match._lock:
+                    match._attributes_aggregation.clear()
 
 
 def reset() -> None:

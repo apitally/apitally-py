@@ -1,8 +1,10 @@
 import json
+import logging
 from typing import Any, Iterator
 
 import pytest
 from flask import Blueprint, Flask, Response, jsonify
+from flask.logging import default_handler
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import ReadableSpan
@@ -291,6 +293,14 @@ def test_sampled_out_request_skips_capture(app: Flask, exporters: InMemoryExport
     assert exported_spans(exporters) == []
     (point,) = duration_data_points(reader)
     assert point.count == 1
+
+
+def test_flask_default_log_handler_survives_activation(app: Flask, monkeypatch: pytest.MonkeyPatch):
+    # pytest installs its own capture handlers on the root logger
+    monkeypatch.setattr(logging.getLogger(), "handlers", [])
+    init(app, monkeypatch)
+    activation.activate()
+    assert default_handler in app.logger.handlers
 
 
 def test_unhandled_exception_recorded_on_server_span(

@@ -108,9 +108,10 @@ def _insert_middleware(caller_globals: dict[str, Any]) -> None:
     if not isinstance(middleware, list):  # pragma: no cover
         logger.warning("Apitally could not find the MIDDLEWARE setting, requests will not be tracked")
         return
+    if OTEL_MIDDLEWARE not in middleware:
+        middleware.insert(0, OTEL_MIDDLEWARE)
     if APITALLY_MIDDLEWARE not in middleware:
-        position = middleware.index(OTEL_MIDDLEWARE) + 1 if OTEL_MIDDLEWARE in middleware else 0
-        middleware.insert(position, APITALLY_MIDDLEWARE)
+        middleware.insert(middleware.index(OTEL_MIDDLEWARE) + 1, APITALLY_MIDDLEWARE)
 
 
 def _handle_request_started(sender: object, **kwargs: Any) -> None:

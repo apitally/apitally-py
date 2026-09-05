@@ -28,6 +28,23 @@ installed_handler: LoggingHandler | None = None
 loguru_sink_id: int | None = None
 
 
+class ApitallyLoggingHandler(LoggingHandler):
+    def handle(self, record: logging.LogRecord) -> bool:
+        # A root handler hides the stdlib lastResort fallback, so restore it for loggers without other handlers
+        last_resort = logging.lastResort
+        if last_resort is not None and record.levelno >= last_resort.level and not self.has_other_handlers(record):
+            last_resort.handle(record)
+        return super().handle(record)
+
+    def has_other_handlers(self, record: logging.LogRecord) -> bool:
+        logger: logging.Logger | None = logging.getLogger(record.name)
+        while logger is not None:
+            if any(handler is not self for handler in logger.handlers):
+                return True
+            logger = logger.parent
+        return False
+
+
 def install_root_handler(
     logger_provider: LoggerProvider, span_processor: ApitallySpanProcessor
 ) -> LoggingHandler | None:
@@ -37,7 +54,9 @@ def install_root_handler(
     if not config.capture_logs:
         return None
     if installed_handler is None:
-        handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider, log_code_attributes=True)
+        handler = ApitallyLoggingHandler(
+            level=logging.NOTSET, logger_provider=logger_provider, log_code_attributes=True
+        )
         handler.addFilter(is_application_log)
         handler.addFilter(make_kept_request_filter(span_processor))
         logging.getLogger().addHandler(handler)
@@ -83,7 +102,8 @@ def install_loguru_sink(handler: LoggingHandler) -> None:
         for key, value in record["extra"].items():
             if key not in log_record.__dict__:
                 log_record.__dict__[key] = value
-        handler.handle(log_record)
+        # Loguru writes to its own sinks, so the lastResort fallback must not apply here
+        LoggingHandler.handle(handler, log_record)
 
     loguru_sink_id = loguru_logger.add(sink, level=0)
 
