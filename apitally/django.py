@@ -125,6 +125,7 @@ class ApitallyDjangoMiddleware:
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response
         self.config = get_config()
+        startup.resolve_app_info()
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
         config = self.config
