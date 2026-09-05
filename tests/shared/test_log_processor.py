@@ -215,6 +215,38 @@ def test_loguru_logs_captured_with_extra(
     assert unwrap(record.attributes)["user_id"] == 42
 
 
+def test_logs_bridged_between_stdlib_and_loguru_captured_once(
+    tracer: Tracer,
+    log_exporter: InMemoryLogRecordExporter,
+    root_handler: LoggingHandler | None,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from loguru import logger
+
+    class InterceptHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            logger.log(record.levelname, record.getMessage())
+
+    class PropagateHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            logging.getLogger(record.name).handle(record)
+
+    monkeypatch.setattr(logging.getLogger(), "handlers", [root_handler, InterceptHandler()])
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        logging.getLogger("myapp").warning("Hello")
+    assert len(log_exporter.get_finished_logs()) == 1
+
+    log_exporter.clear()
+    monkeypatch.setattr(logging.getLogger(), "handlers", [root_handler])
+    sink_id = logger.add(PropagateHandler())
+    try:
+        with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+            logger.warning("Hello")
+    finally:
+        logger.remove(sink_id)
+    assert len(log_exporter.get_finished_logs()) == 1
+
+
 def test_loguru_logs_include_exception_attributes(
     tracer: Tracer, log_exporter: InMemoryLogRecordExporter, root_handler: LoggingHandler | None
 ):

@@ -80,7 +80,7 @@ With a single settings module the nested import already has `MIDDLEWARE` defined
 
 ### M2. Every stdlib log record is captured twice with the standard loguru `InterceptHandler` recipe
 
-**Status:** Open.
+**Status:** Fixed. Both capture paths now detect a bridge from the call stack: the loguru sink skips messages dispatched from `logging.Logger.callHandlers` when that dispatch reaches the root handler, and the root handler skips records emitted from inside loguru's `Logger._log` while the loguru sink is installed. Records bridged through a non-propagating logger are still captured once. Covered by `test_logs_bridged_between_stdlib_and_loguru_captured_once`.
 
 **Where:** [log_processor.py:41-45](apitally/shared/log_processor.py:41), [log_processor.py:57-88](apitally/shared/log_processor.py:57)
 

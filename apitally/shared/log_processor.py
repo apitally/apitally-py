@@ -1,6 +1,8 @@
 import contextlib
 import logging
+import sys
 from collections.abc import Callable, MutableMapping
+from types import CodeType, FrameType
 from typing import TYPE_CHECKING, cast
 
 from opentelemetry import trace
@@ -26,10 +28,14 @@ MAX_LOG_VALUE_LENGTH = 2048
 
 installed_handler: LoggingHandler | None = None
 loguru_sink_id: int | None = None
+loguru_log_code: CodeType | None = None
 
 
 class ApitallyLoggingHandler(LoggingHandler):
     def handle(self, record: logging.LogRecord) -> bool:
+        # Records propagated from a loguru sink into stdlib logging are already captured by the loguru sink
+        if loguru_log_code is not None and find_frame(loguru_log_code) is not None:
+            return False
         # A root handler hides the stdlib lastResort fallback, so restore it for loggers without other handlers
         last_resort = logging.lastResort
         if last_resort is not None and record.levelno >= last_resort.level and not self.has_other_handlers(record):
@@ -74,13 +80,17 @@ def uninstall_root_handler() -> None:
 
 
 def install_loguru_sink(handler: LoggingHandler) -> None:
-    global loguru_sink_id
+    global loguru_sink_id, loguru_log_code
     try:
         from loguru import logger as loguru_logger
     except ImportError:
         return
 
     def sink(message: "LoguruMessage") -> None:
+        # Stdlib records forwarded by an intercept handler are already captured by the root handler
+        frame = find_frame(logging.Logger.callHandlers.__code__)
+        if frame is not None and reaches_handler(frame.f_locals["self"], handler):
+            return
         record = message.record
         exception = record["exception"]
         exc_info = (
@@ -106,16 +116,31 @@ def install_loguru_sink(handler: LoggingHandler) -> None:
         LoggingHandler.handle(handler, log_record)
 
     loguru_sink_id = loguru_logger.add(sink, level=0)
+    loguru_log_code = loguru_logger._log.__code__  # ty: ignore[unresolved-attribute]
 
 
 def uninstall_loguru_sink() -> None:
-    global loguru_sink_id
+    global loguru_sink_id, loguru_log_code
     if loguru_sink_id is not None:
         from loguru import logger as loguru_logger
 
         with contextlib.suppress(ValueError):
             loguru_logger.remove(loguru_sink_id)
         loguru_sink_id = None
+        loguru_log_code = None
+
+
+def find_frame(code: CodeType) -> FrameType | None:
+    frame: FrameType | None = sys._getframe(1)
+    while frame is not None and frame.f_code is not code:
+        frame = frame.f_back
+    return frame
+
+
+def reaches_handler(logger: logging.Logger, handler: logging.Handler) -> bool:
+    while logger.propagate and logger.parent is not None:
+        logger = logger.parent
+    return handler in logger.handlers
 
 
 def is_application_log(record: logging.LogRecord) -> bool:
