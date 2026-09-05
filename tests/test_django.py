@@ -6,6 +6,7 @@ from typing import Any
 import django
 import pytest
 from django.conf import settings
+from django.core.wsgi import get_wsgi_application
 from django.test import Client
 from django.test.client import AsyncClient
 from django.utils.functional import empty, lazy
@@ -99,6 +100,19 @@ def test_first_request_activates_and_is_recorded(exporters: InMemoryExporters, m
     payload = startup_payload(exporters)
     assert payload["framework"] == "django"
     assert payload["versions"]["django"]
+
+
+def test_schema_generation_runs_at_handler_construction(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    calls: list[int] = []
+    monkeypatch.setattr("apitally.django._get_openapi", lambda: calls.append(1) or '{"openapi": "3.1.0"}')
+    init(monkeypatch)
+    get_wsgi_application()
+    assert calls == [1]
+
+    # The test client builds another middleware chain; the resolved schema is reused
+    assert Client().get("/items/123/").status_code == 200
+    assert calls == [1]
+    assert startup_payload(exporters)["openapi"] == '{"openapi": "3.1.0"}'
 
 
 def test_management_command_configures_but_never_activates(

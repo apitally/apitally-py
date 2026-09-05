@@ -108,7 +108,7 @@ Django's `load_middleware` builds the chain from the inside out; once it meets a
 
 ### M4. Response wrapping defeats `sendfile` for Flask `send_file` and Django `FileResponse`
 
-**Status:** Open.
+**Status:** Rejected. The impact is performance only and limited to file responses. The response wrapper is the single place where every WSGI and Django response is finalized (completion, size, deferral release, metrics), and a separate early-finalize path for file wrappers in both adapters is not worth that duplication.
 
 **Where:** [wsgi.py:73](apitally/shared/wsgi.py:73), [wsgi.py:185-223](apitally/shared/wsgi.py:185); [django.py:332](apitally/django.py:332), [django.py:352](apitally/django.py:352)
 
@@ -122,7 +122,7 @@ WSGI servers (gunicorn sync, uWSGI, waitress, mod_wsgi) take the `sendfile()` pa
 
 ### M5. Endpoint enumeration and OpenAPI generation run inside the first request, under `activation_lock`
 
-**Status:** Open.
+**Status:** Fixed. `ApitallyDjangoMiddleware.__init__` calls `startup.resolve_app_info`, which resolves paths, versions and the OpenAPI schema eagerly. Django constructs middleware from `load_middleware` when the WSGI or ASGI handler is built at process start, so schema generation runs off the request path as it did in 0.x, and the on-activate hook only serializes the resolved values. Other adapters only enumerate in-memory route tables at emit time and are unchanged. Covered by `test_schema_generation_runs_at_handler_construction`.
 
 **Where:** [activation.py:79-97](apitally/shared/activation.py:79), [startup.py:48-67](apitally/shared/startup.py:48), [django.py:116-118](apitally/django.py:116), [activation.py:171-174](apitally/shared/activation.py:171)
 

@@ -34,6 +34,11 @@ def set_app_info(
         activation.register_on_activate_hook(emit_startup_event)
 
 
+def resolve_app_info() -> None:
+    for key in ("paths", "versions", "openapi"):
+        app_info[key] = resolve_value(app_info.get(key))
+
+
 def resolve_versions(app_version: str | None, **packages: str) -> dict[str, str]:
     """Resolve installed versions for the startup event. Keys are payload names, and values are distribution names."""
     versions = {}
