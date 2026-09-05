@@ -150,6 +150,20 @@ def test_sdk_and_otel_logs_not_exported(
     assert log_exporter.get_finished_logs() == ()
 
 
+def test_last_resort_output_kept_for_loggers_without_other_handlers(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, root_handler: LoggingHandler | None
+):
+    # pytest installs its own capture handlers on the root logger
+    monkeypatch.setattr(logging.getLogger(), "handlers", [root_handler])
+    logging.getLogger("myapp").warning("visible")
+    logging.getLogger("myapp").info("below lastResort level")
+    assert capsys.readouterr().err == "visible\n"
+
+    monkeypatch.setattr(logging.getLogger("myapp"), "handlers", [logging.NullHandler()])
+    logging.getLogger("myapp").warning("handled elsewhere")
+    assert capsys.readouterr().err == ""
+
+
 def test_capture_logs_false_installs_no_handler(logger_provider: LoggerProvider, span_processor: ApitallySpanProcessor):
     set_config(write_token=WRITE_TOKEN, capture_logs=False)
     handlers_before = list(logging.getLogger().handlers)

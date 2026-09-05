@@ -40,6 +40,8 @@ def init(
             return
         if isinstance(app.wsgi_app, activation.WSGIActivationShim):
             return
+        # Flask only installs its default log handler if none exists up to root, so create it before activation
+        _ = app.logger
         original_handle_exception = app.handle_exception
 
         def handle_exception(exception: Exception) -> Any:

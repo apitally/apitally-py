@@ -3,6 +3,7 @@ from collections.abc import Iterator
 
 import pytest
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
+from opentelemetry.sdk.metrics import Histogram as SDKHistogram
 from opentelemetry.sdk.metrics.export import (
     AggregationTemporality,
     ExponentialHistogram,
@@ -82,9 +83,9 @@ def test_histograms_under_apitally_scope():
 
 def test_collect_appends_delta_payloads_to_spool(spool: Spool):
     metrics.setup(Resource.create({}), metrics.ApitallyMetricReader(spool))
-    metrics.record_request("GET", "/a", 200, consumer=None, duration=1.0)
+    metrics.record_request("GET", "/a", 200, consumer="tenant-1", duration=1.0)
     unwrap(metrics.reader).collect()
-    metrics.record_request("GET", "/a", 200, consumer=None, duration=2.0)
+    metrics.record_request("GET", "/a", 200, consumer="tenant-2", duration=2.0)
     unwrap(metrics.reader).collect()
     spool.rotate_for_export()
     (file,) = [file for file in spool.pending_files() if file.signal == "metrics"]
@@ -100,6 +101,15 @@ def test_collect_appends_delta_payloads_to_spool(spool: Spool):
     ]
     assert [point.count for point in points] == [1, 1]
     assert sum(point.sum for point in points) == pytest.approx(3.0)
+    # Histogram aggregations are dropped after each collection so consumer cardinality does not accumulate
+    storage = unwrap(metrics.meter_provider)._measurement_consumer._reader_storages[unwrap(metrics.reader)]
+    histogram_matches = [
+        match
+        for instrument, matches in storage._instrument_view_instrument_matches.items()
+        if isinstance(instrument, SDKHistogram)
+        for match in matches
+    ]
+    assert histogram_matches and all(not match._attributes_aggregation for match in histogram_matches)
 
 
 def test_metric_reader_does_not_start_timer_thread(spool: Spool):
