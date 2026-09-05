@@ -161,7 +161,7 @@ def test_unknown_sizes_skip_size_observations():
 
 
 def test_setup_twice_moves_system_metrics_to_new_provider():
-    # The instrumentor is a singleton, so a second setup must uninstrument it first
+    # Fork re-activation sets up a second pipeline in the child
     create_pipeline()
     reader = create_pipeline()
     assert "process.cpu.utilization" in collect_metrics(reader)
@@ -186,7 +186,9 @@ def test_process_gauges_keep_default_aggregation():
     reader = create_pipeline()
     collected = collect_metrics(reader)
     assert isinstance(collected["process.cpu.utilization"].data, Gauge)
+    assert collected["process.cpu.utilization"].unit == "1"
     assert isinstance(collected["process.memory.usage"].data, Sum)
+    assert collected["process.memory.usage"].unit == "By"
     assert isinstance(collected["process.uptime"].data, Gauge)
     (uptime_point,) = collected["process.uptime"].data.data_points
     assert uptime_point.value >= 0

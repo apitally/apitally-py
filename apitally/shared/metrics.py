@@ -2,8 +2,8 @@ import time
 from collections.abc import Iterable
 from typing import Any
 
+import psutil
 from opentelemetry.exporter.otlp.proto.common.metrics_encoder import encode_metrics
-from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
 from opentelemetry.metrics import CallbackOptions, Histogram, Observation
 from opentelemetry.sdk.metrics import Histogram as SDKHistogram
 from opentelemetry.sdk.metrics import MeterProvider
@@ -20,12 +20,6 @@ from apitally.shared.spool import Spool
 HISTOGRAM_PREFERRED_TEMPORALITY: dict[type, AggregationTemporality] = {SDKHistogram: AggregationTemporality.DELTA}
 HISTOGRAM_PREFERRED_AGGREGATION: dict[type, Aggregation] = {
     SDKHistogram: ExponentialBucketHistogramAggregation(max_scale=3)
-}
-
-# None values: these two instruments emit a single unlabeled observation each
-SYSTEM_METRICS_CONFIG: dict[str, list[str] | None] = {
-    "process.cpu.utilization": None,
-    "process.memory.usage": None,
 }
 
 
@@ -61,22 +55,22 @@ request_duration: Histogram | None = None
 request_body_size: Histogram | None = None
 response_body_size: Histogram | None = None
 start_time: float = 0.0
+process: psutil.Process | None = None
 
 
 def setup(resource: Resource, metric_reader: MetricReader, *additional_metric_readers: MetricReader) -> MeterProvider:
-    global meter_provider, reader, request_duration, request_body_size, response_body_size, start_time
+    global meter_provider, reader, request_duration, request_body_size, response_body_size, start_time, process
     reader = metric_reader
     meter_provider = create_meter_provider(resource, metric_readers=[reader, *additional_metric_readers])
     start_time = time.monotonic()
+    process = psutil.Process()
     meter = meter_provider.get_meter("apitally")
     request_duration = meter.create_histogram("http.server.request.duration", unit="s")
     request_body_size = meter.create_histogram("http.server.request.body.size", unit="By")
     response_body_size = meter.create_histogram("http.server.response.body.size", unit="By")
     meter.create_observable_gauge("process.uptime", callbacks=[observe_uptime], unit="s")
-    instrumentor = SystemMetricsInstrumentor(config=SYSTEM_METRICS_CONFIG)
-    if instrumentor.is_instrumented_by_opentelemetry:
-        instrumentor.uninstrument()
-    instrumentor.instrument(meter_provider=meter_provider)
+    meter.create_observable_gauge("process.cpu.utilization", callbacks=[observe_cpu_utilization], unit="1")
+    meter.create_observable_up_down_counter("process.memory.usage", callbacks=[observe_memory_usage], unit="By")
     return meter_provider
 
 
@@ -128,9 +122,6 @@ def reset() -> None:
     global meter_provider, reader, request_duration, request_body_size, response_body_size
     if meter_provider is not None:
         meter_provider.shutdown()
-    instrumentor = SystemMetricsInstrumentor()
-    if instrumentor.is_instrumented_by_opentelemetry:
-        instrumentor.uninstrument()
     meter_provider = None
     reader = None
     request_duration = None
@@ -140,3 +131,13 @@ def reset() -> None:
 
 def observe_uptime(options: CallbackOptions) -> Iterable[Observation]:
     yield Observation(time.monotonic() - start_time)
+
+
+def observe_cpu_utilization(options: CallbackOptions) -> Iterable[Observation]:
+    if process is not None:
+        yield Observation(process.cpu_percent() / 100 / (psutil.cpu_count() or 1))
+
+
+def observe_memory_usage(options: CallbackOptions) -> Iterable[Observation]:
+    if process is not None:
+        yield Observation(process.memory_info().rss)
