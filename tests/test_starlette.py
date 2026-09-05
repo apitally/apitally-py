@@ -48,11 +48,16 @@ def create_app() -> Starlette:
     async def error(request: Request) -> JSONResponse:
         raise ValueError("boom")
 
+    async def get_file(request: Request) -> JSONResponse:
+        return JSONResponse({"name": request.path_params["name"]})
+
     return Starlette(
         routes=[
             Route("/items/{item_id}", get_item),
             Route("/items", create_item, methods=["POST"]),
             Route("/error", error),
+            # A parameterised route in an earlier sibling mount must not capture /admin/users
+            Mount("/files", routes=[Route("/{name}", get_file)]),
             Mount("/admin", routes=[Route("/users", list_users)]),
         ]
     )

@@ -1,7 +1,7 @@
 import re
 from collections.abc import Mapping
 from functools import lru_cache
-from urllib.parse import parse_qsl, urlencode
+from urllib.parse import unquote_plus
 
 
 REDACTED = "[REDACTED]"
@@ -54,9 +54,14 @@ class Redaction:
             if not assume_query:
                 return value
             base, query = "", value
-        pairs = parse_qsl(query, keep_blank_values=True)
-        redacted = urlencode([(k, REDACTED if self.should_redact_query_param(k) else v) for k, v in pairs])
+        redacted = "&".join(self.redact_query_pair(pair) for pair in query.split("&"))
         return f"{base}?{redacted}" if sep else redacted
+
+    def redact_query_pair(self, pair: str) -> str:
+        name, eq, _ = pair.partition("=")
+        if eq and self.should_redact_query_param(unquote_plus(name)):
+            return f"{name}={REDACTED}"
+        return pair
 
     def redact_headers(self, headers: Mapping[str, str | list[str]]) -> dict[str, str | list[str]]:
         result: dict[str, str | list[str]] = {}

@@ -16,18 +16,22 @@ def test_redact_query_params_mixed():
 
 def test_redact_query_params_value_shapes():
     redaction = Redaction()
-    assert redaction.redact_query_params("/items?secret=1&q=2") == "/items?secret=%5BREDACTED%5D&q=2"
+    assert redaction.redact_query_params("/items?secret=1&q=2") == "/items?secret=[REDACTED]&q=2"
     assert (
         redaction.redact_query_params("https://example.com/items?token=x")
-        == "https://example.com/items?token=%5BREDACTED%5D"
+        == "https://example.com/items?token=[REDACTED]"
     )
     assert redaction.redact_query_params("/items", assume_query=False) == "/items"
+    assert redaction.redact_query_params("api%2Dkey=a%20b&q=x+y") == "api%2Dkey=[REDACTED]&q=x+y"
 
 
 def test_redact_query_params_parsing_edge_cases():
     redaction = Redaction()
-    # Valueless params are preserved, not dropped
-    assert redaction.redact_query_params("/items?debug&x=1", assume_query=False) == "/items?debug=&x=1"
+    # Untouched queries keep the client's exact encoding
+    assert (
+        redaction.redact_query_params("/items?debug&q=hello%20world&ids=1,2,3")
+        == "/items?debug&q=hello%20world&ids=1,2,3"
+    )
     # A query-less path containing '=' is not a query string
     assert redaction.redact_query_params("/items/key=value", assume_query=False) == "/items/key=value"
 
@@ -47,8 +51,8 @@ def test_redact_headers():
         "x-api-key": [REDACTED],
         "x_api_key": [REDACTED],
         "Authorization": REDACTED,
-        "Location": "/callback?token=%5BREDACTED%5D&ok=1",
-        "Content-Location": ["https://example.com/item?api-key=%5BREDACTED%5D"],
+        "Location": "/callback?token=[REDACTED]&ok=1",
+        "Content-Location": ["https://example.com/item?api-key=[REDACTED]"],
     }
 
 
