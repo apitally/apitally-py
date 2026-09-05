@@ -94,15 +94,15 @@ The root `LoggingHandler` captures stdlib records, and the loguru sink (installe
 
 ### M3. `ApitallyDjangoMiddleware` is not `async_capable`, forcing the whole outer middleware chain into sync mode under ASGI
 
-**Status:** Open.
+**Status:** Rejected after attempting the fix. The premise below is wrong for the installed contrib version (0.64b0, unchanged on upstream main): the OTel `_DjangoMiddleware` is a plain sync-only class without `async_capable`, so Django wraps it in `SyncToAsync` regardless. Making `ApitallyDjangoMiddleware` dual-mode only moves the `AsyncToSync` boundary from below Apitally to between OTel and Apitally; the request still makes exactly one thread round trip. Since Apitally sits directly after OTel, the two form the single contiguous sync block Django's `load_middleware` is designed to adapt once (see Django ticket 37177). Revisit only if the OTel Django middleware gains native async support upstream.
 
 **Where:** [django.py:121-149](apitally/django.py:121)
 
-Django's `load_middleware` builds the chain from the inside out; once it meets a sync-only middleware it runs that middleware and every middleware outside it (including the OTel `_DjangoMiddleware`, which is `async_capable = True`, and any user middleware placed before Apitally) in sync mode, adapting the top of the stack with `SyncToAsync` and the handler below Apitally with `AsyncToSync`.
+Django's `load_middleware` builds the chain from the inside out; once it meets a sync-only middleware it runs that middleware and every middleware outside it (and any user middleware placed before Apitally) in sync mode, adapting the top of the stack with `SyncToAsync` and the handler below Apitally with `AsyncToSync`.
 
 **Reproduced:** with `ASGIHandler()` and the default insertion (OTel, Apitally, Common), `_middleware_chain` is a `SyncToAsync` object. Every request therefore hops event loop -> thread (OTel + Apitally, sync) -> event loop (inner async middleware and view). Django logs "Asynchronous handler adapted for middleware apitally.django.ApitallyDjangoMiddleware" at DEBUG.
 
-**Scenario:** any Django project served by uvicorn/daphne with async views, which the `django[asgi]` extra in `pyproject.toml` explicitly targets. Likelihood: high for ASGI Django users. **Impact:** two thread switches per request, and the OTel middleware is demoted to sync as collateral. Django's docs call this out as a performance penalty to avoid.
+**Scenario:** any Django project served by uvicorn/daphne with async views, which the `django[asgi]` extra in `pyproject.toml` explicitly targets. Likelihood: high for ASGI Django users. **Impact:** two thread switches per request. Django's docs call this out as a performance penalty to avoid.
 
 **Fix:** implement the dual-mode middleware pattern (`sync_capable = True`, `async_capable = True`, `markcoroutinefunction(self)` when `get_response` is a coroutine function, and an `__acall__` path that awaits `get_response`). `finalize` and the streaming wrappers are already sync-safe helpers, so the change is mostly the call shape.
 
