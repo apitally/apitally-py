@@ -135,6 +135,7 @@ def _resolve_route(scope: Scope, routes: list[BaseRoute] | None = None) -> str |
     if routes is None:
         app = scope.get("app")
         routes = getattr(app, "routes", None) or []
+    endpoint = scope.get("endpoint")
     for route in routes:
         sub_routes = getattr(route, "routes", None)
         if sub_routes is not None:
@@ -142,6 +143,9 @@ def _resolve_route(scope: Scope, routes: list[BaseRoute] | None = None) -> str |
             if path is not None:
                 return path
         elif (path := getattr(route, "path", None)) is not None:
+            # After routing, only the matched endpoint's route counts
+            if endpoint is not None and getattr(route, "endpoint", None) is not endpoint:
+                continue
             match, _ = route.matches(scope)
             if match == Match.FULL:
                 return path

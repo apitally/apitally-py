@@ -198,7 +198,7 @@ Both `_instrument_app` functions replace `app.build_middleware_stack` but never 
 
 ### L2. Query-string redaction rewrites values that were not redacted
 
-**Status:** Open.
+**Status:** Fixed. `redact_query_params` now splits the original query on `&` and splices `[REDACTED]` into matched pairs only, so untouched queries are returned byte for byte and no span copy is made for them. Covered by the updated `test_redaction.py` cases.
 
 **Where:** [redaction.py:57-59](apitally/shared/redaction.py:57), [exporter.py:62-74](apitally/shared/exporter.py:62)
 
@@ -208,7 +208,7 @@ The `parse_qsl` -> `urlencode` round trip is not identity: `q=hello%20world` bec
 
 ### L3. Starlette route resolution can return a sibling mount's template
 
-**Status:** Open.
+**Status:** Fixed. `_resolve_route` skips routes whose `endpoint` is not `scope["endpoint"]` once routing has set it, so sibling mounts' routes no longer match against the stripped path; `matches()` still decides among routes sharing an endpoint and at span start before routing. Covered by `test_mounted_route_includes_mount_prefix` with a parameterised sibling mount ahead of `/admin`.
 
 **Where:** [starlette.py:132-148](apitally/starlette.py:132)
 
