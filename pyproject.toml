@@ -37,7 +37,7 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-common>=1.42.0,<2.0.0",
     "opentelemetry-instrumentation>=0.63b0",
     "opentelemetry-instrumentation-logging>=0.63b0",
-    "opentelemetry-instrumentation-system-metrics>=0.63b0",
+    "psutil>=5.9.0",
     "requests>=2.26.0",
 ]
 dynamic = ["version"]
