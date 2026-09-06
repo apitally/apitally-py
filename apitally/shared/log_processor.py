@@ -178,7 +178,7 @@ class ApitallyLogRecordProcessor(LogRecordProcessor):
                 # Scope "apitally" passes without request context to preserve the startup event
                 if log_record.instrumentation_scope is None or log_record.instrumentation_scope.name != "apitally":
                     return
-            elif record.attributes is not None:
+            else:
                 # ReadWriteLogRecord.__post_init__ replaces attributes with mutable BoundedAttributes
                 attributes = cast(MutableMapping[str, AnyValue], record.attributes)
                 attributes[SERVER_SPAN_ID_ATTRIBUTE] = format(server_span_id, "016x")

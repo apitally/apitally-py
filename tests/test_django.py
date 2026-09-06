@@ -92,6 +92,7 @@ def test_first_request_activates_and_is_recorded(exporters: InMemoryExporters, m
     # request_started activated before the span started, so the very first request is exported
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
+    assert span.name == "GET /items/{pk}/"
     assert span.attributes["http.route"] == "/items/{pk}/"
     assert span.attributes["http.response.status_code"] == 200
     # The test client, like runserver, omits REQUEST_URI; path attributes are derived from http.url

@@ -4,7 +4,7 @@ Scope: every module under `apitally/`, the tests, and the installed sources of t
 
 Severity: **High** = data loss, silent breakage of a core feature, or unbounded resource growth in a normal deployment. **Medium** = wrong behaviour or a real operational problem in a common configuration. **Low** = real but narrow, or cosmetic/perf.
 
-Each finding carries a **Status** line (Open or Fixed, with what was done) so this file doubles as the tracker for what has been actioned.
+Each finding carries a **Status** line (Fixed or Rejected, with what was done) so this file doubles as the tracker for what has been actioned.
 
 ---
 
@@ -279,12 +279,12 @@ The per-engine signature invites one call per engine, but `BaseInstrumentor.inst
 
 ## Minor code quality
 
-- [django.py:200-202](apitally/django.py:200): the Django SERVER span keeps OTel's raw name (`GET items/<int:pk>/`) while the ASGI, BlackSheep and Litestar transports call `span.update_name` after rewriting `http.route`. One line for consistency.
-- [django.py:366-377](apitally/django.py:366): `_get_paths` has no per-source isolation. Ninja's `get_openapi_schema()` calls `reverse(f"{namespace}:api-root")` against `ROOT_URLCONF`, so with `django_urlconf=["tenant_urls"]` a `NoReverseMatch` from Ninja also discards the DRF and class-based-view paths.
-- [flask.py:54](apitally/flask.py:54), [flask.py:65-67](apitally/flask.py:65): `_set_client_address` reads `request.remote_addr`, which is `environ["REMOTE_ADDR"]`, the same key the Flask instrumentor already reads in `before_request` (after `ProxyFix` has rewritten it). The hook only adds value for a custom `Request` subclass overriding `remote_addr`, and a user `before_request` that short-circuits skips it anyway. Remove or comment the reason.
-- [export.py:153-177](apitally/shared/export.py:153): the stages of `run_cycle` are not isolated. An exception in `metrics.reader.collect()` skips `rotate_for_export`/`send_pending` for the cycle, and unexpected cycle exceptions are DEBUG only.
-- [log_processor.py:136](apitally/shared/log_processor.py:136): `elif record.attributes is not None` is always true because `ReadWriteLogRecord.__post_init__` unconditionally wraps attributes in `BoundedAttributes`. Dead condition.
-- [starlette.py:117-120](apitally/starlette.py:117): `_ExceptionRecordingMiddleware` records the exception on `get_server_span()` but sets the status on `trace.get_current_span()`; same span in practice, one accessor reads cleaner.
+- [django.py:200-202](apitally/django.py:200): the Django SERVER span keeps OTel's raw name (`GET items/<int:pk>/`) while the ASGI, BlackSheep and Litestar transports call `span.update_name` after rewriting `http.route`. One line for consistency. **Status:** Fixed. The middleware now renames the span to the method and resolved template like the other adapters; the ingest stores the span name, so Django traces show `GET /items/{pk}/` instead of the raw Django pattern. Covered by `test_first_request_activates_and_is_recorded`.
+- [django.py:366-377](apitally/django.py:366): `_get_paths` has no per-source isolation. Ninja's `get_openapi_schema()` calls `reverse(f"{namespace}:api-root")` against `ROOT_URLCONF`, so with `django_urlconf=["tenant_urls"]` a `NoReverseMatch` from Ninja also discards the DRF and class-based-view paths. **Status:** Rejected. 0.x called `get_openapi_schema()` unguarded in the same way without reports, and a failure is logged with a traceback at ERROR level by `resolve_value`, so it is not silent. A per-source guard would only matter for a Ninja API that is unreachable from `ROOT_URLCONF`.
+- [flask.py:54](apitally/flask.py:54), [flask.py:65-67](apitally/flask.py:65): `_set_client_address` reads `request.remote_addr`, which is `environ["REMOTE_ADDR"]`, the same key the Flask instrumentor already reads in `before_request` (after `ProxyFix` has rewritten it). The hook only adds value for a custom `Request` subclass overriding `remote_addr`, and a user `before_request` that short-circuits skips it anyway. Remove or comment the reason. **Status:** Fixed. The hook is removed. Both Flask client address tests pass without it, confirming the instrumentor already reads the same `REMOTE_ADDR` after `ProxyFix`.
+- [export.py:153-177](apitally/shared/export.py:153): the stages of `run_cycle` are not isolated. An exception in `metrics.reader.collect()` skips `rotate_for_export`/`send_pending` for the cycle, and unexpected cycle exceptions are DEBUG only. **Status:** Fixed. Metrics collection runs in its own guarded step, so a failure there (for example SDK-internal drift in `drop_histogram_aggregations`) no longer blocks trace and log export. Unexpected cycle and shutdown errors are logged at ERROR level with the traceback; they indicate bugs, unlike the send failures M6 keeps at debug. Covered by `test_metrics_collection_error_does_not_block_export`.
+- [log_processor.py:136](apitally/shared/log_processor.py:136): `elif record.attributes is not None` is always true because `ReadWriteLogRecord.__post_init__` unconditionally wraps attributes in `BoundedAttributes`. Dead condition. **Status:** Fixed. Replaced with `else`.
+- [starlette.py:117-120](apitally/starlette.py:117): `_ExceptionRecordingMiddleware` records the exception on `get_server_span()` but sets the status on `trace.get_current_span()`; same span in practice, one accessor reads cleaner. **Status:** Fixed. Both the exception record and the status go through `get_server_span()`.
 
 ---
 

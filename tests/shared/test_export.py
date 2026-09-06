@@ -205,6 +205,22 @@ def test_export_cycle_posts_all_three_signals_in_lockstep(spool: Spool, otlp_ser
     assert spool.pending_files() == []
 
 
+def test_metrics_collection_error_does_not_block_export(
+    spool: Spool, otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker = make_worker(spool, otlp_server.url)
+    reader = metrics.ApitallyMetricReader(spool)
+    metrics.setup(Resource.create({}), reader)
+
+    def fail() -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(reader, "collect", fail)
+    spool.append("traces", b"trace-payload")
+    worker.run_cycle(None)
+    assert otlp_server.paths() == ["/v1/traces"]
+
+
 def test_failed_send_retries_next_cycle_with_identical_bytes(spool: Spool, otlp_server: StubOTLPServer) -> None:
     failures = deque([503])
     otlp_server.respond = lambda path: (failures.popleft() if failures else 200, {})

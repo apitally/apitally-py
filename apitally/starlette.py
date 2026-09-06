@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from opentelemetry import trace
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.trace import Status, StatusCode
 from opentelemetry.util.http import get_excluded_urls
@@ -15,6 +14,7 @@ from starlette.schemas import SchemaGenerator
 
 from apitally.shared import activation, config, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
+from apitally.shared.context import get_server_span
 from apitally.shared.helpers import capture_exception
 
 
@@ -115,8 +115,8 @@ class _ExceptionRecordingMiddleware:
             await self.app(scope, receive, send)
         except Exception as exc:
             capture_exception(exc)
-            span = trace.get_current_span()
-            if span.is_recording():
+            span = get_server_span()
+            if span is not None and span.is_recording():
                 span.set_status(Status(StatusCode.ERROR, f"{type(exc).__name__}: {exc}"))
             raise
 
