@@ -49,12 +49,18 @@ def test_startup_event_paths_include_viewset_route_templates(
         {"method": "GET", "path": "/api/things/{pk}/"},
         {"method": "GET", "path": "/items/"},
         {"method": "GET", "path": "/items/{pk}/"},
+        {"method": "GET", "path": "/prices/"},
+        {"method": "POST", "path": "/prices/"},
     ]
+    # DRF emits non-JSON-native field defaults verbatim; its own encoder serializes them
+    openapi = json.loads(payload["openapi"])
+    assert openapi["components"]["schemas"]["Price"]["properties"]["amount"]["default"] == 0
 
 
 @pytest.mark.skipif(not installed("drf_spectacular"), reason="drf-spectacular is not installed")
-def test_openapi_generated_via_drf_spectacular(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    with override_settings(REST_FRAMEWORK={"DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema"}):
+def test_openapi_generated_via_drf_spectacular_subclass(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    schema_class = "tests.django.rest_framework_urls.CustomAutoSchema"
+    with override_settings(REST_FRAMEWORK={"DEFAULT_SCHEMA_CLASS": schema_class}):
         init(monkeypatch)
         activate_via_signal()
         payload = startup_payload(exporters)

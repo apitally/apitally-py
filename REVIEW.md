@@ -186,7 +186,7 @@ Both `_instrument_app` functions replace `app.build_middleware_stack` but never 
 
 ### L1. Response-stage drop scans every in-flight span in the process
 
-**Status:** Open.
+**Status:** Rejected. The scan only runs on the drop branch of a user-configured `sample_on_response`. Re-measured at 13 us per drop with 400 in-flight spans and 71 us with 2,000, which is around one percent of a core at realistic per-process loads; the quoted tens of percent needs thousands of in-flight spans and thousands of drops per second in one Python process. The threaded WSGI race needs a descendant span ending on another thread inside the snapshot window and leaks one tuple per occurrence. A per-request descendant index would add a fifth piece of per-request state to keep consistent across start, end, drop and fork reset for a marginal gain. Revisit if response sampling is used at very high concurrency.
 
 **Where:** [span_processor.py:221-224](apitally/shared/span_processor.py:221)
 
@@ -220,7 +220,7 @@ The `parse_qsl` -> `urlencode` round trip is not identity: `q=hello%20world` bec
 
 ### L4. Django OpenAPI generation is fragile and fails loudly
 
-**Status:** Open.
+**Status:** Fixed. The DRF and Ninja schemas are serialized with each framework's own JSON encoder (`rest_framework.utils.encoders.JSONEncoder`, `ninja.responses.NinjaJSONEncoder`), which handle lazy strings, Decimal, UUID, dates and enums; `_convert_proxy_objects` and the `ProxyValue` type are removed. drf-spectacular is detected by `issubclass` against its `AutoSchema`, so subclasses use the spectacular generator. Covered by the Decimal default assertion in `test_startup_event_paths_include_viewset_route_templates` and by `test_openapi_generated_via_drf_spectacular_subclass`.
 
 **Where:** [django.py:405-410](apitally/django.py:405), [django.py:416-418](apitally/django.py:416), [django_rest_framework.py:23-34](apitally/django_rest_framework.py:23)
 
@@ -253,7 +253,7 @@ Anything other than `ProxyTracerProvider` is cast to the SDK `TracerProvider`. `
 
 ### L7. `apitally.init(wrapped_app)` detects the framework through the wrapper but passes the wrapper on
 
-**Status:** Open.
+**Status:** Rejected. Reproduced: the adapter logs an ERROR with a traceback naming the wrapper type and the missing attribute, and nothing on the inner app is mutated. Restricting the unwrap to BlackSheep would replace that with the generic "could not detect a supported framework" TypeError, whose hint to call the framework-specific init fails the same way. Passing the unwrapped app would nest a second SERVER span for FastAPI and Starlette, which is not a supported setup. Only the BlackSheep guide asks users to pass the wrapper, so the current behaviour is the right outcome.
 
 **Where:** [__init__.py:140-147](apitally/__init__.py:140), [__init__.py:133-137](apitally/__init__.py:133)
 

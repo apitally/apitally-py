@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
 import re
 import sys
 import time
-from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterable, Iterator, Mapping
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterable, Iterator
 from contextlib import suppress
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
@@ -15,8 +14,6 @@ from django.conf import settings
 from django.contrib.admindocs.views import extract_views_from_urlpatterns, simplify_regex
 from django.core.signals import request_started
 from django.urls import get_resolver
-from django.utils.encoding import force_str
-from django.utils.functional import Promise
 from django.views.generic.base import View
 from opentelemetry.instrumentation.django import DjangoInstrumentor
 
@@ -399,47 +396,18 @@ def _get_django_class_based_view_paths(urlconfs: list[str | None]) -> list[dict[
 
 
 def _get_openapi() -> str | None:
-    drf_schema = None
-    ninja_schema = None
+    drf_openapi = None
+    ninja_openapi = None
     with suppress(ImportError):
-        from apitally.django_rest_framework import _get_drf_schema, _get_drf_spectacular_schema
+        from apitally.django_rest_framework import _get_drf_openapi
 
-        schema_class = getattr(settings, "REST_FRAMEWORK", {}).get("DEFAULT_SCHEMA_CLASS", "")
-        drf_schema = (
-            _get_drf_spectacular_schema(_urlconfs)
-            if schema_class == "drf_spectacular.openapi.AutoSchema"
-            else _get_drf_schema(_urlconfs)
-        )
+        drf_openapi = _get_drf_openapi(_urlconfs)
     with suppress(ImportError):
-        from apitally.django_ninja import _get_ninja_schema
+        from apitally.django_ninja import _get_ninja_openapi
 
-        ninja_schema = _get_ninja_schema(_urlconfs)
-    if drf_schema is not None and ninja_schema is None:
-        return json.dumps(_convert_proxy_objects(drf_schema))
-    if ninja_schema is not None and drf_schema is None:
-        return json.dumps(_convert_proxy_objects(ninja_schema))
+        ninja_openapi = _get_ninja_openapi(_urlconfs)
+    if drf_openapi is not None and ninja_openapi is None:
+        return drf_openapi
+    if ninja_openapi is not None and drf_openapi is None:
+        return ninja_openapi
     return None
-
-
-ProxyValue = (
-    str
-    | int
-    | float
-    | bool
-    | None
-    | Promise
-    | Mapping[str, "ProxyValue"]
-    | list["ProxyValue"]
-    | tuple["ProxyValue", ...]
-)
-
-
-def _convert_proxy_objects(data: ProxyValue) -> ProxyValue:
-    """Recursively convert Django lazy proxy objects to strings to make them JSON serializable."""
-    if isinstance(data, Promise):
-        return force_str(data)
-    if isinstance(data, dict):
-        return {key: _convert_proxy_objects(value) for key, value in data.items()}
-    if isinstance(data, (list, tuple)):
-        return [_convert_proxy_objects(item) for item in data]
-    return data
