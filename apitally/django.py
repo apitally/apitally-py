@@ -197,8 +197,9 @@ class ApitallyDjangoMiddleware:
         span = get_server_span()
         if is_server_span_kept() and span is not None and span.is_recording():
             if route is not None:
-                # Overwrites the instrumentor's raw route so spans and metrics agree on the template
+                # Overwrites the instrumentor's raw route and span name so spans and metrics agree on the template
                 span.set_attribute("http.route", route)
+                span.update_name(f"{request.method} {route}")
             if request_size is not None:
                 span.set_attribute("http.request.body.size", request_size)
             if response_size is not None:

@@ -140,7 +140,7 @@ class ExportWorker:
         try:
             self.run_cycle(None, final=True)
         except Exception:  # pragma: no cover
-            logger.debug("Error in final Apitally export on shutdown", exc_info=True)
+            logger.exception("Error in final Apitally export on shutdown")
 
     def run(self, stop_event: threading.Event) -> None:
         delay = INITIAL_EXPORT_DELAY
@@ -148,7 +148,7 @@ class ExportWorker:
             try:
                 self.run_cycle(stop_event)
             except Exception:  # pragma: no cover
-                logger.debug("Error in Apitally export cycle", exc_info=True)
+                logger.exception("Error in Apitally export cycle")
             # Jitter desynchronizes deployments whose processes started together
             delay = self.interval * self.random.uniform(0.9, 1.1)
 
@@ -170,7 +170,10 @@ class ExportWorker:
                     )
             self.log_processor.downstream.force_flush()
             if metrics.reader is not None:
-                metrics.reader.collect()
+                try:
+                    metrics.reader.collect()
+                except Exception:
+                    logger.exception("Error collecting Apitally metrics")
             if final:
                 self.spool.close_current_files()
             else:
