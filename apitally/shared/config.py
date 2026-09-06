@@ -131,6 +131,8 @@ def resolve_config(kwargs: dict[str, Any]) -> tuple[ApitallyConfig, str | None]:
             error = "Apitally write token is missing (set the write_token argument or APITALLY_WRITE_TOKEN)"
         elif not isinstance(config.write_token, str) or not WRITE_TOKEN_FORMAT.match(config.write_token):
             error = f"Apitally write token has an invalid format: {str(config.write_token)[:8]}..."
+        elif not str(config.otlp_endpoint).startswith(("http://", "https://")):
+            error = f"Apitally OTLP endpoint must start with http:// or https://: {config.otlp_endpoint}"
         if error:
             config.disabled = True
     return config, error
