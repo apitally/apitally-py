@@ -233,7 +233,7 @@ Two independent failure paths, each of which drops the OpenAPI payload and logs 
 
 ### L5. `requests` exceptions other than connection/timeout are treated as spool read errors and the file is deleted
 
-**Status:** Open.
+**Status:** Fixed. `send_file` catches `requests.RequestException` as a whole before the `(OSError, ValueError)` clause, so every request failure is logged as a send error and keeps the file queued. `resolve_config` disables Apitally with an error when the OTLP endpoint lacks an `http://` or `https://` scheme, matching the write token validation.
 
 **Where:** [export.py:212-218](apitally/shared/export.py:212)
 

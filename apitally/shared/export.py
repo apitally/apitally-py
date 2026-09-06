@@ -209,8 +209,8 @@ class ExportWorker:
                 # The server may close an idle keep-alive connection mid-request; retry once
                 file.sink.seek(0)
                 response = self.session.post(url, data=file.sink, headers=self.headers, timeout=REQUEST_TIMEOUT)
-        except (requests.ConnectionError, requests.Timeout):
-            logger.debug("Sending buffered %s to Apitally failed with a connection error, will retry", file.signal)
+        except requests.RequestException as exc:
+            logger.debug("Sending buffered %s to Apitally failed, will retry: %s", file.signal, exc)
             return False
         except (OSError, ValueError):
             logger.warning("Error reading buffered %s, dropping it", file.signal, exc_info=True)
