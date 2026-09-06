@@ -170,7 +170,7 @@ Both `_instrument_app` functions replace `app.build_middleware_stack` but never 
 
 ### M9. Shutdown has no overall time budget
 
-**Status:** Open.
+**Status:** Rejected. Both behaviours the fix would bound were deliberate. The uncapped final drain came from the July 2026 Codex review (finding 8, commit 7c6f886) so an outage backlog is fully delivered on shutdown; a time deadline would strand backlog against a slow server the same way the ten file cap did. The unbounded join came from PR 339 so the final drain never runs concurrently with an in-flight worker cycle; a bounded join reintroduces the double-send race from Codex finding 2, which was rejected as invalid along with its `cycle_lock`. The data loss impact is overstated: a new process never adopts a previous process's spool files, so an unreachable endpoint at exit loses the buffered data regardless of how long shutdown takes. The remaining exposure is a black-holed host at 20 s join plus 20 s final probe. Narrowing the keep-alive retry to exclude `ConnectTimeout` would halve that and matches the retry's stated intent; it can be done separately if the exposure matters.
 
 **Where:** [export.py:135-141](apitally/shared/export.py:135), [export.py:205-211](apitally/shared/export.py:205)
 
