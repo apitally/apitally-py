@@ -134,7 +134,7 @@ For WSGI frameworks and Django, `activate()` runs in the first request (`WSGIAct
 
 ### M6. Export failures are invisible at default log level, and `trust_env=False` drops `REQUESTS_CA_BUNDLE`
 
-**Status:** Open.
+**Status:** Partially fixed. The export session now sets `verify` from `REQUESTS_CA_BUNDLE` or `CURL_CA_BUNDLE`, restoring the 0.x behaviour for TLS-intercepting proxies. The logging part is rejected: send failures at debug and warnings only when data is dropped is the policy set in PR 321, and 0.x logged nothing at all on send failures.
 
 **Where:** [export.py:101-105](apitally/shared/export.py:101), [export.py:212-214](apitally/shared/export.py:212), [activation.py:64-65](apitally/shared/activation.py:64)
 

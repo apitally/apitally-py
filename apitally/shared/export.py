@@ -1,5 +1,6 @@
 import atexit
 import logging
+import os
 import random
 import threading
 import time
@@ -101,6 +102,7 @@ class ExportWorker:
         self.session = requests.Session()
         # Environment lookups per request would call macOS's _scproxy in forked workers, which crashes the process
         self.session.trust_env = False
+        self.session.verify = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("CURL_CA_BUNDLE") or True
         if proxy_urls:
             self.session.proxies.update(proxy_urls)
         self.headers = {
