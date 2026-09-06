@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 from contextlib import contextmanager, suppress
 from inspect import iscoroutinefunction
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterator, ParamSpec, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterator, ParamSpec, Sequence, TypeVar, overload
 
 from opentelemetry import trace
 
@@ -166,17 +166,19 @@ def instrument_requests(**kwargs: Any) -> None:  # pragma: no cover
 
 
 def instrument_sqlalchemy(
-    engine: SQLAlchemyEngine | SQLAlchemyAsyncEngine | None, **kwargs: Any
+    engine: SQLAlchemyEngine | SQLAlchemyAsyncEngine | None = None,
+    engines: Sequence[SQLAlchemyEngine | SQLAlchemyAsyncEngine] | None = None,
+    **kwargs: Any,
 ) -> None:  # pragma: no cover
     try:
         from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
     except ImportError:
         raise RuntimeError("`instrument_sqlalchemy()` requires the `opentelemetry-instrumentation-sqlalchemy` package")
 
+    all_engines = [*([engine] if engine is not None else []), *(engines or [])]
     with suppress(ImportError):
         from sqlalchemy.ext.asyncio import AsyncEngine  # ty: ignore[unresolved-import]
 
-        if isinstance(engine, AsyncEngine):
-            engine = engine.sync_engine
+        all_engines = [e.sync_engine if isinstance(e, AsyncEngine) else e for e in all_engines]
 
-    SQLAlchemyInstrumentor().instrument(engine=engine, **kwargs)
+    SQLAlchemyInstrumentor().instrument(engines=all_engines, **kwargs)

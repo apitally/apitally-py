@@ -156,7 +156,7 @@ A user following the migration guide and omitting `env` files production traffic
 
 ### M8. `apitally.init()` inside a FastAPI/Starlette lifespan or startup handler is a silent no-op
 
-**Status:** Open.
+**Status:** Rejected. Setting up middleware after the application has started is an unsupported setup: Starlette's `add_middleware` refuses it, the OTel Starlette instrumentor raises through it, and 0.x raised the same error. Reproduced the proposed rebuild: requests get instrumented, but the lifespan scope keeps running through the old stack, so the shim never receives `lifespan.shutdown.complete` and the shutdown flush is lost on every uvicorn SIGTERM, which does not run atexit handlers. The rebuild also instantiates user middleware a second time. Making the setup half work is worse than the current behaviour; a warning when the stack is already built remains an option if support requests warrant it.
 
 **Where:** [fastapi.py:63-77](apitally/fastapi.py:63), [starlette.py:82-103](apitally/starlette.py:82)
 
@@ -261,7 +261,7 @@ Anything other than `ProxyTracerProvider` is cast to the SDK `TracerProvider`. `
 
 ### L8. Framework-specific `init(app, **kwargs)` silently drops misspelled options
 
-**Status:** Open.
+**Status:** Rejected. `apitally.init` is the primary entry point and raises on misspelled options. The framework-specific functions forward shared options through `**kwargs` by design so the adapters need no duplicated signatures.
 
 **Where:** [fastapi.py:25-39](apitally/fastapi.py:25), [starlette.py:31-45](apitally/starlette.py:31), [blacksheep.py:23-37](apitally/blacksheep.py:23), [flask.py:24-38](apitally/flask.py:24)
 
@@ -269,7 +269,7 @@ Anything other than `ProxyTracerProvider` is cast to the SDK `TracerProvider`. `
 
 ### L9. `instrument_sqlalchemy(engine)` silently no-ops on the second engine
 
-**Status:** Open.
+**Status:** Fixed. `instrument_sqlalchemy` accepts `engine` and `engines`, both optional, unwraps async engines in either, and passes them to the instrumentor as `engines=` so several existing engines are instrumented in one call.
 
 **Where:** [otel.py:168-182](apitally/otel.py:168)
 
