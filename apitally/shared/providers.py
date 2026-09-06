@@ -2,7 +2,6 @@ import logging
 import uuid
 from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError, version
-from typing import cast
 
 from opentelemetry import trace
 from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor
@@ -33,7 +32,12 @@ def get_user_tracer_provider() -> TracerProvider | None:
     provider = trace.get_tracer_provider()
     if isinstance(provider, trace.ProxyTracerProvider):
         return None
-    return cast(TracerProvider, provider)
+    if not isinstance(provider, TracerProvider):
+        raise TypeError(
+            f"The registered OpenTelemetry tracer provider ({type(provider).__qualname__}) is not an "
+            f"OpenTelemetry SDK TracerProvider, so Apitally cannot attach its span processor to it"
+        )
+    return provider
 
 
 def resolve_env(user_provider: TracerProvider | None) -> str:

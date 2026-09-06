@@ -13,6 +13,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON
+from opentelemetry.test.globals_test import reset_trace_globals
 from opentelemetry.trace import SpanKind
 
 from apitally.shared import activation, export, providers
@@ -26,6 +27,11 @@ def test_user_tracer_provider_detection():
     user_provider = TracerProvider()
     trace.set_tracer_provider(user_provider)
     assert providers.get_user_tracer_provider() is user_provider
+
+    reset_trace_globals()
+    trace.set_tracer_provider(trace.NoOpTracerProvider())
+    with pytest.raises(TypeError, match="NoOpTracerProvider"):
+        providers.get_user_tracer_provider()
 
 
 def test_setup_own_tracer_provider(monkeypatch: pytest.MonkeyPatch):

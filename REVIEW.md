@@ -243,7 +243,7 @@ Two independent failure paths, each of which drops the OpenAPI payload and logs 
 
 ### L6. A non-SDK global `TracerProvider` aborts activation with a traceback
 
-**Status:** Open.
+**Status:** Fixed. `get_user_tracer_provider` raises a `TypeError` naming the provider type and explaining that Apitally needs an OpenTelemetry SDK `TracerProvider` to attach its span processor. Activation still fails through the existing "Apitally activation failed" handler, but the last line of the traceback now states the real cause instead of an attribute error. Verified against `NoOpTracerProvider` and ddtrace's provider (neither is an SDK subclass). Covered by `test_user_tracer_provider_detection`.
 
 **Where:** [providers.py:31-36](apitally/shared/providers.py:31), [providers.py:43](apitally/shared/providers.py:43)
 
