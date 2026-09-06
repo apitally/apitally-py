@@ -9,13 +9,13 @@ from django.conf import settings
 from django.core.wsgi import get_wsgi_application
 from django.test import Client
 from django.test.client import AsyncClient
-from django.utils.functional import empty, lazy
+from django.utils.functional import empty
 from opentelemetry.instrumentation.django import DjangoInstrumentor
 from opentelemetry.sdk.metrics.export import ExponentialHistogramDataPoint
 from opentelemetry.trace import SpanKind
 
 import apitally
-from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE, _convert_proxy_objects
+from apitally.django import APITALLY_MIDDLEWARE, OTEL_MIDDLEWARE
 from apitally.shared import activation, config
 from apitally.shared.config import BODY_TOO_LARGE
 from apitally.shared.redaction import REDACTED
@@ -359,12 +359,6 @@ def test_django_include_class_based_views_adds_paths(exporters: InMemoryExporter
     assert {"method": "POST", "path": "/notes/"} in paths
     # Function-based views carry no method information, so they stay out
     assert not any(entry["path"] == "/whoami/" for entry in paths)
-
-
-def test_lazy_schema_strings_converted_for_json():
-    lazy_str = lazy(lambda: "Lazy", str)()
-    converted = _convert_proxy_objects({"title": lazy_str, "tags": [lazy_str]})
-    assert json.dumps(converted) == '{"title": "Lazy", "tags": ["Lazy"]}'
 
 
 def test_init_from_settings_module(monkeypatch: pytest.MonkeyPatch):

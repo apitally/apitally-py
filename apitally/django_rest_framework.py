@@ -1,6 +1,10 @@
+import json
 from collections.abc import Mapping
 from contextlib import suppress
 from typing import Any
+
+from django.conf import settings
+from django.utils.module_loading import import_string
 
 from apitally.django import init
 
@@ -18,6 +22,22 @@ def _get_drf_paths(urlconfs: list[str | None]) -> list[dict[str, str]]:
         for path, method, _ in enumerator.get_api_endpoints()
         if method not in ("HEAD", "OPTIONS")
     ]
+
+
+def _get_drf_openapi(urlconfs: list[str | None]) -> str | None:
+    from rest_framework.utils.encoders import JSONEncoder
+
+    schema = _get_drf_spectacular_schema(urlconfs) if _uses_drf_spectacular() else _get_drf_schema(urlconfs)
+    return json.dumps(schema, cls=JSONEncoder) if schema is not None else None
+
+
+def _uses_drf_spectacular() -> bool:
+    schema_class = getattr(settings, "REST_FRAMEWORK", {}).get("DEFAULT_SCHEMA_CLASS", "")
+    with suppress(ImportError):
+        from drf_spectacular.openapi import AutoSchema
+
+        return issubclass(import_string(schema_class), AutoSchema)
+    return False
 
 
 def _get_drf_schema(urlconfs: list[str | None]) -> Mapping[str, Any] | None:

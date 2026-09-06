@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
 from django.urls import URLPattern, URLResolver, get_resolver
@@ -29,6 +30,13 @@ def _get_ninja_paths(urlconfs: list[str | None]) -> list[dict[str, str]]:
                     item["description"] = operation["description"]
                 paths.append(item)
     return paths
+
+
+def _get_ninja_openapi(urlconfs: list[str | None]) -> str | None:
+    from ninja.responses import NinjaJSONEncoder
+
+    schema = _get_ninja_schema(urlconfs)
+    return json.dumps(schema, cls=NinjaJSONEncoder) if schema is not None else None
 
 
 def _get_ninja_schema(urlconfs: list[str | None]) -> dict[str, Any] | None:
