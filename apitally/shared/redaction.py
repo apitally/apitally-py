@@ -7,7 +7,7 @@ from urllib.parse import unquote_plus
 REDACTED = "[REDACTED]"
 DEFAULT_QUERY_PARAM_PATTERNS = [
     r"auth",
-    r"api-?key",
+    r"api[-_]?key",
     r"secret",
     r"token",
     r"password",
@@ -15,7 +15,7 @@ DEFAULT_QUERY_PARAM_PATTERNS = [
 ]
 DEFAULT_HEADER_PATTERNS = [
     r"auth",
-    r"api-?key",
+    r"api[-_]?key",
     r"secret",
     r"token",
     r"cookie",
@@ -49,11 +49,9 @@ class Redaction:
     def redact_query_params(self, value: str, assume_query: bool = True) -> str:
         """Redact matching param names in a path?query target, a full URL, or (with assume_query)
         a bare query string."""
-        base, sep, query = value.partition("?")
-        if not sep:
-            if not assume_query:
-                return value
-            base, query = "", value
+        base, sep, query = ("", "", value) if assume_query else value.partition("?")
+        if not sep and not assume_query:
+            return value
         redacted = "&".join(self.redact_query_pair(pair) for pair in query.split("&"))
         return f"{base}?{redacted}" if sep else redacted
 
