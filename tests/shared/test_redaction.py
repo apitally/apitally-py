@@ -16,9 +16,9 @@ def test_redact_query_params_mixed():
 
 def test_redact_query_params_value_shapes():
     redaction = Redaction()
-    assert redaction.redact_query_params("/items?secret=1&q=2") == "/items?secret=[REDACTED]&q=2"
+    assert redaction.redact_query_params("/items?secret=1&q=2", assume_query=False) == "/items?secret=[REDACTED]&q=2"
     assert (
-        redaction.redact_query_params("https://example.com/items?token=x")
+        redaction.redact_query_params("https://example.com/items?token=x", assume_query=False)
         == "https://example.com/items?token=[REDACTED]"
     )
     assert redaction.redact_query_params("/items", assume_query=False) == "/items"
