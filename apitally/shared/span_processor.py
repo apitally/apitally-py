@@ -220,7 +220,7 @@ class ApitallySpanProcessor(SpanProcessor):
             else:
                 # Mark the request's still-open spans as dropped so telemetry arriving later is discarded
                 for span_id, entry in list(self.spans.items()):
-                    if entry[1] == context.span_id:
+                    if entry[1] == context.span_id and span_id in self.spans:
                         self.spans[span_id] = (False, None)
             if self.on_request_finished is not None:
                 self.on_request_finished(context.span_id, response_kept)

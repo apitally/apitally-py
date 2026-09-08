@@ -210,6 +210,9 @@ class ExportWorker:
             try:
                 file.sink.seek(0)
                 response = self.session.post(url, data=file.sink, headers=self.headers, timeout=REQUEST_TIMEOUT)
+            except requests.ConnectTimeout:
+                # Ten seconds without a SYN-ACK is a black hole, and a second wait would double the shutdown budget
+                raise
             except requests.ConnectionError:
                 # The server may close an idle keep-alive connection mid-request; retry once
                 file.sink.seek(0)
