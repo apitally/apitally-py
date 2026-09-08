@@ -249,14 +249,6 @@ class ExportWorker:
             self.interval = float(min(max(seconds, MIN_EXPORT_INTERVAL), MAX_EXPORT_INTERVAL))
 
 
-def create_span_exporter(spool: Spool) -> SpanExporter:
-    return SpoolSpanExporter(spool)
-
-
-def create_log_exporter(spool: Spool) -> LogRecordExporter:
-    return SpoolLogExporter(spool)
-
-
 def resolve_proxy_urls() -> dict[str, str]:
     proxy_urls = requests.utils.get_environ_proxies(endpoint_url("/"))
     return {str(key): str(value) for key, value in cast(dict[Any, Any], proxy_urls).items()}

@@ -224,8 +224,8 @@ def test_wsgi_shim_activates_before_first_request_proceeds(
 @pytest.mark.parametrize("guard", ["pytest_env", "manage_py_test", "disabled_env", "disabled_kwarg"])
 def test_test_environment_guard_skips_activation(monkeypatch: pytest.MonkeyPatch, guard: str):
     exporter_calls = []
-    monkeypatch.setattr(export, "create_span_exporter", lambda spool: exporter_calls.append("span"))
-    monkeypatch.setattr(export, "create_log_exporter", lambda spool: exporter_calls.append("log"))
+    monkeypatch.setattr(export, "SpoolSpanExporter", lambda spool: exporter_calls.append("span"))
+    monkeypatch.setattr(export, "SpoolLogExporter", lambda spool: exporter_calls.append("log"))
 
     activation.configure(write_token=WRITE_TOKEN, disabled=(guard == "disabled_kwarg"))
     if guard != "pytest_env":
