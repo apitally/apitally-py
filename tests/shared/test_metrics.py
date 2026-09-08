@@ -101,7 +101,8 @@ def test_collect_appends_delta_payloads_to_spool(spool: Spool):
     ]
     assert [point.count for point in points] == [1, 1]
     assert sum(point.sum for point in points) == pytest.approx(3.0)
-    # Histogram aggregations are dropped after each collection so consumer cardinality does not accumulate
+    # Aggregations left empty for a full cycle are dropped so consumer cardinality does not accumulate
+    unwrap(metrics.reader).collect()
     storage = unwrap(metrics.meter_provider)._measurement_consumer._reader_storages[unwrap(metrics.reader)]
     histogram_matches = [
         match
