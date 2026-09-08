@@ -188,7 +188,7 @@ def create_batch_span_processor(spool: Spool) -> BatchSpanProcessor:
     assert resource is not None
     instance_id = str(resource.attributes["service.instance.id"])
     return BatchSpanProcessor(
-        ApitallySpanExporter(export.create_span_exporter(spool), instance_id),
+        ApitallySpanExporter(export.SpoolSpanExporter(spool), instance_id),
         max_queue_size=export.BATCH_MAX_QUEUE_SIZE,
         schedule_delay_millis=export.BATCH_SCHEDULE_DELAY_MILLIS,
         max_export_batch_size=export.BATCH_MAX_EXPORT_BATCH_SIZE,
@@ -198,7 +198,7 @@ def create_batch_span_processor(spool: Spool) -> BatchSpanProcessor:
 
 def create_batch_log_processor(spool: Spool) -> BatchLogRecordProcessor:
     return BatchLogRecordProcessor(
-        export.create_log_exporter(spool),
+        export.SpoolLogExporter(spool),
         max_queue_size=export.BATCH_MAX_QUEUE_SIZE,
         schedule_delay_millis=export.BATCH_SCHEDULE_DELAY_MILLIS,
         max_export_batch_size=export.BATCH_MAX_EXPORT_BATCH_SIZE,

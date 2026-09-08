@@ -174,8 +174,8 @@ def exporters(monkeypatch: pytest.MonkeyPatch) -> InMemoryExporters:
         created.log.append(exporter)
         return exporter
 
-    monkeypatch.setattr(export, "create_span_exporter", span_exporter)
-    monkeypatch.setattr(export, "create_log_exporter", log_exporter)
+    monkeypatch.setattr(export, "SpoolSpanExporter", span_exporter)
+    monkeypatch.setattr(export, "SpoolLogExporter", log_exporter)
     monkeypatch.setattr(export.ExportWorker, "start", lambda self: None)
     monkeypatch.setattr(export.ExportWorker, "send_pending", lambda self, stop_event, cap=True: None)
     return created
