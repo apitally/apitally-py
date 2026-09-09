@@ -19,6 +19,7 @@ def set_request_attribute(key: str, value: AttributeValue) -> None:
 
 
 def capture_exception(exc: BaseException) -> None:
+    """Capture the first exception for the current request."""
     try:
         if isinstance(exc, Exception):
             set_exception(exc)
