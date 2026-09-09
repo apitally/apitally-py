@@ -3,6 +3,7 @@ from opentelemetry.trace import SpanKind, Tracer
 
 from apitally import capture_exception, set_request_attribute
 from apitally.shared.context import get_server_span
+from apitally.shared.server_errors import init_exception_holder
 from tests.conftest import unwrap
 
 
@@ -18,9 +19,13 @@ def test_set_request_attribute_outside_request_is_silent_noop():
     set_request_attribute("tenant", "acme")
 
 
-def test_capture_exception_records_event_on_server_span(tracer: Tracer, span_exporter: InMemorySpanExporter):
+def test_capture_exception_records_only_first_exception(tracer: Tracer, span_exporter: InMemorySpanExporter):
+    holder = init_exception_holder()
+    first = ValueError("x")
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
-        capture_exception(ValueError("x"))
+        capture_exception(first)
+        capture_exception(RuntimeError("y"))
+    assert holder.exception is first
     (server,) = span_exporter.get_finished_spans()
     (event,) = server.events
     assert event.name == "exception"

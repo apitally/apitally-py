@@ -64,12 +64,10 @@ def reset_exception_holder() -> None:
 
 def set_exception(exception: BaseException, holder: ExceptionHolder | None = None) -> None:
     holder = holder or exception_holder_var.get()
-    if holder is None:
+    if holder is None or holder.exception is not None:
         return
     exception = collapse_exception_group(exception)
-    if (holder.exception is not None and holder.exception is not exception) or (
-        holder.sentry_event_exception is not None and holder.sentry_event_exception is not exception
-    ):
+    if holder.sentry_event_exception is not None and holder.sentry_event_exception is not exception:
         holder.sentry_event_id = None
         holder.sentry_event_exception = None
         holder.server_error_key = None
