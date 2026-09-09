@@ -4,8 +4,9 @@ import os
 import random
 import threading
 import time
+import urllib.parse
+import urllib.request
 from collections.abc import Sequence
-from typing import Any, cast
 
 import requests
 from opentelemetry import context as otel_context
@@ -250,8 +251,12 @@ class ExportWorker:
 
 
 def resolve_proxy_urls() -> dict[str, str]:
-    proxy_urls = requests.utils.get_environ_proxies(endpoint_url("/"))
-    return {str(key): str(value) for key, value in cast(dict[Any, Any], proxy_urls).items()}
+    # Environment variables only; the system proxy lookup calls macOS's _scproxy, which crashes forked workers
+    proxy_urls = urllib.request.getproxies_environment()
+    host = urllib.parse.urlsplit(endpoint_url("/")).hostname or ""
+    if not proxy_urls or urllib.request.proxy_bypass_environment(host, proxy_urls):  # ty: ignore[unresolved-attribute]
+        return {}
+    return proxy_urls
 
 
 def chunked(batch: Sequence) -> list[Sequence]:
