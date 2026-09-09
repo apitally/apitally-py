@@ -6,6 +6,7 @@ from typing import Any
 import django
 import pytest
 from django.conf import settings
+from django.core.asgi import get_asgi_application
 from django.core.wsgi import get_wsgi_application
 from django.test import Client
 from django.test.client import AsyncClient
@@ -271,6 +272,33 @@ async def test_span_export_waits_for_async_streaming_response_to_complete(
     assert span.attributes["apitally.response.body"] == "chunk1chunk2"
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["http.route"] == "/stream-async/"
+
+
+async def test_buffered_telemetry_flushed_on_lifespan_shutdown(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(monkeypatch)
+    app = get_asgi_application()
+    messages = iter([{"type": "lifespan.startup"}, {"type": "lifespan.shutdown"}])
+    sent: list[dict[str, Any]] = []
+
+    async def receive() -> dict[str, Any]:
+        message = next(messages)
+        if message["type"] == "lifespan.shutdown":
+            assert activation.is_activated()
+            assert (await AsyncClient().get("/items/123/")).status_code == 200
+        return message
+
+    async def send(message: dict[str, Any]) -> None:
+        sent.append(message)
+
+    await app({"type": "lifespan"}, receive, send)
+
+    assert sent == [{"type": "lifespan.startup.complete"}, {"type": "lifespan.shutdown.complete"}]
+    worker = activation.export_worker
+    assert worker is not None and worker.stop_event.is_set()
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert span.name == "GET /items/{pk}/"
 
 
 def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

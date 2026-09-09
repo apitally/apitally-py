@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, cast
 import django
 from django.conf import settings
 from django.contrib.admindocs.views import extract_views_from_urlpatterns, simplify_regex
+from django.core.handlers.asgi import ASGIHandler
 from django.core.signals import request_started
 from django.urls import get_resolver
 from django.views.generic.base import View
@@ -83,6 +84,7 @@ def init(
         if not instrumentor.is_instrumented_by_opentelemetry:
             instrumentor.instrument()
         _insert_middleware(caller_globals)
+        _patch_asgi_handler()
         request_started.connect(_handle_request_started, weak=False, dispatch_uid="apitally")
         versions = {
             "django": django.get_version(),
@@ -109,6 +111,28 @@ def _insert_middleware(caller_globals: dict[str, Any]) -> None:
         middleware.insert(0, OTEL_MIDDLEWARE)
     if APITALLY_MIDDLEWARE not in middleware:
         middleware.insert(middleware.index(OTEL_MIDDLEWARE) + 1, APITALLY_MIDDLEWARE)
+
+
+_original_asgi_call = ASGIHandler.__call__
+
+
+async def _asgi_call(self: ASGIHandler, scope: Any, receive: Any, send: Any) -> None:
+    """Handles the ASGI lifespan scope, which Django's ASGIHandler rejects, and delegates all other scopes."""
+    if scope["type"] != "lifespan":
+        return await _original_asgi_call(self, scope, receive, send)
+    while True:
+        message = await receive()
+        if message["type"] == "lifespan.startup":
+            activation.activate()
+            await send({"type": "lifespan.startup.complete"})
+        elif message["type"] == "lifespan.shutdown":
+            activation.shutdown()
+            await send({"type": "lifespan.shutdown.complete"})
+            return
+
+
+def _patch_asgi_handler() -> None:
+    ASGIHandler.__call__ = _asgi_call  # ty: ignore[invalid-assignment]
 
 
 def _handle_request_started(sender: object, **kwargs: Any) -> None:
