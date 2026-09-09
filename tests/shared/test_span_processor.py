@@ -100,6 +100,7 @@ def test_websocket_connection_span_dropped(
     "attributes",
     [
         {"http.request.method": "GET", "url.path": "/healthz"},
+        {"http.request.method": "GET", "url.path": "/healthz/"},
         {"http.request.method": "GET", "url.path": "/", "user_agent.original": "kube-probe/1.30"},
         {"http.method": "GET", "http.target": "/healthz?full=1"},
         {"http.method": "GET", "http.target": "/", "http.user_agent": "kube-probe/1.30"},

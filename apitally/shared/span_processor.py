@@ -28,12 +28,12 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_EXCLUDE_PATH_PATTERN = combine_patterns(
     [
-        r"/_?healthz?$",
-        r"/_?health[-_]?checks?$",
-        r"/_?heart[-_]?beats?$",
-        r"/ping$",
-        r"/ready$",
-        r"/live$",
+        r"/_?healthz?/?$",
+        r"/_?health[-_]?checks?/?$",
+        r"/_?heart[-_]?beats?/?$",
+        r"/ping/?$",
+        r"/ready/?$",
+        r"/live/?$",
         r"/favicon(?:-[\w-]+)?\.(ico|png|svg)$",
         r"/apple-touch-icon(?:-[\w-]+)?\.png$",
         r"/robots\.txt$",
