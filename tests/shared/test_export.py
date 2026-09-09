@@ -3,12 +3,14 @@ import logging
 import socket
 import threading
 import time
+import urllib.request
 from collections import deque
 from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import requests
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
 from opentelemetry.instrumentation.utils import is_instrumentation_enabled
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceRequest
@@ -429,6 +431,21 @@ def test_start_after_timed_out_stop_replaces_stuck_thread(
     worker.stop()
     stuck_thread.join(5)
     assert not stuck_thread.is_alive()
+
+
+def test_resolve_proxy_urls_skips_system_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv(name.lower(), raising=False)
+
+    def system_lookup(*args: Any) -> None:
+        raise AssertionError("system proxy lookup")
+
+    for module in (urllib.request, requests.utils):
+        monkeypatch.setattr(module, "getproxies", system_lookup)
+        monkeypatch.setattr(module, "proxy_bypass", system_lookup)
+    set_config(write_token=WRITE_TOKEN, env="dev")
+    assert resolve_proxy_urls() == {}
 
 
 def test_export_worker_uses_proxies(spool: Spool, otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch) -> None:
