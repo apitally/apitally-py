@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -27,6 +28,10 @@ _FRAMEWORK_PACKAGES = frozenset({"blacksheep", "django", "fastapi", "flask", "li
 
 # Default for framework-specific params, which are only forwarded when explicitly set
 _UNSET: Any = object()
+
+
+# Instrumentors cache this on their first instrument call, which may happen before init()
+os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http/dup")
 
 
 def init(

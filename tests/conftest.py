@@ -1,6 +1,5 @@
 import gzip
 import json
-import os
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -111,18 +110,8 @@ if not installed("starlette", "opentelemetry.instrumentation.starlette"):
 
 @pytest.fixture(autouse=True)
 def reset_apitally_config() -> Iterator[None]:
-    # configure() sets OTEL_SEMCONV_STABILITY_OPT_IN via setdefault; restore it so the
-    # value never leaks between tests
-    semconv_before = os.environ.get("OTEL_SEMCONV_STABILITY_OPT_IN")
     yield
     config.reset()
-    if semconv_before is None:
-        os.environ.pop("OTEL_SEMCONV_STABILITY_OPT_IN", None)
-    else:
-        os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = semconv_before
-
-    # The instrumentation layer reads the env var once on the first instrument() call and
-    # caches it process-globally; reset the cache so each test re-reads the current env var
     _OpenTelemetrySemanticConventionStability._initialized = False
     _OpenTelemetrySemanticConventionStability._OTEL_SEMCONV_STABILITY_SIGNAL_MAPPING = {}
 

@@ -117,6 +117,8 @@ class ApitallyWSGIMiddleware:
         stash_request_body: bytes | None = None
         if not state.request_attributes_written:
             state.request_attributes_written = True
+            if client_address := environ.get("REMOTE_ADDR"):
+                span.set_attribute("client.address", client_address)
             if state.request_size is not None:
                 span.set_attribute("http.request.body.size", state.request_size)
             stash_request_body = state.request_body

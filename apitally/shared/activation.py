@@ -63,7 +63,6 @@ def configure(**kwargs: Any) -> ApitallyConfig:
     cfg = config.set_config(**kwargs)
     if proxy_urls is None:
         proxy_urls = export.resolve_proxy_urls()
-    config.ensure_semconv_opt_in()
     sentry.install()
     if not fork_handlers_registered and hasattr(os, "register_at_fork"):
         fork_handlers_registered = True

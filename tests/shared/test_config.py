@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from apitally.shared import config
@@ -68,12 +66,3 @@ def test_sample_rate_resolution():
 def test_invalid_sample_rate_falls_back_to_default(invalid_rate: object):
     cfg = config.set_config(write_token=VALID_TOKEN, sample_rate=invalid_rate)
     assert cfg.sample_rate == 1.0
-
-
-def test_semconv_opt_in_env_var_set_only_when_unset(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("OTEL_SEMCONV_STABILITY_OPT_IN", raising=False)
-    config.ensure_semconv_opt_in()
-    assert os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] == "http/dup"
-    monkeypatch.setenv("OTEL_SEMCONV_STABILITY_OPT_IN", "http")
-    config.ensure_semconv_opt_in()
-    assert os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] == "http"

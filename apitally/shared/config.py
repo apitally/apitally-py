@@ -91,13 +91,6 @@ def reset() -> None:
     current_config = None
 
 
-def ensure_semconv_opt_in() -> None:
-    # The contrib instrumentors read this env var once at first init and cache it for the
-    # process; when unset they emit old HTTP semconv names. http/dup adds the stable names
-    # without changing anything for a user's existing OTel backend. A user-set value is respected.
-    os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http/dup")
-
-
 def drop_invalid_patterns(config: ApitallyConfig) -> None:
     for name in PATTERN_FIELDS:
         valid = []
