@@ -17,7 +17,7 @@ from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from apitally.shared import config, export, metrics, providers, sentry, server_errors, validation_errors
-from apitally.shared.config import TRUE_VALUES, ApitallyConfig
+from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumer import consumer_holder_var
 from apitally.shared.context import server_span_kept_var, server_span_processor_var, server_span_var
 from apitally.shared.export import ExportWorker
@@ -179,7 +179,6 @@ def should_skip_activation() -> bool:
         or config.get_config().disabled
         or bool(os.environ.get("PYTEST_CURRENT_TEST"))
         or sys.argv[1:2] == ["test"]  # detects Django's "manage.py test"
-        or (os.environ.get("APITALLY_DISABLED") or "").strip().lower() in TRUE_VALUES
     )
 
 

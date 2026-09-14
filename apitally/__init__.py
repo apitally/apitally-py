@@ -68,8 +68,8 @@ def init(
         env: The environment name reported to Apitally. When omitted, the `APITALLY_ENV`
             environment variable is used, falling back to `"dev"`.
         app_version: The application version reported to Apitally.
-        disabled: Whether to disable Apitally. When omitted, `APITALLY_DISABLED` and
-            `OTEL_SDK_DISABLED` are respected.
+        disabled: Whether to disable Apitally. `APITALLY_DISABLED` and `OTEL_SDK_DISABLED`
+            also disable Apitally when set.
         capture_logs: Whether to capture application logs from the standard `logging` module
             and correlate them with requests.
         capture_request_headers: Whether to capture request headers. Sensitive values are

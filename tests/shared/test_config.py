@@ -25,9 +25,18 @@ def test_write_token_from_env_var(monkeypatch: pytest.MonkeyPatch):
     assert not cfg.disabled
 
 
-def test_disabled_via_env_var(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("APITALLY_DISABLED", "1")
-    cfg = config.set_config(write_token=VALID_TOKEN)
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"APITALLY_DISABLED": "1"},
+        {"OTEL_SDK_DISABLED": "true"},
+        {"APITALLY_DISABLED": "false", "OTEL_SDK_DISABLED": "yes"},
+    ],
+)
+def test_disabled_env_var_overrides_explicit_false(monkeypatch: pytest.MonkeyPatch, environment: dict[str, str]):
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    cfg = config.set_config(write_token=VALID_TOKEN, disabled=False)
     assert cfg.disabled
 
 

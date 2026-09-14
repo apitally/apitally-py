@@ -112,9 +112,10 @@ def resolve_config(kwargs: dict[str, Any]) -> tuple[ApitallyConfig, str | None]:
         config.write_token = token
     if "env" not in kwargs and (env := os.environ.get("APITALLY_ENV")):
         config.env = env
-    if "disabled" not in kwargs:
-        value = os.environ.get("APITALLY_DISABLED") or os.environ.get("OTEL_SDK_DISABLED") or ""
-        config.disabled = value.strip().lower() in TRUE_VALUES
+    config.disabled = config.disabled or any(
+        (os.environ.get(name) or "").strip().lower() in TRUE_VALUES
+        for name in ("APITALLY_DISABLED", "OTEL_SDK_DISABLED")
+    )
     if endpoint := os.environ.get("APITALLY_OTLP_ENDPOINT"):
         config.otlp_endpoint = endpoint
 

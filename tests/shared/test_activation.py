@@ -221,7 +221,7 @@ def test_wsgi_shim_activates_before_first_request_proceeds(
     assert activated_during_request == [True]
 
 
-@pytest.mark.parametrize("guard", ["pytest_env", "manage_py_test", "disabled_env", "disabled_kwarg"])
+@pytest.mark.parametrize("guard", ["pytest_env", "manage_py_test", "disabled_kwarg"])
 def test_test_environment_guard_skips_activation(monkeypatch: pytest.MonkeyPatch, guard: str):
     exporter_calls = []
     monkeypatch.setattr(export, "SpoolSpanExporter", lambda spool: exporter_calls.append("span"))
@@ -232,9 +232,6 @@ def test_test_environment_guard_skips_activation(monkeypatch: pytest.MonkeyPatch
         monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     if guard == "manage_py_test":
         monkeypatch.setattr(sys, "argv", ["manage.py", "test"])
-    if guard == "disabled_env":
-        monkeypatch.setenv("APITALLY_DISABLED", "1")
-
     activation.activate()
     assert not activation.is_activated()
     assert exporter_calls == []
