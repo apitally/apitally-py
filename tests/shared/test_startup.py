@@ -23,13 +23,28 @@ def startup_records(exporters: InMemoryExporters) -> list[ReadableLogRecord]:
 
 
 def test_startup_event_record_and_payload(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    def callback(*args: object) -> None:
+        raise AssertionError("Startup serialization must not invoke callbacks")
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    activation.configure(
+        write_token=WRITE_TOKEN,
+        env="prod",
+        otlp_endpoint="https://otlp.example.com",
+        capture_request_body=True,
+        mask_body_fields=["password", "secret"],
+        exclude_paths=["^/health$"],
+        sample_rate=0.1,
+        mask_request_body=callback,
+        sample_on_response=callback,
+    )
     startup.set_app_info(
         framework="fastapi",
         paths=lambda: PATHS,
         versions={"fastapi": "0.115.0", "app": "2.3.1"},
         openapi='{"openapi": "3.1.0"}',
     )
-    configure_and_activate(monkeypatch)
+    activation.activate()
 
     (exported,) = startup_records(exporters)
     record = exported.log_record
@@ -44,6 +59,20 @@ def test_startup_event_record_and_payload(exporters: InMemoryExporters, monkeypa
         "versions": {"python": platform.python_version(), "fastapi": "0.115.0", "app": "2.3.1"},
         "paths": PATHS,
         "openapi": '{"openapi": "3.1.0"}',
+        "config": {
+            "capture_logs": True,
+            "capture_request_headers": False,
+            "capture_request_body": True,
+            "capture_response_headers": True,
+            "capture_response_body": False,
+            "mask_query_params": [],
+            "mask_headers": [],
+            "mask_body_fields": ["password", "secret"],
+            "exclude_paths": ["^/health$"],
+            "sample_rate": 0.1,
+            "mask_request_body": True,
+            "sample_on_response": True,
+        },
     }
 
 

@@ -9,7 +9,7 @@ from typing import Any, TypeVar, cast
 
 from opentelemetry.trace import INVALID_SPAN, set_span_in_context
 
-from apitally.shared import activation
+from apitally.shared import activation, config
 
 
 logger = logging.getLogger(__name__)
@@ -57,6 +57,11 @@ def emit_startup_event() -> None:
     payload: dict[str, Any] = {
         "framework": app_info.get("framework"),
         "versions": {"python": platform.python_version(), **(resolve_value(app_info.get("versions")) or {})},
+        "config": {
+            name: True if callable(value) else value
+            for name, value in vars(config.get_config()).items()
+            if name not in {"write_token", "otlp_endpoint", "env", "disabled"} and value is not None
+        },
     }
     if (paths := resolve_value(app_info.get("paths"))) is not None:
         payload["paths"] = paths
