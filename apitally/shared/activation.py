@@ -229,7 +229,9 @@ def start_pipelines() -> None:
             providers.attach_to_tracer_provider(user_provider, span_processor)
         else:
             providers.setup_tracer_provider(resource, span_processor)
-    log_processor = ApitallyLogRecordProcessor(create_batch_log_processor(spool), span_processor)
+    log_processor = ApitallyLogRecordProcessor(
+        create_batch_log_processor(spool), span_processor, config.get_config().mask_log_record
+    )
     logger_provider = providers.create_logger_provider(resource, [log_processor])
     install_root_handler(logger_provider, span_processor)
     error_logger = logger_provider.get_logger("apitally")

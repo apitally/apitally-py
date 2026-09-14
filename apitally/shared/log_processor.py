@@ -163,22 +163,43 @@ def make_kept_request_filter(span_processor: ApitallySpanProcessor) -> Callable[
 class ApitallyLogRecordProcessor(LogRecordProcessor):
     """Stamps the SERVER span id on request-scoped records and drops the rest."""
 
-    def __init__(self, downstream: LogRecordProcessor, span_processor: ApitallySpanProcessor) -> None:
+    def __init__(
+        self,
+        downstream: LogRecordProcessor,
+        span_processor: ApitallySpanProcessor,
+        mask_log_record: Callable[[ReadWriteLogRecord], ReadWriteLogRecord | None] | None = None,
+    ) -> None:
         # Settable so fork re-activation can swap in a fresh batch processor
         self.downstream = downstream
         self.span_processor = span_processor
+        self.mask_log_record = mask_log_record
         self.pending: dict[int, list[ReadWriteLogRecord]] = {}
         span_processor.on_request_finished = self.finish_request
 
     def on_emit(self, log_record: ReadWriteLogRecord) -> None:
         try:
             record = log_record.log_record
+            is_apitally_record = (
+                log_record.instrumentation_scope is not None and log_record.instrumentation_scope.name == "apitally"
+            )
             server_span_id = self.span_processor.resolve_server_span_id(record.span_id) if record.span_id else None
-            if server_span_id is None:
-                # Scope "apitally" passes without request context to preserve the startup event
-                if log_record.instrumentation_scope is None or log_record.instrumentation_scope.name != "apitally":
+            if server_span_id is None and not is_apitally_record:
+                return
+            if self.mask_log_record is not None and not is_apitally_record:
+                try:
+                    masked = self.mask_log_record(log_record)
+                except Exception:
+                    logger.warning("Apitally mask_log_record callback raised an exception, log record dropped")
                     return
-            else:
+                if masked is None:
+                    return
+                if masked is not log_record:
+                    logger.warning(
+                        "Apitally mask_log_record callback returned an invalid value, log record dropped; "
+                        "callbacks must return the ReadWriteLogRecord or None"
+                    )
+                    return
+            if server_span_id is not None:
                 # ReadWriteLogRecord.__post_init__ replaces attributes with mutable BoundedAttributes
                 attributes = cast(MutableMapping[str, AnyValue], record.attributes)
                 attributes[SERVER_SPAN_ID_ATTRIBUTE] = format(server_span_id, "016x")

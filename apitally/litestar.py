@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from litestar.app import Litestar
     from litestar.config.app import AppConfig
     from litestar.types import Message, Scope
+    from opentelemetry.sdk._logs import ReadWriteLogRecord
     from opentelemetry.sdk.trace import ReadableSpan
 
 
@@ -59,6 +60,7 @@ class ApitallyPlugin(InitPluginProtocol):
         mask_body_fields: list[str] | None = None,
         mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
         mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
+        mask_log_record: Callable[[ReadWriteLogRecord], ReadWriteLogRecord | None] | None = None,
         exclude_paths: list[str] | None = None,
         sample_rate: float | None = None,
         sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,

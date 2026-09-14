@@ -12,6 +12,7 @@ from apitally.shared.helpers import capture_exception, set_request_attribute
 
 
 if TYPE_CHECKING:
+    from opentelemetry.sdk._logs import ReadWriteLogRecord
     from opentelemetry.sdk.trace import ReadableSpan
 
 
@@ -51,6 +52,7 @@ def init(
     mask_body_fields: list[str] | None = None,
     mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
     mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None,
+    mask_log_record: Callable[[ReadWriteLogRecord], ReadWriteLogRecord | None] | None = None,
     exclude_paths: list[str] | None = None,
     sample_rate: float = 1.0,
     sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None,
@@ -92,6 +94,9 @@ def init(
         mask_response_body: A callback that receives the ended request SERVER span and captured
             response body as bytes. It must return the body to export as bytes, or `None` to
             replace the entire body with `[REDACTED]`.
+        mask_log_record: A synchronous callback that can mutate a captured OpenTelemetry
+            `ReadWriteLogRecord`. It must return the same record to retain it, or `None` to drop
+            it. Do not log inside the callback, including through functions it calls.
         exclude_paths: Additional case-insensitive regular expressions for request paths to
             exclude from traces and logs. Excluded requests are still included in metrics.
         sample_rate: The fraction of requests to capture as traces and logs, from `0.0` to `1.0`.

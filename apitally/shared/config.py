@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 
 if TYPE_CHECKING:
+    from opentelemetry.sdk._logs import ReadWriteLogRecord
     from opentelemetry.sdk.trace import ReadableSpan
 
 
@@ -46,6 +47,7 @@ class ApitallyConfig:
     mask_body_fields: list[str] = field(default_factory=list)
     mask_request_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None
     mask_response_body: Callable[[ReadableSpan, bytes], bytes | None] | None = None
+    mask_log_record: Callable[[ReadWriteLogRecord], ReadWriteLogRecord | None] | None = None
     exclude_paths: list[str] = field(default_factory=list)
     sample_rate: float = 1.0
     sample_on_request: Callable[[ReadableSpan], float | bool | None] | None = None

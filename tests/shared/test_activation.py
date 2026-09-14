@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gc
 import gzip
+import logging
 import sys
 import threading
 import time
@@ -30,6 +31,7 @@ from tests.conftest import (
     StubOTLPServer,
     attach_stale_server_span,
     configure_and_activate,
+    exported_log_records,
     exported_spans,
     unwrap,
 )
@@ -37,6 +39,7 @@ from tests.conftest import (
 
 if TYPE_CHECKING:
     from _typeshed.wsgi import StartResponse, WSGIEnvironment
+    from opentelemetry.sdk._logs import ReadWriteLogRecord
 
 
 linux_only = pytest.mark.skipif(sys.platform != "linux", reason="real-fork tests run on Linux CI only")
@@ -248,6 +251,27 @@ def test_on_activate_hooks_run_last(exporters: InMemoryExporters, monkeypatch: p
     activation.configure(write_token=WRITE_TOKEN)
     activation.activate()
     assert observed == [(True, True, True)]
+
+
+def test_activation_masks_and_drops_logs_without_changing_logging_output(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    def mask_log_record(log_record: ReadWriteLogRecord) -> ReadWriteLogRecord | None:
+        if log_record.log_record.body == "ignore":
+            return None
+        log_record.log_record.body = "[REDACTED]"
+        return log_record
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    activation.configure(write_token=WRITE_TOKEN, mask_log_record=mask_log_record)
+    activation.activate()
+    with caplog.at_level(logging.INFO, logger="myapp"):
+        with trace.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
+            logging.getLogger("myapp").info("token=secret")
+            logging.getLogger("myapp").info("ignore")
+
+    assert [record.body for record in exported_log_records(exporters)] == ["[REDACTED]"]
+    assert [record.getMessage() for record in caplog.records if record.name == "myapp"] == ["token=secret", "ignore"]
 
 
 def test_activation_attaches_to_existing_user_tracer_provider(
