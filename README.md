@@ -8,7 +8,7 @@
   </a>
 </p>
 <p align="center"><b>API monitoring & analytics made simple</b></p>
-<p align="center" style="color: #ccc;">Metrics, logs, traces, and alerts for your APIs, with just one line of code.</p>
+<p align="center" style="color: #ccc;">Metrics, logs, traces, and alerts for your APIs — with just a few lines of code.</p>
 <br>
 <p>
 <picture>
@@ -26,54 +26,38 @@
 [![PyPI](https://img.shields.io/pypi/v/apitally?logo=pypi&logoColor=white&color=%23006dad)](https://pypi.org/project/apitally/)
 
 Apitally is a simple API monitoring and analytics tool that makes it easy to understand API usage, monitor performance, and troubleshoot issues.
-Get started in minutes by just adding a line of code. No infrastructure changes required, no dashboards to build.
+Get started in minutes by just adding a few lines of code. No infrastructure changes required, no dashboards to build.
 
-The SDK is an [OpenTelemetry](https://opentelemetry.io) distribution: it builds on the community OTel instrumentations for each framework and works alongside an existing OpenTelemetry setup if you have one.
+The SDK is an [OpenTelemetry](https://opentelemetry.io) distribution and works alongside an existing OpenTelemetry setup.
 
-Learn more about Apitally on our 🌎 [website](https://apitally.io) or check out
-the 📚 [documentation](https://docs.apitally.io).
+Learn more about Apitally on our 🌎 [website](https://apitally.io) or check out the 📚 [documentation](https://docs.apitally.io).
 
 > [!IMPORTANT]
 > **Upgrading from 0.x?** Version 1.0 is a full rewrite with a new setup API. See the [migration guide](MIGRATION.md) for a full 0.x to 1.x mapping.
 
 ## Key features
 
-### API analytics
-
-Track traffic, error and performance metrics for your API, each endpoint and
-individual API consumers, allowing you to make informed, data-driven engineering
-and product decisions.
-
-### Request logs
-
-Drill down from insights to individual API requests or use powerful search and filters to
-find specific requests. View correlated application logs and traces for a complete picture
-of each request, making troubleshooting faster and easier.
-
-### Error tracking
-
-Understand which validation rules in your endpoints cause client errors. Capture
-error details and stack traces for 500 error responses, and have them linked to
-Sentry issues automatically.
-
-### API monitoring & alerts
-
-Get notified immediately if something isn't right using custom alerts, synthetic
-uptime checks and heartbeat monitoring. Alert notifications can be delivered via
-email, Slack and Microsoft Teams.
+- **API analytics**: Traffic, error and performance metrics for your API, each endpoint, and per API consumer. Drill down from metrics to individual API requests.
+- **Request logs and traces**: Every request as a searchable log entry, with optional capture of headers and request/response bodies. Requests are exported as OpenTelemetry spans, including spans from any other instrumentations you have.
+- **Application logs**: Logs written via the standard `logging` module and Loguru are captured automatically and correlated with the requests they belong to.
+- **Error tracking**: Validation errors and exceptions with stack traces for server errors, automatically linked to Sentry events if you use Sentry.
+- **Server metrics**: CPU and memory usage of your app's processes.
+- **API monitoring & alerts**: Get notified if something isn't right using custom alerts, synthetic uptime checks and heartbeat monitoring. Alert notifications can be delivered via email, Slack and Microsoft Teams.
 
 ## Supported frameworks
 
+The SDK supports **Python** `>= 3.10`.
+
 | Framework                                                                    | Supported versions | Setup guide                                                         |
 | ---------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------- |
-| [**FastAPI**](https://github.com/fastapi/fastapi) \*                         | `>=0.108.0`        | [Link](https://docs.apitally.io/setup-guides/fastapi)               |
-| [**Flask**](https://github.com/pallets/flask)                                | `>=2.0.0`          | [Link](https://docs.apitally.io/setup-guides/flask)                 |
-| [**Django**](https://github.com/django/django)                               | `>=3.2`            | [Link](https://docs.apitally.io/setup-guides/django)                |
-| [**Django REST Framework**](https://github.com/encode/django-rest-framework) | `>=3.12.0`         | [Link](https://docs.apitally.io/setup-guides/django-rest-framework) |
-| [**Django Ninja**](https://github.com/vitalik/django-ninja)                  | `>=1.0.0`          | [Link](https://docs.apitally.io/setup-guides/django-ninja)          |
-| [**Starlette**](https://github.com/encode/starlette)                         | `>=0.29.0`         | [Link](https://docs.apitally.io/setup-guides/starlette)             |
-| [**Litestar**](https://github.com/litestar-org/litestar)                     | `>=2.24.0`         | [Link](https://docs.apitally.io/setup-guides/litestar)              |
-| [**BlackSheep**](https://github.com/Neoteroi/blacksheep)                     | `>=2.6.1`          | [Link](https://docs.apitally.io/setup-guides/blacksheep)            |
+| [**FastAPI**](https://github.com/fastapi/fastapi) \*                         | `>=0.108.0`        | [Link](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/fastapi)               |
+| [**Flask**](https://github.com/pallets/flask)                                | `>=2.0.0`          | [Link](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/flask)                 |
+| [**Django**](https://github.com/django/django)                               | `>=3.2`            | [Link](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/django)                |
+| [**Django REST Framework**](https://github.com/encode/django-rest-framework) | `>=3.12.0`         | [Link](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/django-rest-framework) |
+| [**Django Ninja**](https://github.com/vitalik/django-ninja)                  | `>=1.0.0`          | [Link](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/django-ninja)          |
+| [**Starlette**](https://github.com/encode/starlette)                         | `>=0.29.0`         | [Link](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/starlette)             |
+| [**Litestar**](https://github.com/litestar-org/litestar)                     | `>=2.24.0`         | [Link](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/litestar)              |
+| [**BlackSheep**](https://github.com/Neoteroi/blacksheep)                     | `>=2.6.1`          | [Link](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/blacksheep)            |
 
 \* For FastAPI on Cloudflare Workers use our [Python Serverless SDK](https://github.com/apitally/apitally-py-serverless) instead.
 
@@ -83,17 +67,7 @@ Apitally also supports many other web frameworks in [JavaScript](https://github.
 
 If you don't have an Apitally account yet, first [sign up here](https://app.apitally.io/?signup). Then create an app in the Apitally dashboard. You'll see detailed setup instructions with code snippets you can copy and paste. These also include your write token.
 
-Setup is a single call to `apitally.init`, which detects your framework from the app instance:
-
-```python
-import apitally
-
-apitally.init(app, write_token="your-write-token")
-```
-
-Django apps call `apitally.init()` without an app argument at the end of `settings.py`, and Litestar apps use `ApitallyPlugin` instead. See the framework sections below for details.
-
-See the [SDK reference](https://docs.apitally.io/sdk-reference/python) for all available configuration options, including how to mask sensitive data, capture request and response payloads, and more.
+See the [SDK reference](https://docs.apitally.io/sdk-reference/python/v1/configuration) for all available configuration options, including how to mask sensitive data, capture request and response payloads, and more.
 
 ### FastAPI
 
@@ -110,21 +84,20 @@ import apitally
 from fastapi import FastAPI
 
 app = FastAPI()
-apitally.init(app, write_token="your-write-token")
+apitally.init(app, write_token="your-write-token", env="dev")
 ```
 
-For further instructions, see our
-[setup guide for FastAPI](https://docs.apitally.io/setup-guides/fastapi).
+For further instructions, see our [setup guide for FastAPI](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/fastapi).
 
 ### Django
 
-Install the SDK with the `django` extra, which also pulls in the OpenTelemetry instrumentation for Django. The same extra covers plain Django, Django REST Framework and Django Ninja:
+Install the SDK with the `django` extra, which also pulls in the OpenTelemetry instrumentation for Django:
 
 ```bash
 pip install "apitally[django]"
 ```
 
-Then call `apitally.init()` at the *end* of your `settings.py` module. The placement matters: it must run after `MIDDLEWARE` is defined, as Apitally inserts its own middleware automatically.
+Then call `apitally.init()` at the *end* of your `settings.py` module, after `MIDDLEWARE` is defined:
 
 ```python
 # settings.py
@@ -135,11 +108,10 @@ MIDDLEWARE = [
 ]
 
 # ... at the very end of the file:
-apitally.init(write_token="your-write-token")
+apitally.init(write_token="your-write-token", env="dev")
 ```
 
-For further instructions, see our
-[setup guide for Django](https://docs.apitally.io/setup-guides/django).
+For further instructions, see our [setup guide for Django](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/django).
 
 ### Flask
 
@@ -156,11 +128,10 @@ import apitally
 from flask import Flask
 
 app = Flask(__name__)
-apitally.init(app, write_token="your-write-token")
+apitally.init(app, write_token="your-write-token", env="dev")
 ```
 
-For further instructions, see our
-[setup guide for Flask](https://docs.apitally.io/setup-guides/flask).
+For further instructions, see our [setup guide for Flask](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/flask).
 
 ### Starlette
 
@@ -177,11 +148,10 @@ import apitally
 from starlette.applications import Starlette
 
 app = Starlette(routes=[...])
-apitally.init(app, write_token="your-write-token")
+apitally.init(app, write_token="your-write-token", env="dev")
 ```
 
-For further instructions, see our
-[setup guide for Starlette](https://docs.apitally.io/setup-guides/starlette).
+For further instructions, see our [setup guide for Starlette](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/starlette).
 
 ### Litestar
 
@@ -191,7 +161,7 @@ Install the SDK with the `litestar` extra:
 pip install "apitally[litestar]"
 ```
 
-Litestar plugins must be passed at construction, so setup uses `ApitallyPlugin` instead of `apitally.init`:
+Then add the Apitally plugin to your application:
 
 ```python
 from litestar import Litestar
@@ -199,12 +169,11 @@ from apitally.litestar import ApitallyPlugin
 
 app = Litestar(
     route_handlers=[...],
-    plugins=[ApitallyPlugin(write_token="your-write-token")],
+    plugins=[ApitallyPlugin(write_token="your-write-token", env="dev")],
 )
 ```
 
-For further instructions, see our
-[setup guide for Litestar](https://docs.apitally.io/setup-guides/litestar).
+For further instructions, see our [setup guide for Litestar](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/litestar).
 
 ### BlackSheep
 
@@ -221,22 +190,22 @@ import apitally
 from blacksheep import Application
 
 app = Application()
-apitally.init(app, write_token="your-write-token")
+apitally.init(app, write_token="your-write-token", env="dev")
 ```
 
-For further instructions, see our
-[setup guide for BlackSheep](https://docs.apitally.io/setup-guides/blacksheep).
+For further instructions, see our [setup guide for BlackSheep](https://docs.apitally.io/sdk-reference/python/v1/setup-guides/blacksheep).
 
 ## Configuration
 
 The write token and environment can also be provided via the `APITALLY_WRITE_TOKEN` and `APITALLY_ENV` environment variables instead of the `write_token` and `env` arguments. The environment defaults to `dev`.
 
-Out of the box, Apitally captures metrics, request logs, traces, exceptions, application logs, and response headers. Request headers and request and response bodies are *not* captured by default. You can opt in with parameters:
+By default, Apitally captures response headers but not request headers or request and response bodies. You can opt in with parameters:
 
 ```python
 apitally.init(
     app,
     write_token="your-write-token",
+    env="dev",
     capture_request_headers=True,
     capture_request_body=True,
     capture_response_body=True,
@@ -245,15 +214,15 @@ apitally.init(
 
 Sensitive values in query parameters, headers, and body fields are masked automatically based on built-in patterns, and you can add your own via the `mask_query_params`, `mask_headers`, and `mask_body_fields` arguments.
 
-On high-traffic applications you can capture traces and logs for only a fraction of requests by setting `sample_rate` (e.g. `0.1` for 10%), or decide per request with the `sample_on_request` and `sample_on_response` callbacks. Metrics always count every request, regardless of sampling.
+On high-traffic applications you can capture logs and traces for only a fraction of requests by setting `sample_rate` (e.g. `0.1` for 10%), or decide per request with the `sample_on_request` and `sample_on_response` callbacks. Metrics always count every request, regardless of sampling.
 
-Application logs written via the standard `logging` module are captured and correlated with requests by default. Use `mask_log_record` to transform or drop Apitally's captured copy, or opt out with `capture_logs=False`. This does not change the original logging output.
+Application logs written via the standard `logging` module are captured and correlated with requests by default. Use `mask_log_record` to transform or drop Apitally's captured copy, or opt out with `capture_logs=False`.
 
-See the [SDK reference](https://docs.apitally.io/sdk-reference/python) for all configuration options.
+See the [SDK reference](https://docs.apitally.io/sdk-reference/python/v1/configuration) for all configuration options.
 
 ## Identifying consumers and more
 
-The top-level `apitally` package provides functions you can call from anywhere in your request handling code, for example from your authentication middleware or dependencies:
+The top-level `apitally` package provides functions you can call from anywhere in your request handling code:
 
 ```python
 import apitally
@@ -270,11 +239,19 @@ apitally.capture_exception(exc)
 
 For further details, check out our [documentation](https://docs.apitally.io).
 
+## Existing OpenTelemetry setup
+
+If your app already uses an OpenTelemetry SDK tracer provider, configure it before initializing Apitally. Apitally automatically adds its span processor to your provider, keeping your existing exporters.
+
+Your provider's sampling settings also affect Apitally. Requests dropped by the sampler will not have request logs or traces in Apitally. Metrics still include all requests, regardless of sampling.
+
+## Trusted proxies
+
+If your application runs behind a reverse proxy or load balancer, configure trusted proxies in your framework so Apitally can record the real client IP for GeoIP. Apitally uses the client IP reported by your framework. It does not read forwarding headers itself to determine the client IP.
+
 ## Getting help
 
-If you need help please
-[create a new discussion](https://github.com/orgs/apitally/discussions/categories/q-a)
-on GitHub or email us at [support@apitally.io](mailto:support@apitally.io). We'll get back to you as soon as possible.
+If you need help please [create a new discussion](https://github.com/orgs/apitally/discussions/categories/q-a) on GitHub or email us at [support@apitally.io](mailto:support@apitally.io). We'll get back to you as soon as possible.
 
 ## License
 
