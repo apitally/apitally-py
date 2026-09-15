@@ -132,7 +132,7 @@ async def _asgi_call(self: ASGIHandler, scope: Any, receive: Any, send: Any) -> 
 
 
 def _patch_asgi_handler() -> None:
-    ASGIHandler.__call__ = _asgi_call  # ty: ignore[invalid-assignment]
+    ASGIHandler.__call__ = _asgi_call
 
 
 def _handle_request_started(sender: object, **kwargs: Any) -> None:
