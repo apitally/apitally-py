@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable, Iterable
@@ -188,7 +189,15 @@ class ApitallyASGIMiddleware:
                             response_body=stash_response_body,
                         )
                     if deferred_span_id is not None:
-                        processor.finish_export(deferred_span_id, extra_attributes or None)
+                        try:
+                            loop = asyncio.get_running_loop() if status == 500 else None
+                        except RuntimeError:  # pragma: no cover
+                            loop = None
+                        if loop is not None:
+                            # Hold through synchronous exception unwinding so Sentry can capture the event ID.
+                            loop.call_soon(processor.finish_export, deferred_span_id, extra_attributes or None)
+                        else:
+                            processor.finish_export(deferred_span_id, extra_attributes or None)
                     else:
                         for key, value in extra_attributes.items():
                             span.set_attribute(key, value)

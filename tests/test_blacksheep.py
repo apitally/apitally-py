@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import json
 from importlib.metadata import version
@@ -224,6 +225,7 @@ async def test_unhandled_exception_recorded_on_server_span(
     async with create_client(app) as client:
         response = await client.get("/error")
     assert response.status_code == 500
+    await asyncio.sleep(0)  # Allow the deferred 500-response export to run
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.status.status_code == StatusCode.ERROR

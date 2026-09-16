@@ -238,6 +238,48 @@ def test_unhandled_exception_recorded_on_server_span(
     assert record.event_name == "apitally.request.server_error"
 
 
+def test_server_span_waits_for_sentry_event_id_before_export(
+    app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    sentry_sdk = pytest.importorskip("sentry_sdk")
+    sentry_scope = pytest.importorskip("sentry_sdk.scope")
+    sentry_starlette = pytest.importorskip("sentry_sdk.integrations.starlette")
+
+    class DiscardTransport(sentry_sdk.Transport):
+        def capture_envelope(self, envelope: Any) -> None:
+            pass
+
+    event_ids: list[str] = []
+
+    def force_export_before_capture(event: Any, hint: Any) -> Any:
+        if "exception" in event:
+            exported_spans(exporters)
+            event_ids.append(event["event_id"])
+        return event
+
+    init(app, monkeypatch)
+    monkeypatch.setattr(
+        sentry_scope, "global_event_processors", [force_export_before_capture, *sentry_scope.global_event_processors]
+    )
+    with (
+        sentry_sdk.isolation_scope() as scope,
+        sentry_sdk.Client(
+            dsn="https://public@example.invalid/1",
+            transport=DiscardTransport(),
+            default_integrations=False,
+            integrations=[sentry_starlette.StarletteIntegration()],
+        ) as sentry_client,
+    ):
+        scope.set_client(sentry_client)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/error")
+
+    assert response.status_code == 500
+    (event_id,) = event_ids
+    (span,) = exported_spans(exporters)
+    assert unwrap(span.attributes)["apitally.exception.sentry_event_id"] == event_id
+
+
 def test_validation_error_reported_without_request_trace(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
