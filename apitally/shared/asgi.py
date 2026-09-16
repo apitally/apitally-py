@@ -191,7 +191,7 @@ class ApitallyASGIMiddleware:
                     if deferred_span_id is not None:
                         try:
                             loop = asyncio.get_running_loop() if status == 500 else None
-                        except RuntimeError:
+                        except RuntimeError:  # pragma: no cover
                             loop = None
                         if loop is not None:
                             # Hold through synchronous exception unwinding so Sentry can capture the event ID.
