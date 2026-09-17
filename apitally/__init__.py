@@ -107,10 +107,10 @@ def init(
             capture probability, a boolean, or `None` to preserve the request-stage decision. It
             cannot retain a request that was already sampled out.
         django_urlconf: For Django, the URLconf module or modules used to discover routes and
-            schemas. `None` uses the root URLconf.
-        django_include_class_based_views: For Django, whether to include class-based Django views
-            in the reported endpoint list in addition to Django REST Framework and Django Ninja
-            routes.
+            schemas and select views to track. `None` uses the root URLconf.
+        django_include_class_based_views: For Django, whether to track class-based and
+            function-based views in addition to Django REST Framework and Django Ninja views.
+            Defaults to `False`.
 
     For more information, see:
     - Setup guides: https://docs.apitally.io/setup-guides

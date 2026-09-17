@@ -83,6 +83,26 @@ def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monk
     assert unwrap(point.attributes)["http.route"] == "/api/things/{pk}/"
 
 
+def test_request_tracking_is_limited_to_configured_urlconf(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(monkeypatch, django_urlconf="tests.django.rest_framework_selected_urls")
+    activate_via_signal()
+    reader = attach_metric_reader()
+    client = Client()
+
+    included_response = client.get("/api/things/42/")
+    excluded_response = client.get("/items/42/")
+    assert included_response.status_code == excluded_response.status_code == 200
+    assert included_response.json() == excluded_response.json() == {"id": 42}
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["http.route"] == "/api/things/{pk}/"
+    (point,) = duration_data_points(reader)
+    assert unwrap(point.attributes)["http.route"] == "/api/things/{pk}/"
+    assert point.count == 1
+
+
 def test_request_flow(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()

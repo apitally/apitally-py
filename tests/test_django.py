@@ -68,7 +68,7 @@ def test_client_address_uses_framework_resolved_client_ip(
     middleware = "tests.test_django.TrustedProxyMiddleware"
     settings.MIDDLEWARE.append(middleware)
     try:
-        init(monkeypatch)
+        init(monkeypatch, django_include_class_based_views=True)
         response = Client().get(
             "/items/123/",
             REMOTE_ADDR="192.0.2.1",
@@ -83,7 +83,7 @@ def test_client_address_uses_framework_resolved_client_ip(
 
 
 def test_first_request_activates_and_is_recorded(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    init(monkeypatch)
+    init(monkeypatch, django_include_class_based_views=True)
     assert not activation.is_activated()
 
     response = Client().get("/items/123/")
@@ -133,6 +133,7 @@ def test_bodies_and_request_headers_captured_and_redacted(
 ):
     init(
         monkeypatch,
+        django_include_class_based_views=True,
         capture_request_body=True,
         capture_response_body=True,
         capture_request_headers=True,
@@ -156,7 +157,12 @@ def test_bodies_and_request_headers_captured_and_redacted(
 
 
 def test_bodies_over_cap_replaced_with_sentinel(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    init(monkeypatch, capture_request_body=True, capture_response_body=True)
+    init(
+        monkeypatch,
+        django_include_class_based_views=True,
+        capture_request_body=True,
+        capture_response_body=True,
+    )
     response = Client().post("/items/", data=json.dumps({"data": "x" * 60_000}), content_type="application/json")
     assert response.status_code == 201
 
@@ -175,6 +181,7 @@ def test_sampled_out_request_skips_capture(exporters: InMemoryExporters, monkeyp
 
     init(
         monkeypatch,
+        django_include_class_based_views=True,
         sample_rate=0.0,
         capture_request_body=True,
         capture_response_body=True,
@@ -194,7 +201,7 @@ def test_sampled_out_request_skips_capture(exporters: InMemoryExporters, monkeyp
 
 
 def test_streaming_response_size_and_body_captured(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    init(monkeypatch, capture_response_body=True)
+    init(monkeypatch, django_include_class_based_views=True, capture_response_body=True)
     activate_via_signal()
     reader = attach_metric_reader()
 
@@ -219,7 +226,7 @@ def test_streaming_response_size_and_body_captured(exporters: InMemoryExporters,
 def test_no_response_size_when_client_stops_reading_mid_stream(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    init(monkeypatch)
+    init(monkeypatch, django_include_class_based_views=True)
     activate_via_signal()
     reader = attach_metric_reader()
 
@@ -237,7 +244,7 @@ def test_no_response_size_when_client_stops_reading_mid_stream(
 def test_span_export_waits_for_streaming_response_with_content_length_to_complete(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    init(monkeypatch)
+    init(monkeypatch, django_include_class_based_views=True)
     activate_via_signal()
     reader = attach_metric_reader()
 
@@ -257,7 +264,7 @@ def test_span_export_waits_for_streaming_response_with_content_length_to_complet
 async def test_span_export_waits_for_async_streaming_response_to_complete(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    init(monkeypatch, capture_response_body=True)
+    init(monkeypatch, django_include_class_based_views=True, capture_response_body=True)
     activate_via_signal()
     reader = attach_metric_reader()
 
@@ -277,7 +284,7 @@ async def test_span_export_waits_for_async_streaming_response_to_complete(
 async def test_buffered_telemetry_flushed_on_lifespan_shutdown(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    init(monkeypatch)
+    init(monkeypatch, django_include_class_based_views=True)
     app = get_asgi_application()
     messages = iter([{"type": "lifespan.startup"}, {"type": "lifespan.shutdown"}])
     sent: list[dict[str, Any]] = []
@@ -302,7 +309,7 @@ async def test_buffered_telemetry_flushed_on_lifespan_shutdown(
 
 
 def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    init(monkeypatch)
+    init(monkeypatch, django_include_class_based_views=True)
     activate_via_signal()
     reader = attach_metric_reader()
 
@@ -315,7 +322,7 @@ def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monk
 
 
 def test_set_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    init(monkeypatch)
+    init(monkeypatch, django_include_class_based_views=True)
     activate_via_signal()
     reader = attach_metric_reader()
 
@@ -330,13 +337,22 @@ def test_set_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, m
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
 
 
-def test_unhandled_exception_recorded_on_server_span(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    init(monkeypatch)
+@pytest.mark.parametrize("include_views", [False, True])
+def test_unhandled_exception_recorded_only_for_included_views(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch, include_views: bool
+):
+    init(monkeypatch, django_include_class_based_views=include_views)
     activate_via_signal()
     reader = attach_metric_reader()
 
     response = Client(raise_request_exception=False).get("/error/")
     assert response.status_code == 500
+
+    if not include_views:
+        assert exported_spans(exporters) == []
+        assert not any(name.startswith("http.") for name in collect_metrics(reader))
+        assert exported_error_records(exporters) == []
+        return
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
@@ -355,7 +371,7 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     DjangoInstrumentor().instrument()
-    init(monkeypatch)
+    init(monkeypatch, django_include_class_based_views=True)
     assert settings.MIDDLEWARE.count(OTEL_MIDDLEWARE) == 1
     assert settings.MIDDLEWARE.index(APITALLY_MIDDLEWARE) == settings.MIDDLEWARE.index(OTEL_MIDDLEWARE) + 1
 
@@ -369,14 +385,64 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
 
 
 def test_init_twice_does_not_stack_middleware(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
-    init(monkeypatch)
-    init(monkeypatch)
+    init(monkeypatch, django_include_class_based_views=True)
+    init(monkeypatch, django_include_class_based_views=True)
     assert settings.MIDDLEWARE.count(APITALLY_MIDDLEWARE) == 1
     assert settings.MIDDLEWARE.count(OTEL_MIDDLEWARE) == 1
 
     response = Client().get("/items/123/")
     assert response.status_code == 200
     assert len(exported_spans(exporters, kind=SpanKind.SERVER)) == 1
+
+
+@pytest.mark.parametrize("path", ["/notes/", "/whoami/"], ids=["class-based", "function-based"])
+@pytest.mark.parametrize("include_views", [False, True])
+def test_django_view_request_tracking_requires_explicit_inclusion(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch, path: str, include_views: bool
+):
+    init(monkeypatch, django_include_class_based_views=include_views)
+    activate_via_signal()
+    reader = attach_metric_reader()
+
+    response = Client().get(path)
+    assert response.status_code == 200
+    assert response.content == b"ok"
+
+    if not include_views:
+        assert exported_spans(exporters) == []
+        assert not any(name.startswith("http.") for name in collect_metrics(reader))
+        return
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["http.route"] == path
+    (point,) = duration_data_points(reader)
+    assert unwrap(point.attributes)["http.route"] == path
+    assert point.count == 1
+
+
+@pytest.mark.parametrize("include_views", [False, True])
+def test_root_view_request_tracking_requires_explicit_inclusion(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch, include_views: bool
+):
+    init(monkeypatch, django_include_class_based_views=include_views)
+
+    assert Client().get("/").status_code == 200
+    assert len(exported_spans(exporters, kind=SpanKind.SERVER)) == int(include_views)
+
+
+def test_unmatched_request_has_no_route_and_no_histogram_point(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(monkeypatch)
+    activate_via_signal()
+    reader = attach_metric_reader()
+
+    assert Client().get("/nonexistent/").status_code == 404
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["http.response.status_code"] == 404
+    assert "http.route" not in unwrap(span.attributes)
+    assert duration_data_points(reader) == []
 
 
 def test_django_include_class_based_views_adds_paths(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

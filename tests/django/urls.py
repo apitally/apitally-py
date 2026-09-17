@@ -51,6 +51,7 @@ class NotesView(View):
 
 
 urlpatterns = [
+    path("", whoami),
     path("items/<int:pk>/", get_item),
     path("items/", create_item),
     path("stream/", stream),
