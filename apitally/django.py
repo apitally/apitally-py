@@ -416,7 +416,7 @@ class ApitallyDjangoMiddleware:
 def _is_drf_view(view: Callable[..., Any]) -> bool:
     try:
         from rest_framework.schemas.generators import is_api_view
-    except ImportError:
+    except ImportError:  # pragma: no cover
         return False
     return is_api_view(view)
 
