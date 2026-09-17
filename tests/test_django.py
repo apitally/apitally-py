@@ -420,6 +420,31 @@ def test_django_view_request_tracking_requires_explicit_inclusion(
     assert point.count == 1
 
 
+@pytest.mark.parametrize("include_views", [False, True])
+def test_root_view_request_tracking_requires_explicit_inclusion(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch, include_views: bool
+):
+    init(monkeypatch, django_include_class_based_views=include_views)
+
+    assert Client().get("/").status_code == 200
+    assert len(exported_spans(exporters, kind=SpanKind.SERVER)) == int(include_views)
+
+
+def test_unmatched_request_has_no_route_and_no_histogram_point(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(monkeypatch)
+    activate_via_signal()
+    reader = attach_metric_reader()
+
+    assert Client().get("/nonexistent/").status_code == 404
+
+    (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
+    assert unwrap(span.attributes)["http.response.status_code"] == 404
+    assert "http.route" not in unwrap(span.attributes)
+    assert duration_data_points(reader) == []
+
+
 def test_django_include_class_based_views_adds_paths(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch, django_include_class_based_views=True)
     activate_via_signal()

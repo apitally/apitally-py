@@ -223,14 +223,14 @@ class ApitallyDjangoMiddleware:
         request_body: bytes | None,
         exception_holder: server_errors.ExceptionHolder,
     ) -> None:
-        route = self.get_route(request)
         span = get_server_span()
-        if route is None:
+        if not self.should_track_request(request):
             server_span_kept_var.set(False)
             processor = get_server_span_processor()
             if processor is not None and span is not None and span.context is not None:
                 processor.discard_request(span.context.span_id)
             return
+        route = self.get_route(request)
         streaming = getattr(response, "streaming", False)
         response_size = parse_content_length(response.get("Content-Length"))
         if response_size is None and not streaming:
@@ -239,9 +239,10 @@ class ApitallyDjangoMiddleware:
         if client_address := request.META.get("REMOTE_ADDR"):
             set_request_attribute("client.address", client_address)
         if is_server_span_kept() and span is not None and span.is_recording():
-            # Overwrites the instrumentor's raw route and span name so spans and metrics agree on the template
-            span.set_attribute("http.route", route)
-            span.update_name(f"{request.method} {route}")
+            if route is not None:
+                # Overwrites the instrumentor's raw route and span name so spans and metrics agree on the template
+                span.set_attribute("http.route", route)
+                span.update_name(f"{request.method} {route}")
             if request_size is not None:
                 span.set_attribute("http.request.body.size", request_size)
             if response_size is not None:
@@ -393,17 +394,21 @@ class ApitallyDjangoMiddleware:
 
             response.streaming_content = stream_wrapper()
 
-    def get_route(self, request: HttpRequest) -> str | None:
+    def should_track_request(self, request: HttpRequest) -> bool:
         match = request.resolver_match
-        if match is None or not match.route:
-            return None
+        if match is None:
+            return True
         if self.view_callbacks is not None and match.func not in self.view_callbacks:
-            return None
-        if (
+            return False
+        return (
             self.include_django_views
             or _is_drf_view(match.func)
             or getattr(match.func, "__module__", "").startswith("ninja.")
-        ):
+        )
+
+    def get_route(self, request: HttpRequest) -> str | None:
+        match = request.resolver_match
+        if match is not None and match.route:
             return _regex_to_route_template(match.route)
         return None
 
