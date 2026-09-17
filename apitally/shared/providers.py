@@ -2,6 +2,7 @@ import logging
 import uuid
 from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError, version
+from typing import Protocol, cast
 
 from opentelemetry import trace
 from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor
@@ -27,20 +28,27 @@ sampler_warned = False
 span_limits_warned = False
 
 
-def get_user_tracer_provider() -> TracerProvider | None:
-    """Return the user's previously configured TracerProvider, or None if Apitally should set up its own."""
+class TracerProviderWithSpanProcessors(Protocol):
+    @property
+    def resource(self) -> Resource: ...
+
+    def add_span_processor(self, span_processor: SpanProcessor) -> None: ...
+
+
+def get_user_tracer_provider() -> TracerProviderWithSpanProcessors | None:
+    """Return the user's previously configured tracer provider, or None if Apitally should set up its own."""
     provider = trace.get_tracer_provider()
     if isinstance(provider, trace.ProxyTracerProvider):
         return None
-    if not isinstance(provider, TracerProvider):
+    if not hasattr(provider, "resource") or not callable(getattr(provider, "add_span_processor", None)):
         raise TypeError(
-            f"The registered OpenTelemetry tracer provider ({type(provider).__qualname__}) is not an "
-            f"OpenTelemetry SDK TracerProvider, so Apitally cannot attach its span processor to it"
+            f"The registered OpenTelemetry tracer provider ({type(provider).__qualname__}) does not expose "
+            f"the resource and add_span_processor interface required by Apitally"
         )
-    return provider
+    return cast(TracerProviderWithSpanProcessors, provider)
 
 
-def resolve_env(user_provider: TracerProvider | None) -> str:
+def resolve_env(user_provider: TracerProviderWithSpanProcessors | None) -> str:
     config = get_config()
     if user_provider is None:
         return config.env
@@ -92,7 +100,7 @@ def setup_tracer_provider(resource: Resource, span_processor: SpanProcessor) -> 
     return provider
 
 
-def attach_to_tracer_provider(user_provider: TracerProvider, span_processor: SpanProcessor) -> None:
+def attach_to_tracer_provider(user_provider: TracerProviderWithSpanProcessors, span_processor: SpanProcessor) -> None:
     sampler = getattr(user_provider, "sampler", None)
     if sampler is not None:
         warn_if_sampler_drops_spans(sampler)
@@ -134,7 +142,7 @@ def warn_if_sampler_drops_spans(sampler: Sampler) -> None:
             )
 
 
-def warn_if_attribute_length_limit_too_low(user_provider: TracerProvider) -> None:
+def warn_if_attribute_length_limit_too_low(user_provider: TracerProviderWithSpanProcessors) -> None:
     global span_limits_warned
     config = get_config()
     capture_enabled = (
