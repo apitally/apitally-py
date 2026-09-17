@@ -37,8 +37,8 @@ The following options have been changed:
 | `mask_response_body_callback` | Renamed to `mask_response_body` with new arguments. |
 | `exclude_callback` | Replaced by `sample_on_request` or `sample_on_response` with new arguments and return values. |
 | `exclude_paths` | Matches actual request paths instead of matched route patterns. |
-| `urlconf` | Renamed to `django_urlconf`. |
-| `include_django_views` | Renamed to `django_include_class_based_views`. |
+| `urlconf` | Renamed to `django_urlconf`. Selects views to track as well as routes and schemas to discover. |
+| `include_django_views` | Renamed to `django_include_class_based_views`. Defaults to `False`, tracking only DRF and Ninja views. Enable it to also track class-based and function-based Django views. |
 
 ### Removed options
 

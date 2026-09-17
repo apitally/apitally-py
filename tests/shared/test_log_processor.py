@@ -13,6 +13,8 @@ from opentelemetry.sdk._logs.export import (
     SimpleLogRecordProcessor,
 )
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared.config import set_config
@@ -107,6 +109,25 @@ def test_logs_discarded_when_sample_on_response_returns_false(log_exporter: InMe
     install_root_handler(logger_provider, span_processor)
     with tracer_provider.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
         logging.getLogger("myapp").warning("inside request")
+    assert log_exporter.get_finished_logs() == ()
+
+
+def test_discarded_request_does_not_export_spans_or_logs(
+    tracer: Tracer,
+    span_processor: ApitallySpanProcessor,
+    span_exporter: InMemorySpanExporter,
+    log_exporter: InMemoryLogRecordExporter,
+    root_handler: LoggingHandler | None,
+):
+    span_processor.downstream = SimpleSpanProcessor(span_exporter)
+    with tracer.start_as_current_span("GET /page", kind=SpanKind.SERVER) as server:
+        with tracer.start_as_current_span("finished child"):
+            logging.getLogger("myapp").warning("before discard")
+        with tracer.start_as_current_span("open child"):
+            span_processor.discard_request(server.get_span_context().span_id)
+            with tracer.start_as_current_span("later child"):
+                logging.getLogger("myapp").warning("after discard")
+    assert span_exporter.get_finished_spans() == ()
     assert log_exporter.get_finished_logs() == ()
 
 

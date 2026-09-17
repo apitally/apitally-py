@@ -149,6 +149,16 @@ class ApitallySpanProcessor(SpanProcessor):
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally span processor")
 
+    def discard_request(self, server_span_id: int) -> None:
+        """Discard this processor's request telemetry without modifying the shared spans."""
+        for span_id, entry in list(self.spans.items()):
+            if entry[1] == server_span_id and span_id in self.spans:
+                self.spans[span_id] = (False, None)
+        self.pending.pop(server_span_id, None)
+        self.stash.pop(server_span_id, None)
+        if self.on_request_finished is not None:
+            self.on_request_finished(server_span_id, False)
+
     def defer_export(self, span_id: int) -> None:
         """Called by a transport while the SERVER span is still recording, committing to a later finish_export."""
         self.deferred.add(span_id)

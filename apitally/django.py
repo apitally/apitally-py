@@ -27,7 +27,12 @@ from apitally.shared.config import (
     is_allowed_content_type,
 )
 from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
-from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
+from apitally.shared.context import (
+    get_server_span,
+    get_server_span_processor,
+    is_server_span_kept,
+    server_span_kept_var,
+)
 from apitally.shared.helpers import set_request_attribute
 from apitally.shared.wsgi import group_headers, parse_content_length
 
@@ -146,6 +151,14 @@ class ApitallyDjangoMiddleware:
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response
         self.config = get_config()
+        self.include_django_views = _include_class_based_views
+        self.view_callbacks: set[Callable[..., Any]] | None = None
+        if self.include_django_views or None not in _urlconfs:
+            self.view_callbacks = {
+                view_callback
+                for urlconf in _urlconfs
+                for view_callback, _, _, _ in extract_views_from_urlpatterns(get_resolver(urlconf).url_patterns)
+            }
         startup.resolve_app_info()
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
@@ -210,20 +223,25 @@ class ApitallyDjangoMiddleware:
         request_body: bytes | None,
         exception_holder: server_errors.ExceptionHolder,
     ) -> None:
+        route = self.get_route(request)
+        span = get_server_span()
+        if route is None:
+            server_span_kept_var.set(False)
+            processor = get_server_span_processor()
+            if processor is not None and span is not None and span.context is not None:
+                processor.discard_request(span.context.span_id)
+            return
         streaming = getattr(response, "streaming", False)
         response_size = parse_content_length(response.get("Content-Length"))
         if response_size is None and not streaming:
             response_size = len(response.content)
-        route = self.get_route(request)
         consumer = get_consumer_identifier()
         if client_address := request.META.get("REMOTE_ADDR"):
             set_request_attribute("client.address", client_address)
-        span = get_server_span()
         if is_server_span_kept() and span is not None and span.is_recording():
-            if route is not None:
-                # Overwrites the instrumentor's raw route and span name so spans and metrics agree on the template
-                span.set_attribute("http.route", route)
-                span.update_name(f"{request.method} {route}")
+            # Overwrites the instrumentor's raw route and span name so spans and metrics agree on the template
+            span.set_attribute("http.route", route)
+            span.update_name(f"{request.method} {route}")
             if request_size is not None:
                 span.set_attribute("http.request.body.size", request_size)
             if response_size is not None:
@@ -377,9 +395,25 @@ class ApitallyDjangoMiddleware:
 
     def get_route(self, request: HttpRequest) -> str | None:
         match = request.resolver_match
-        if match is not None and match.route:
+        if match is None or not match.route:
+            return None
+        if self.view_callbacks is not None and match.func not in self.view_callbacks:
+            return None
+        if (
+            self.include_django_views
+            or _is_drf_view(match.func)
+            or getattr(match.func, "__module__", "").startswith("ninja.")
+        ):
             return _regex_to_route_template(match.route)
-        return None  # pragma: no cover
+        return None
+
+
+def _is_drf_view(view: Callable[..., Any]) -> bool:
+    try:
+        from rest_framework.schemas.generators import is_api_view
+    except ImportError:
+        return False
+    return is_api_view(view)
 
 
 @lru_cache(1024)
