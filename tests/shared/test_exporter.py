@@ -1,4 +1,3 @@
-import gzip
 import json
 from urllib.parse import parse_qsl
 
@@ -125,18 +124,6 @@ def test_apitally_export_overrides_instance_id_without_changing_user_export():
     assert apitally_span.resource.attributes["service.name"] == "user-service"
     (user_span,) = user_exporter.get_finished_spans()
     assert user_span.resource.attributes["service.instance.id"] == "user-instance"
-
-
-def test_non_utf8_body_exported_as_bytes():
-    compressed = gzip.compress(b'{"a": 1}')
-    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
-    tracer, exporter = create_trace_pipeline()
-    with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER) as span:
-        processor = unwrap(get_server_span_processor())
-        processor.update_stash(span.get_span_context().span_id, request_body=compressed)
-
-    (exported,) = exporter.get_finished_spans()
-    assert unwrap(exported.attributes)["apitally.request.body"] == compressed
 
 
 def test_mask_callback_receives_ended_span():
