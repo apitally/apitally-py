@@ -1,3 +1,4 @@
+import threading
 import time
 from collections.abc import Iterable
 from typing import Any
@@ -56,6 +57,7 @@ request_body_size: Histogram | None = None
 response_body_size: Histogram | None = None
 start_time: float = 0.0
 process: psutil.Process | None = None
+histogram_lock = threading.Lock()
 
 
 def setup(resource: Resource, metric_reader: MetricReader, *additional_metric_readers: MetricReader) -> MeterProvider:
@@ -100,31 +102,34 @@ def record_request(
         attributes["url.scheme"] = scheme
     if status_code >= 500:
         attributes["error.type"] = str(status_code)
-    request_duration.record(duration, attributes)
-    if request_size is not None and request_size >= 0:
-        request_body_size.record(request_size, attributes)
-    if response_size is not None and response_size >= 0:
-        response_body_size.record(response_size, attributes)
+    with histogram_lock:
+        request_duration.record(duration, attributes)
+        if request_size is not None and request_size >= 0:
+            request_body_size.record(request_size, attributes)
+        if response_size is not None and response_size >= 0:
+            response_body_size.record(response_size, attributes)
 
 
 def drop_empty_histogram_aggregations(provider: MeterProvider, metric_reader: MetricReader) -> None:
     """Remove histogram aggregations with no recorded measurements, so that attribute sets
     seen only once (e.g. transient consumer identifiers) don't accumulate in memory."""
     storage = provider._measurement_consumer._reader_storages[metric_reader]
-    for instrument, matches in storage._instrument_view_instrument_matches.items():
-        if isinstance(instrument, SDKHistogram):
-            for match in matches:
-                with match._lock:
-                    aggregations = match._attributes_aggregation
-                    match._attributes_aggregation = {
-                        key: aggregation
-                        for key, aggregation in aggregations.items()
-                        if aggregation._count  # ty: ignore[unresolved-attribute]
-                    }
+    # OTel's match lock does not cover the full recording operation.
+    with histogram_lock:
+        for instrument, matches in storage._instrument_view_instrument_matches.items():
+            if isinstance(instrument, SDKHistogram):
+                for match in matches:
+                    with match._lock:
+                        aggregations = match._attributes_aggregation
+                        match._attributes_aggregation = {
+                            key: aggregation
+                            for key, aggregation in aggregations.items()
+                            if aggregation._count  # ty: ignore[unresolved-attribute]
+                        }
 
 
 def reset() -> None:
-    global meter_provider, reader, request_duration, request_body_size, response_body_size
+    global meter_provider, reader, request_duration, request_body_size, response_body_size, histogram_lock
     if meter_provider is not None:
         meter_provider.shutdown()
     meter_provider = None
@@ -132,6 +137,7 @@ def reset() -> None:
     request_duration = None
     request_body_size = None
     response_body_size = None
+    histogram_lock = threading.Lock()
 
 
 def observe_uptime(options: CallbackOptions) -> Iterable[Observation]:

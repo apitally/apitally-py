@@ -24,8 +24,13 @@ class ApitallySpanExporter(SpanExporter):
 
     def __init__(self, delegate: SpanExporter, instance_id: str) -> None:
         self.delegate = delegate
-        self.instance_resource = Resource({"service.instance.id": instance_id})
         self.config = get_config()
+        self.resource_overrides = Resource(
+            {
+                "service.instance.id": instance_id,
+                "deployment.environment.name": self.config.env,
+            }
+        )
         self.redaction = Redaction(
             self.config.mask_query_params, self.config.mask_headers, self.config.mask_body_fields
         )
@@ -46,7 +51,7 @@ class ApitallySpanExporter(SpanExporter):
         stash: RequestStash | None = getattr(span, STASH_ATTRIBUTE, None)
         context = span.get_span_context()
         sentry_event_id = pop_sentry_event_id(context.span_id) if context is not None else None
-        resource = span.resource.merge(self.instance_resource)
+        resource = span.resource.merge(self.resource_overrides)
         resource_changed = resource != span.resource
         if (
             stash is None
