@@ -286,7 +286,7 @@ def test_activation_attaches_to_existing_user_tracer_provider(
     activation.configure(write_token=WRITE_TOKEN)
     activation.activate()
     assert trace.get_tracer_provider() is user_provider
-    assert activation.env == "production"
+    assert activation.env == "dev"
 
     with trace.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
         pass

@@ -12,7 +12,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanLimits, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.sampling import ALWAYS_OFF, ALWAYS_ON, ParentBased, Sampler, TraceIdRatioBased
 
-from apitally.shared.config import ApitallyConfig, get_config
+from apitally.shared.config import get_config
 
 
 logger = logging.getLogger(__name__)
@@ -46,27 +46,6 @@ def get_user_tracer_provider() -> TracerProviderWithSpanProcessors | None:
             f"the resource and add_span_processor interface required by Apitally"
         )
     return cast(TracerProviderWithSpanProcessors, provider)
-
-
-def resolve_env(user_provider: TracerProviderWithSpanProcessors | None) -> str:
-    config = get_config()
-    if user_provider is None:
-        return config.env
-    resource_env = user_provider.resource.attributes.get("deployment.environment.name")
-    if not resource_env:
-        return config.env
-    if config.env not in (resource_env, ApitallyConfig.env):
-        logger.warning(
-            "Configured Apitally env '%s' conflicts with the existing OpenTelemetry resource attribute "
-            "deployment.environment.name='%s'; using '%s'. To resolve this, either remove the env argument "
-            "from apitally.init() or set the deployment.environment.name resource attribute to '%s' in "
-            "your OpenTelemetry setup.",
-            config.env,
-            resource_env,
-            resource_env,
-            config.env,
-        )
-    return str(resource_env)
 
 
 def create_resource(env: str) -> Resource:

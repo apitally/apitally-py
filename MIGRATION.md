@@ -145,4 +145,3 @@ If you already have a global OpenTelemetry SDK `TracerProvider`, the SDK automat
 Review these settings when upgrading:
 
 - **Sampling:** Previously, your provider's sampler affected traces but not Apitally's request logs. It now affects both. Check that its sampling rate provides the request log coverage you want. Metrics remain unsampled.
-- **Environment:** Previously, Apitally used its configured `env`. Your provider's `deployment.environment.name` now takes precedence when set. Align conflicting values or omit `env` to use the provider's value.

@@ -8,7 +8,6 @@ from opentelemetry._logs import get_logger_provider
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
-from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -39,10 +38,9 @@ def test_setup_own_tracer_provider(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT", "100")
     monkeypatch.setenv("OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT", "100")
     monkeypatch.setenv("OTEL_SERVICE_NAME", "test-service")
-    set_config(write_token=WRITE_TOKEN, env="staging")
+    config = set_config(write_token=WRITE_TOKEN, env="staging")
 
-    env = providers.resolve_env(None)
-    resource = providers.create_resource(env)
+    resource = providers.create_resource(config.env)
     exporter = InMemorySpanExporter()
     provider = providers.setup_tracer_provider(resource, SimpleSpanProcessor(exporter))
 
@@ -83,26 +81,14 @@ def test_attach_to_user_tracer_provider():
     assert len(our_exporter.get_finished_spans()) == 1
 
 
-def test_env_conflict_uses_user_resource_value():
-    set_config(write_token=WRITE_TOKEN, env="staging")
-    user_provider = TracerProvider(resource=Resource.create({"deployment.environment.name": "production"}))
-    env = providers.resolve_env(user_provider)
-    assert env == "production"
+def test_export_headers_match_resource_env():
+    config = set_config(write_token=WRITE_TOKEN, env="staging")
 
-
-def test_export_headers_match_resource_env_with_and_without_user_provider():
-    set_config(write_token=WRITE_TOKEN, env="staging")
-
-    env = providers.resolve_env(None)
-    resource = providers.create_resource(env)
-    headers = providers.export_headers(env)
+    resource = providers.create_resource(config.env)
+    headers = providers.export_headers(config.env)
     assert headers["Apitally-Env"] == resource.attributes["deployment.environment.name"] == "staging"
     assert headers["Authorization"] == f"Bearer {WRITE_TOKEN}"
     assert providers.endpoint_url("/v1/traces") == "https://otlp.apitally.io/v1/traces"
-
-    user_provider = TracerProvider(resource=Resource.create({"deployment.environment.name": "production"}))
-    env = providers.resolve_env(user_provider)
-    assert providers.export_headers(env)["Apitally-Env"] == "production"
 
 
 def test_endpoint_override_ignores_otel_env_vars(monkeypatch: pytest.MonkeyPatch):

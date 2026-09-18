@@ -208,7 +208,7 @@ def start_pipelines() -> None:
     global env, resource, span_processor, log_processor, logger_provider, inherited_span_processor
     global spool, export_worker
     user_provider = providers.get_user_tracer_provider()
-    env = providers.resolve_env(user_provider)
+    env = config.get_config().env
     resource = providers.create_resource(env)
     spool = Spool()
     metrics.setup(resource, metrics.ApitallyMetricReader(spool))
