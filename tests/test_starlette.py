@@ -1,5 +1,7 @@
+import gzip
 import json
 import logging
+import zlib
 from typing import Any, Iterator, cast
 
 import httpx
@@ -12,7 +14,7 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.testclient import TestClient
 
@@ -133,6 +135,49 @@ def test_request_body_captured_and_redacted(
     assert json.loads(body) == {"name": "widget", "password": REDACTED}
     body_size = unwrap(span.attributes)["http.request.body.size"]
     assert isinstance(body_size, int) and body_size > 0
+
+
+def test_compressed_bodies_are_redacted_when_header_capture_is_disabled(
+    app: Starlette, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    body = b'{"name": "widget", "password": "secret"}'
+    request_body = gzip.compress(body)
+    response_body = zlib.compress(body)
+
+    async def compressed(request: Request) -> StreamingResponse:
+        assert await request.body() == request_body
+        return StreamingResponse(
+            iter([response_body[:10], response_body[10:]]),
+            media_type="application/json",
+            headers={"Content-Encoding": "deflate"},
+        )
+
+    app.router.routes.append(Route("/compressed", compressed, methods=["POST"]))
+    init(
+        app,
+        monkeypatch,
+        capture_request_body=True,
+        capture_response_body=True,
+        capture_request_headers=False,
+        capture_response_headers=False,
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/compressed",
+            content=request_body,
+            headers={"Content-Type": "application/json", "Content-Encoding": "gzip"},
+        )
+    assert response.status_code == 200
+    assert response.content == body
+
+    (span,) = exported_spans(exporters)
+    attributes = unwrap(span.attributes)
+    masked = {"name": "widget", "password": REDACTED}
+    assert json.loads(str(attributes["apitally.request.body"])) == masked
+    assert json.loads(str(attributes["apitally.response.body"])) == masked
+    assert attributes["http.request.body.size"] == len(request_body)
+    assert attributes["http.response.body.size"] == len(response_body)
+    assert not any(key.startswith(("http.request.header.", "http.response.header.")) for key in attributes)
 
 
 def test_client_address_uses_framework_resolved_client_ip(

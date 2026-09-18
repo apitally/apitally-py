@@ -1,5 +1,6 @@
 import json
 import logging
+import zlib
 from collections.abc import Callable, Sequence
 
 from opentelemetry.sdk.resources import Resource
@@ -94,13 +95,25 @@ class ApitallySpanExporter(SpanExporter):
         if stash.request_body is None and stash.response_body is None:
             return span
         if stash.request_body is not None:
-            attributes["apitally.request.body"] = self.process_body(
-                span, stash.request_body, self.config.mask_request_body, "mask_request_body"
+            request_body = self.process_body(
+                span,
+                stash.request_body,
+                self.config.mask_request_body,
+                "mask_request_body",
+                stash.request_content_encoding,
             )
+            if request_body is not None:
+                attributes["apitally.request.body"] = request_body
         if stash.response_body is not None:
-            attributes["apitally.response.body"] = self.process_body(
-                span, stash.response_body, self.config.mask_response_body, "mask_response_body"
+            response_body = self.process_body(
+                span,
+                stash.response_body,
+                self.config.mask_response_body,
+                "mask_response_body",
+                stash.response_content_encoding,
             )
+            if response_body is not None:
+                attributes["apitally.response.body"] = response_body
         return copy_span_with_attributes(span, attributes)
 
     def process_body(
@@ -109,9 +122,25 @@ class ApitallySpanExporter(SpanExporter):
         body: bytes,
         mask_callback: Callable[[ReadableSpan, bytes], bytes | None] | None,
         callback_name: str,
-    ) -> str | bytes:
+        content_encoding: str | None,
+    ) -> str | bytes | None:
         if body == BODY_TOO_LARGE:
             return body
+        encoding = (content_encoding or "").strip().lower()
+        if encoding and encoding != "identity":
+            if encoding not in ("gzip", "deflate"):
+                return REDACTED
+            try:
+                decoder = zlib.decompressobj(16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS)
+                body = decoder.decompress(body, MAX_BODY_SIZE + 1)
+            except zlib.error:
+                return REDACTED
+            if len(body) > MAX_BODY_SIZE:
+                return BODY_TOO_LARGE
+            if not decoder.eof or decoder.unused_data:
+                return REDACTED
+            if not body:
+                return None
         if mask_callback is not None:
             try:
                 masked = mask_callback(span, body)

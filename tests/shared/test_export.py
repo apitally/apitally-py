@@ -131,14 +131,15 @@ def test_stashed_body_and_headers_reach_spool_redacted(spool: Spool) -> None:
         processor.update_stash(
             span.get_span_context().span_id,
             request_headers={"authorization": ["Bearer secret123"], "accept": ["application/json"]},
-            request_body=b'{"password": "hunter2"}',
+            request_body=gzip.compress(b'{"password": "hunter2"}'),
+            request_content_encoding="gzip",
         )
     spool.rotate_for_export()
     (file,) = spool.pending_files()
     payload = read_spool_payload(file)
     assert b"secret123" not in payload
     assert b"hunter2" not in payload
-    assert REDACTED.encode() in payload
+    assert b'{"password":"[REDACTED]"}' in payload
     assert b"application/json" in payload
 
 

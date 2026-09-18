@@ -1,9 +1,11 @@
+import gzip
 import json
 import logging
+import zlib
 from typing import Any, Iterator
 
 import pytest
-from flask import Blueprint, Flask, Response, jsonify
+from flask import Blueprint, Flask, Response, jsonify, request
 from flask.logging import default_handler
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
@@ -168,6 +170,50 @@ def test_request_and_response_bodies_captured_and_redacted(
     attributes = dict(span.attributes or {})
     assert json.loads(str(attributes["apitally.request.body"])) == {"password": REDACTED, "name": "x"}
     assert json.loads(str(attributes["apitally.response.body"])) == {"id": 1, "token": REDACTED}
+
+
+def test_compressed_bodies_are_redacted_when_header_capture_is_disabled(
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    body = b'{"name": "widget", "password": "secret"}'
+    request_body = gzip.compress(body)
+    response_body = zlib.compress(body)
+
+    @app.post("/compressed")
+    def compressed() -> Response:
+        assert request.get_data() == request_body
+        return Response(
+            iter([response_body[:10], response_body[10:]]),
+            mimetype="application/json",
+            headers={"Content-Encoding": "deflate"},
+            direct_passthrough=True,
+        )
+
+    init(
+        app,
+        monkeypatch,
+        capture_request_body=True,
+        capture_response_body=True,
+        capture_request_headers=False,
+        capture_response_headers=False,
+    )
+    response = app.test_client().post(
+        "/compressed",
+        data=request_body,
+        content_type="application/json",
+        headers={"Content-Encoding": "gzip"},
+    )
+    assert response.status_code == 200
+    assert response.data == response_body
+
+    (span,) = exported_spans(exporters)
+    attributes = unwrap(span.attributes)
+    masked = {"name": "widget", "password": REDACTED}
+    assert json.loads(str(attributes["apitally.request.body"])) == masked
+    assert json.loads(str(attributes["apitally.response.body"])) == masked
+    assert attributes["http.request.body.size"] == len(request_body)
+    assert attributes["http.response.body.size"] == len(response_body)
+    assert not any(key.startswith(("http.request.header.", "http.response.header.")) for key in attributes)
 
 
 def test_streaming_response_size_and_body_captured(

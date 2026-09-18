@@ -187,6 +187,10 @@ class ApitallyASGIMiddleware:
                             request_body=stash_request_body,
                             response_headers=stash_response_headers,
                             response_body=stash_response_body,
+                            request_content_encoding=(get_header(request_headers, b"content-encoding") or b"").decode(
+                                "latin-1"
+                            ),
+                            response_content_encoding=(response_content_encoding or b"").decode("latin-1"),
                         )
                     if deferred_span_id is not None:
                         try:

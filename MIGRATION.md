@@ -78,7 +78,9 @@ This replaces `consumer_callback`, `identify_consumer_callback`, and consumer va
 
 ## Body masking callbacks
 
-`mask_request_body_callback` and `mask_response_body_callback` are now named `mask_request_body` and `mask_response_body`. Both receive `(span, body)`, rather than request/response dictionaries. The body is passed as `bytes`. Request metadata is available through [`span.attributes`](https://docs.apitally.io/sdk-reference/python/v1/attributes).
+`mask_request_body_callback` and `mask_response_body_callback` are now named `mask_request_body` and `mask_response_body`. Both receive `(span, body)`, rather than request/response dictionaries. The body is passed as `bytes` after decompression. Single-member gzip and zlib-wrapped deflate are supported; unsupported encodings or invalid compressed bodies become `[REDACTED]`. Bodies exceeding 50,000 decoded bytes become `[BODY_TOO_LARGE]`. These sentinels bypass the callbacks.
+
+Callbacks may run later on another thread against an ended span snapshot. Request metadata is available through [`span.attributes`](https://docs.apitally.io/sdk-reference/python/v1/attributes).
 
 For example, a callback that masks bodies for admin routes becomes:
 

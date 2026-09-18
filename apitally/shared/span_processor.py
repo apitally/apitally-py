@@ -65,8 +65,10 @@ class RequestStash:
 
     request_headers: dict[str, list[str]] | None = None
     request_body: bytes | None = None
+    request_content_encoding: str | None = None
     response_headers: dict[str, list[str]] | None = None
     response_body: bytes | None = None
+    response_content_encoding: str | None = None
 
 
 def is_sampled_in(trace_id: int, bound: int) -> bool:
@@ -198,6 +200,8 @@ class ApitallySpanProcessor(SpanProcessor):
         request_body: bytes | None = None,
         response_headers: dict[str, list[str]] | None = None,
         response_body: bytes | None = None,
+        request_content_encoding: str | None = None,
+        response_content_encoding: str | None = None,
     ) -> None:
         """Hold captured headers and bodies until process_ended_span attaches them to the exported
         SERVER span snapshot. Fields already stashed for the span are kept unless a new value is given."""
@@ -215,6 +219,10 @@ class ApitallySpanProcessor(SpanProcessor):
             entry.response_headers = response_headers
         if response_body is not None:
             entry.response_body = response_body
+        if request_content_encoding is not None:
+            entry.request_content_encoding = request_content_encoding
+        if response_content_encoding is not None:
+            entry.response_content_encoding = response_content_encoding
 
     def process_ended_span(self, span: ReadableSpan, context: SpanContext) -> None:
         keep, server_span_id = self.spans.pop(context.span_id, (False, None))
