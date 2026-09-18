@@ -29,9 +29,6 @@ span_limits_warned = False
 
 
 class TracerProviderWithSpanProcessors(Protocol):
-    @property
-    def resource(self) -> Resource: ...
-
     def add_span_processor(self, span_processor: SpanProcessor) -> None: ...
 
 
@@ -40,10 +37,10 @@ def get_user_tracer_provider() -> TracerProviderWithSpanProcessors | None:
     provider = trace.get_tracer_provider()
     if isinstance(provider, trace.ProxyTracerProvider):
         return None
-    if not hasattr(provider, "resource") or not callable(getattr(provider, "add_span_processor", None)):
+    if not callable(getattr(provider, "add_span_processor", None)):
         raise TypeError(
             f"The registered OpenTelemetry tracer provider ({type(provider).__qualname__}) does not expose "
-            f"the resource and add_span_processor interface required by Apitally"
+            f"the add_span_processor interface required by Apitally"
         )
     return cast(TracerProviderWithSpanProcessors, provider)
 
