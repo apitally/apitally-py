@@ -25,6 +25,7 @@ from apitally.shared.config import (
     ApitallyConfig,
     get_config,
     is_allowed_content_type,
+    is_supported_content_encoding,
 )
 from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
 from apitally.shared.context import (
@@ -195,6 +196,7 @@ class ApitallyDjangoMiddleware:
             not is_server_span_kept()
             or not config.capture_request_body
             or not is_allowed_content_type(request.headers.get("Content-Type"))
+            or not is_supported_content_encoding(request.headers.get("Content-Encoding"))
         ):
             return None
         if request_size is None:  # pragma: no cover
@@ -207,7 +209,12 @@ class ApitallyDjangoMiddleware:
     def capture_response_body(
         self, response: HttpResponse, config: ApitallyConfig, response_size: int | None, streaming: bool
     ) -> bytes | None:
-        if not config.capture_response_body or streaming or not is_allowed_content_type(response.get("Content-Type")):
+        if (
+            not config.capture_response_body
+            or streaming
+            or not is_allowed_content_type(response.get("Content-Type"))
+            or not is_supported_content_encoding(response.get("Content-Encoding"))
+        ):
             return None
         if response_size is not None and response_size > MAX_BODY_SIZE:
             return BODY_TOO_LARGE
@@ -322,6 +329,7 @@ class ApitallyDjangoMiddleware:
             span_id is not None
             and config.capture_response_body
             and is_allowed_content_type(response.get("Content-Type"))
+            and is_supported_content_encoding(response.get("Content-Encoding"))
         )
         method = request.method or ""
         status_code = response.status_code

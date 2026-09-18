@@ -165,6 +165,24 @@ async def test_content_type_allowlist(content_type: str, captured: bool):
         assert app.received_messages[0]["body"] == b"hello"  # app still received the body untouched
 
 
+async def test_unsupported_content_encoding_skips_capture_and_preserves_sizes():
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True, capture_response_body=True)
+    tracer, exporter = create_trace_pipeline()
+    request_chunks = [b"hello", b"world"]
+    response_chunks = [b"abc", b"def"]
+    headers = JSON_HEADERS + [("content-encoding", "br")]
+    app = EchoApp(response_headers=headers, response_chunks=response_chunks)
+    await send_request(tracer, app, request_headers=headers, request_chunks=request_chunks)
+
+    assert [message["body"] for message in app.received_messages] == request_chunks
+    (span,) = exporter.get_finished_spans()
+    assert span.attributes is not None
+    assert "apitally.request.body" not in span.attributes
+    assert "apitally.response.body" not in span.attributes
+    assert span.attributes["http.request.body.size"] == sum(map(len, request_chunks))
+    assert span.attributes["http.response.body.size"] == sum(map(len, response_chunks))
+
+
 async def test_body_over_cap_sentinel_with_passthrough():
     set_config(write_token=WRITE_TOKEN, capture_request_body=True)
     tracer, exporter = create_trace_pipeline()

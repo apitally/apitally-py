@@ -10,7 +10,7 @@ import pytest
 from django.conf import settings
 from django.core.asgi import get_asgi_application
 from django.core.wsgi import get_wsgi_application
-from django.http import HttpRequest, StreamingHttpResponse
+from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
 from django.test import Client, override_settings
 from django.test.client import AsyncClient
 from django.urls import path
@@ -208,6 +208,53 @@ def test_compressed_bodies_are_redacted_when_header_capture_is_disabled(
     assert attributes["http.request.body.size"] == len(request_body)
     assert attributes["http.response.body.size"] == len(response_body)
     assert not any(key.startswith(("http.request.header.", "http.response.header.")) for key in attributes)
+
+
+@pytest.mark.parametrize("streaming", [False, True], ids=["ordinary", "streaming"])
+def test_unsupported_content_encoding_skips_body_capture(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch, streaming: bool
+):
+    body = b"unsupported encoded body"
+
+    def encoded(request: HttpRequest) -> HttpResponse | StreamingHttpResponse:
+        assert request.body == body
+        response = (
+            StreamingHttpResponse(iter([body[:10], body[10:]]), content_type="text/plain")
+            if streaming
+            else HttpResponse(body, content_type="text/plain")
+        )
+        response["Content-Encoding"] = "br"
+        return response
+
+    class Urls:
+        urlpatterns = [path("encoded/", encoded)]
+
+    with override_settings(ROOT_URLCONF=Urls):
+        init(
+            monkeypatch,
+            django_include_class_based_views=True,
+            capture_request_body=True,
+            capture_response_body=True,
+        )
+        response = Client().post(
+            "/encoded/",
+            data=body,
+            content_type="text/plain",
+            HTTP_CONTENT_ENCODING="br",
+        )
+        response_body = (
+            b"".join(response.streaming_content)  # ty: ignore[unresolved-attribute]
+            if streaming
+            else response.content
+        )
+        assert response_body == body
+
+    (span,) = exported_spans(exporters)
+    attributes = unwrap(span.attributes)
+    assert "apitally.request.body" not in attributes
+    assert "apitally.response.body" not in attributes
+    assert attributes["http.request.body.size"] == len(body)
+    assert attributes["http.response.body.size"] == len(body)
 
 
 def test_bodies_over_cap_replaced_with_sentinel(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

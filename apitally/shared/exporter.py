@@ -7,7 +7,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
-from apitally.shared.config import BODY_TOO_LARGE, MAX_BODY_SIZE, get_config
+from apitally.shared.config import BODY_TOO_LARGE, MAX_BODY_SIZE, get_config, is_supported_content_encoding
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.sentry import SENTRY_EVENT_ID_ATTRIBUTE, pop_sentry_event_id
 from apitally.shared.span_processor import STASH_ATTRIBUTE, RequestStash, copy_span_with_attributes
@@ -127,9 +127,9 @@ class ApitallySpanExporter(SpanExporter):
         if body == BODY_TOO_LARGE:
             return body
         encoding = (content_encoding or "").strip().lower()
-        if encoding and encoding != "identity":
-            if encoding not in ("gzip", "deflate"):
-                return REDACTED
+        if not is_supported_content_encoding(encoding):
+            return REDACTED
+        if encoding in ("gzip", "deflate"):
             try:
                 decoder = zlib.decompressobj(16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS)
                 body = decoder.decompress(body, MAX_BODY_SIZE + 1)

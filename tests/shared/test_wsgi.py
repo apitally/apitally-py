@@ -199,6 +199,29 @@ def test_request_body_not_read_for_disallowed_content_type(tracer: Tracer, span_
     assert environ["wsgi.input"] is spy
 
 
+def test_unsupported_content_encoding_skips_body_capture(tracer: Tracer, span_exporter: InMemorySpanExporter):
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True, capture_response_body=True)
+
+    def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
+        start_response("200 OK", [("Content-Type", "text/plain"), ("Content-Encoding", "br")])
+        return [b"response"]
+
+    environ = make_environ(
+        method="POST",
+        body=b"request",
+        content_type="text/plain",
+        content_length="7",
+        HTTP_CONTENT_ENCODING="br",
+    )
+    spy = environ["wsgi.input"]
+    attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, span_exporter)
+
+    assert "apitally.request.body" not in attributes
+    assert "apitally.response.body" not in attributes
+    assert spy.read_count == 0
+    assert environ["wsgi.input"] is spy
+
+
 def test_request_and_response_bodies_captured_together(tracer: Tracer, span_exporter: InMemorySpanExporter):
     # The bodies are stashed in separate calls (response start vs finalize), covering the merge in update_stash
     set_config(write_token=WRITE_TOKEN, capture_request_body=True, capture_response_body=True)
