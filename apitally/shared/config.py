@@ -140,3 +140,9 @@ def is_allowed_content_type(content_type: str | bytes | None) -> bool:
     if isinstance(content_type, bytes):
         content_type = content_type.decode("latin-1")
     return content_type.strip().lower().startswith(ALLOWED_CONTENT_TYPES)
+
+
+def is_supported_content_encoding(content_encoding: str | bytes | None) -> bool:
+    if isinstance(content_encoding, bytes):
+        content_encoding = content_encoding.decode("latin-1")
+    return (content_encoding or "").strip().lower() in ("", "identity", "gzip", "deflate")

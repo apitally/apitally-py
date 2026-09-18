@@ -10,6 +10,7 @@ from apitally.shared.config import (
     MAX_BODY_SIZE,
     get_config,
     is_allowed_content_type,
+    is_supported_content_encoding,
 )
 from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
 from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
@@ -67,7 +68,8 @@ class ApitallyASGIMiddleware:
         request_body_length = 0
         request_body_complete = False
         request_too_large = False
-        capture_request = False
+        capture_request_body = False
+        count_request_body = False
         status = 0
         response_started = False
         response_size: int | None = None
@@ -78,7 +80,7 @@ class ApitallyASGIMiddleware:
         response_body = bytearray()
         response_body_complete = False
         response_too_large = False
-        capture_response = False
+        capture_response_body = False
         inspect_validation_response = False
         completed = False
         deferred_span_id: int | None = None
@@ -87,24 +89,28 @@ class ApitallyASGIMiddleware:
         exception_holder = server_errors.init_exception_holder()
         try:
             request_size = parse_int(get_header(request_headers, b"content-length"))
-            capture_request = config.capture_request_body and is_allowed_content_type(
+            capture_request_body = config.capture_request_body and is_allowed_content_type(
                 get_header(request_headers, b"content-type")
             )
-            request_too_large = capture_request and request_size is not None and request_size > MAX_BODY_SIZE
+            count_request_body = capture_request_body and request_size is None
+            capture_request_body = capture_request_body and is_supported_content_encoding(
+                get_header(request_headers, b"content-encoding")
+            )
+            request_too_large = capture_request_body and request_size is not None and request_size > MAX_BODY_SIZE
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally ASGI middleware")
 
         async def receive_wrapper() -> Message:
-            nonlocal request_body, request_body_length, request_body_complete, request_too_large, capture_request
+            nonlocal request_body, request_body_length, request_body_complete, request_too_large, capture_request_body
             message = await receive()
             try:
                 if message["type"] == "http.request":
-                    if capture_request and not is_server_span_kept():
-                        capture_request = False
+                    if capture_request_body and not is_server_span_kept():
+                        capture_request_body = False
                         request_body = bytearray()
                     body = message.get("body", b"")
                     request_body_length += len(body)
-                    if capture_request and not request_too_large:
+                    if capture_request_body and not request_too_large:
                         request_body += body
                         if len(request_body) > MAX_BODY_SIZE:
                             request_too_large = True
@@ -168,15 +174,17 @@ class ApitallyASGIMiddleware:
                         BODY_TOO_LARGE
                         if request_too_large
                         else (
-                            bytes(request_body) if capture_request and request_body and request_body_complete else None
+                            bytes(request_body)
+                            if capture_request_body and request_body and request_body_complete
+                            else None
                         )
                     )
                     stash_response_body = (
                         BODY_TOO_LARGE
-                        if capture_response and response_too_large
+                        if capture_response_body and response_too_large
                         else (
                             bytes(response_body)
-                            if capture_response and response_body and response_body_complete
+                            if capture_response_body and response_body and response_body_complete
                             else None
                         )
                     )
@@ -240,7 +248,7 @@ class ApitallyASGIMiddleware:
             nonlocal status, response_started, response_size, response_size_counter, response_headers
             nonlocal response_content_type, response_content_encoding, response_body, response_body_complete
             nonlocal response_too_large
-            nonlocal capture_response, inspect_validation_response, deferred_span_id
+            nonlocal capture_response_body, inspect_validation_response, deferred_span_id
             try:
                 if message["type"] == "http.response.start":
                     response_started = True
@@ -251,8 +259,12 @@ class ApitallyASGIMiddleware:
                         response_size = content_length
                     kept = is_server_span_kept()
                     response_content_type = get_header(headers, b"content-type")
-                    capture_response = (
-                        kept and config.capture_response_body and is_allowed_content_type(response_content_type)
+                    response_content_encoding = get_header(headers, b"content-encoding")
+                    capture_response_body = (
+                        kept
+                        and config.capture_response_body
+                        and is_allowed_content_type(response_content_type)
+                        and is_supported_content_encoding(response_content_encoding)
                     )
                     inspect_validation_response = (
                         self.validation_error_extractor is not None
@@ -260,7 +272,6 @@ class ApitallyASGIMiddleware:
                         and validation_errors.is_json_content_type(response_content_type)
                     )
                     response_too_large = response_size is not None and response_size > MAX_BODY_SIZE
-                    response_content_encoding = get_header(headers, b"content-encoding")
                     if kept and config.capture_response_headers:
                         response_headers = headers
                     if kept:
@@ -274,7 +285,7 @@ class ApitallyASGIMiddleware:
                 elif message["type"] == "http.response.body":
                     body = message.get("body", b"")
                     response_size_counter += len(body)
-                    if (capture_response or inspect_validation_response) and not response_too_large:
+                    if (capture_response_body or inspect_validation_response) and not response_too_large:
                         response_body += body
                         if len(response_body) > MAX_BODY_SIZE:
                             response_too_large = True
@@ -287,8 +298,10 @@ class ApitallyASGIMiddleware:
                 logger.exception("Error in Apitally ASGI middleware")
             await send(message)
 
-        # Zero-overhead pass-through when capture is off or the size is known to exceed the cap
-        wrapped_receive = receive_wrapper if capture_request and not request_too_large else receive
+        # Keep counting eligible bodies without Content-Length even when their encoding prevents capture
+        wrapped_receive = (
+            receive_wrapper if count_request_body or (capture_request_body and not request_too_large) else receive
+        )
         try:
             await self.app(scope, wrapped_receive, send_wrapper)
         except BaseException as exc:

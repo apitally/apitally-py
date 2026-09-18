@@ -14,6 +14,7 @@ from apitally.shared.config import (
     ApitallyConfig,
     get_config,
     is_allowed_content_type,
+    is_supported_content_encoding,
 )
 from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
 from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
@@ -77,7 +78,11 @@ class ApitallyWSGIMiddleware:
     ) -> bytes | None:
         # The keep decision is not checked here: on Flask the SERVER span starts later, in
         # before_request. handle_response_start checks it and only then writes the buffered body.
-        if not config.capture_request_body or not is_allowed_content_type(environ.get("CONTENT_TYPE")):
+        if (
+            not config.capture_request_body
+            or not is_allowed_content_type(environ.get("CONTENT_TYPE"))
+            or not is_supported_content_encoding(environ.get("HTTP_CONTENT_ENCODING"))
+        ):
             return None
         if content_length is None:
             # Chunked/absent-length bodies are never read: raw-socket servers block on
@@ -105,6 +110,7 @@ class ApitallyWSGIMiddleware:
             kept
             and config.capture_response_body
             and is_allowed_content_type(get_header(response_headers, "content-type"))
+            and is_supported_content_encoding(get_header(response_headers, "content-encoding"))
         ):
             over_cap = content_length is not None and content_length > MAX_BODY_SIZE
             state.response_body = BODY_TOO_LARGE if over_cap else bytearray()
