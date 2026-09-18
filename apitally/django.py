@@ -259,6 +259,8 @@ class ApitallyDjangoMiddleware:
                         request_body=request_body,
                         response_headers=response_headers,
                         response_body=response_body,
+                        request_content_encoding=request.headers.get("Content-Encoding"),
+                        response_content_encoding=response.get("Content-Encoding"),
                     )
         if streaming:
             self.finalize_streaming(
@@ -323,6 +325,7 @@ class ApitallyDjangoMiddleware:
         )
         method = request.method or ""
         status_code = response.status_code
+        response_content_encoding = response.get("Content-Encoding")
         consumer = get_consumer_identifier()
         scheme = request.scheme
 
@@ -337,7 +340,9 @@ class ApitallyDjangoMiddleware:
                 # An abandoned iterator leaves a partial buffer; never export a truncated body
                 if completed and body is not None and processor is not None and span_id is not None:
                     # The deferred export guarantees process_ended_span still runs and attaches this body
-                    processor.update_stash(span_id, response_body=bytes(body))
+                    processor.update_stash(
+                        span_id, response_body=bytes(body), response_content_encoding=response_content_encoding
+                    )
                 if processor is not None and span_id is not None:
                     processor.finish_export(span_id, extra or None)
                 metrics.record_request(

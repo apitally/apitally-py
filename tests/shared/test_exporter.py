@@ -1,6 +1,9 @@
+import gzip
 import json
+import zlib
 from urllib.parse import parse_qsl
 
+import pytest
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace import Span as SDKSpan
@@ -9,7 +12,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind
 
-from apitally.shared.config import set_config
+from apitally.shared.config import BODY_TOO_LARGE, MAX_BODY_SIZE, set_config
 from apitally.shared.context import get_server_span_processor
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.redaction import REDACTED
@@ -126,27 +129,100 @@ def test_apitally_export_overrides_instance_id_without_changing_user_export():
     assert user_span.resource.attributes["service.instance.id"] == "user-instance"
 
 
-def test_mask_callback_receives_ended_span():
+def test_body_mask_callbacks_receive_decompressed_bytes():
     seen: list[ReadableSpan] = []
+    body = b'{"password":"secret","nested":[{"custom":"secret"}],"name":"original"}'
 
-    def mask(span: ReadableSpan, body: bytes) -> bytes:
+    def mask(span: ReadableSpan, decoded: bytes) -> bytes:
         seen.append(span)
-        return body
+        assert decoded == body
+        return decoded.replace(b"original", b"masked")
 
-    set_config(write_token=WRITE_TOKEN, capture_request_headers=True, capture_request_body=True, mask_request_body=mask)
+    set_config(
+        write_token=WRITE_TOKEN,
+        mask_request_body=mask,
+        mask_response_body=mask,
+        mask_body_fields=["custom"],
+        mask_headers=["content-encoding"],
+    )
     tracer, exporter = create_trace_pipeline()
     with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER) as span:
         processor = unwrap(get_server_span_processor())
         processor.update_stash(
             span.get_span_context().span_id,
-            request_headers={"authorization": ["Bearer secret123"], "content-type": ["application/json"]},
-            request_body=b'{"a": 1}',
+            request_headers={"authorization": ["Bearer secret123"], "content-encoding": ["gzip"]},
+            request_body=gzip.compress(body),
+            request_content_encoding=" GZip ",
+            response_body=zlib.compress(body),
+            response_content_encoding="deflate",
         )
 
     (exported,) = exporter.get_finished_spans()
-    assert unwrap(exported.attributes)["apitally.request.body"] == '{"a":1}'
-    (seen_span,) = seen
-    assert seen_span.end_time is not None
-    assert unwrap(seen_span.attributes)["http.request.header.authorization"] == [REDACTED]
-    assert unwrap(seen_span.attributes)["http.request.header.content-type"] == ["application/json"]
-    assert not hasattr(seen_span, STASH_ATTRIBUTE)
+    for direction in ("request", "response"):
+        assert json.loads(str(unwrap(exported.attributes)[f"apitally.{direction}.body"])) == {
+            "password": REDACTED,
+            "nested": [{"custom": REDACTED}],
+            "name": "masked",
+        }
+    assert len(seen) == 2
+    for seen_span in seen:
+        assert seen_span.end_time is not None
+        attributes = unwrap(seen_span.attributes)
+        assert attributes["http.request.header.authorization"] == [REDACTED]
+        assert attributes["http.request.header.content-encoding"] == [REDACTED]
+        assert "apitally.request.body" not in attributes
+        assert "apitally.response.body" not in attributes
+        assert not hasattr(seen_span, STASH_ATTRIBUTE)
+
+
+@pytest.mark.parametrize("size", [0, MAX_BODY_SIZE, MAX_BODY_SIZE + 1])
+def test_decoded_body_size_limit(size: int):
+    seen: list[bytes] = []
+
+    def mask(span: ReadableSpan, body: bytes) -> bytes:
+        seen.append(body)
+        return body
+
+    set_config(write_token=WRITE_TOKEN, mask_request_body=mask)
+    tracer, exporter = create_trace_pipeline()
+    body = b"x" * size
+    with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER) as span:
+        unwrap(get_server_span_processor()).update_stash(
+            span.get_span_context().span_id, request_body=gzip.compress(body), request_content_encoding="gzip"
+        )
+
+    (exported,) = exporter.get_finished_spans()
+    attributes = unwrap(exported.attributes)
+    if size == 0:
+        assert "apitally.request.body" not in attributes
+    else:
+        assert attributes["apitally.request.body"] == (BODY_TOO_LARGE if size > MAX_BODY_SIZE else body.decode())
+    assert seen == ([body] if 0 < size <= MAX_BODY_SIZE else [])
+
+
+@pytest.mark.parametrize(
+    ("body", "encoding"),
+    [
+        (b"not compressed", "gzip"),
+        (gzip.compress(b"secret")[:-1], "gzip"),
+        (gzip.compress(b"first") + gzip.compress(b"secret"), "gzip"),
+        (b"secret", "br"),
+    ],
+)
+def test_invalid_or_unsupported_compressed_bodies_use_redacted_sentinel(body: bytes, encoding: str):
+    seen: list[bytes] = []
+
+    def mask(span: ReadableSpan, body: bytes) -> bytes:
+        seen.append(body)
+        return body
+
+    set_config(write_token=WRITE_TOKEN, mask_request_body=mask)
+    tracer, exporter = create_trace_pipeline()
+    with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER) as span:
+        unwrap(get_server_span_processor()).update_stash(
+            span.get_span_context().span_id, request_body=body, request_content_encoding=encoding
+        )
+
+    (exported,) = exporter.get_finished_spans()
+    assert unwrap(exported.attributes)["apitally.request.body"] == REDACTED
+    assert seen == []

@@ -126,12 +126,14 @@ class ApitallyWSGIMiddleware:
                 stash_request_headers = environ_headers(environ)
         stash_response_headers = group_headers(response_headers) if config.capture_response_headers else None
         if processor is not None and span.context is not None:
-            if stash_request_headers or stash_request_body or stash_response_headers:
+            if stash_request_headers or stash_request_body or stash_response_headers or state.response_body is not None:
                 processor.update_stash(
                     span.context.span_id,
                     request_headers=stash_request_headers,
                     request_body=stash_request_body,
                     response_headers=stash_response_headers,
+                    request_content_encoding=environ.get("HTTP_CONTENT_ENCODING"),
+                    response_content_encoding=get_header(response_headers, "content-encoding"),
                 )
             # The final response size is only known at finalize, which may run after the span has ended
             processor.defer_export(span.context.span_id)

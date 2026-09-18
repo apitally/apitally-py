@@ -1,5 +1,7 @@
+import gzip
 import json
 import sys
+import zlib
 from collections.abc import Iterator
 from typing import Any
 
@@ -8,8 +10,10 @@ import pytest
 from django.conf import settings
 from django.core.asgi import get_asgi_application
 from django.core.wsgi import get_wsgi_application
-from django.test import Client
+from django.http import HttpRequest, StreamingHttpResponse
+from django.test import Client, override_settings
 from django.test.client import AsyncClient
+from django.urls import path
 from django.utils.functional import empty
 from opentelemetry.instrumentation.django import DjangoInstrumentor
 from opentelemetry.sdk.metrics.export import ExponentialHistogramDataPoint
@@ -154,6 +158,56 @@ def test_bodies_and_request_headers_captured_and_redacted(
     assert json.loads(str(span.attributes["apitally.response.body"])) == redacted
     assert span.attributes["http.request.header.authorization"] == [REDACTED]
     assert span.attributes["http.request.header.content-type"] == ["application/json"]
+
+
+@pytest.mark.parametrize("capture_request_body", [True, False])
+def test_compressed_bodies_are_redacted_when_header_capture_is_disabled(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch, capture_request_body: bool
+):
+    body = b'{"name": "widget", "password": "secret"}'
+    request_body = gzip.compress(body)
+    response_body = zlib.compress(body)
+
+    def compressed(request: HttpRequest) -> StreamingHttpResponse:
+        assert request.body == request_body
+        response = StreamingHttpResponse(
+            iter([response_body[:10], response_body[10:]]), content_type="application/json"
+        )
+        response["Content-Encoding"] = "deflate"
+        return response
+
+    class Urls:
+        urlpatterns = [path("compressed/", compressed)]
+
+    with override_settings(ROOT_URLCONF=Urls):
+        init(
+            monkeypatch,
+            django_include_class_based_views=True,
+            capture_request_body=capture_request_body,
+            capture_response_body=True,
+            capture_request_headers=False,
+            capture_response_headers=False,
+        )
+        response = Client().post(
+            "/compressed/",
+            data=request_body,
+            content_type="application/json",
+            HTTP_CONTENT_ENCODING="gzip",
+        )
+        assert response.status_code == 200
+        assert b"".join(response.streaming_content) == response_body  # ty: ignore[unresolved-attribute]
+
+    (span,) = exported_spans(exporters)
+    attributes = unwrap(span.attributes)
+    masked = {"name": "widget", "password": REDACTED}
+    if capture_request_body:
+        assert json.loads(str(attributes["apitally.request.body"])) == masked
+    else:
+        assert "apitally.request.body" not in attributes
+    assert json.loads(str(attributes["apitally.response.body"])) == masked
+    assert attributes["http.request.body.size"] == len(request_body)
+    assert attributes["http.response.body.size"] == len(response_body)
+    assert not any(key.startswith(("http.request.header.", "http.response.header.")) for key in attributes)
 
 
 def test_bodies_over_cap_replaced_with_sentinel(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
