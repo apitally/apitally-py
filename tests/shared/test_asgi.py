@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
+from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
 from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler, TraceIdRatioBased
@@ -13,9 +14,15 @@ from opentelemetry.trace import SpanKind, Tracer
 from apitally.shared import config, metrics, server_errors
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.config import BODY_TOO_LARGE, set_config
-from apitally.shared.consumer import set_consumer
+from apitally.shared.consumers import set_consumer
 from apitally.shared.redaction import REDACTED
-from tests.conftest import WRITE_TOKEN, collect_metrics, create_trace_pipeline, setup_metric_reader
+from tests.conftest import (
+    WRITE_TOKEN,
+    collect_metrics,
+    consumer_update_bodies,
+    create_trace_pipeline,
+    setup_metric_reader,
+)
 
 
 JSON_HEADERS = [("content-type", "application/json")]
@@ -390,7 +397,9 @@ async def test_consumer_set_in_copied_context_still_reaches_metrics(metric_reade
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tenant-1"
 
 
-async def test_consumer_set_in_outer_middleware_reaches_span_and_metrics(metric_reader: InMemoryMetricReader):
+async def test_consumer_set_in_outer_middleware_reaches_span_and_metrics(
+    metric_reader: InMemoryMetricReader, consumer_update_exporter: InMemoryLogRecordExporter
+):
     set_config(write_token=WRITE_TOKEN)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
@@ -420,12 +429,23 @@ async def test_consumer_set_in_outer_middleware_reaches_span_and_metrics(metric_
 
     spans = exporter.get_finished_spans()
     assert [(span.attributes or {})["apitally.consumer.identifier"] for span in spans] == ["tenant-1", "tenant-2"]
-    assert (spans[0].attributes or {})["apitally.consumer.name"] == "Tenant"
-    assert (spans[0].attributes or {})["apitally.consumer.group"] == "tenants"
+    assert consumer_update_bodies(consumer_update_exporter) == [
+        {"identifier": "tenant-1", "name": "Tenant", "group": "tenants"},
+        {"identifier": "tenant-2", "name": "Tenant", "group": "tenants"},
+    ]
     duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
     assert isinstance(duration_metric.data, ExponentialHistogram)
     consumers = {(p.attributes or {}).get("apitally.consumer.identifier") for p in duration_metric.data.data_points}
     assert consumers == {"tenant-1", "tenant-2"}
+
+
+async def test_consumer_update_reported_for_sampled_out_request(consumer_update_exporter: InMemoryLogRecordExporter):
+    set_config(write_token=WRITE_TOKEN, sample_rate=0.0)
+    tracer, exporter = create_trace_pipeline()
+    await send_request(tracer, EchoApp(on_request=lambda: set_consumer("tenant-1", name="Tenant")), method="GET")
+
+    assert exporter.get_finished_spans() == ()
+    assert consumer_update_bodies(consumer_update_exporter) == [{"identifier": "tenant-1", "name": "Tenant"}]
 
 
 async def test_consumer_not_carried_over_to_next_request_in_same_context(metric_reader: InMemoryMetricReader):

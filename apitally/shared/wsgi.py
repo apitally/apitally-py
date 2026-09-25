@@ -16,7 +16,12 @@ from apitally.shared.config import (
     is_allowed_content_type,
     is_supported_content_encoding,
 )
-from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
+from apitally.shared.consumers import (
+    emit_consumer_update_if_changed,
+    get_consumer_identifier,
+    init_consumer,
+    reset_consumer,
+)
 from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
 
 
@@ -184,6 +189,7 @@ class ApitallyWSGIMiddleware:
                 response_size=state.response_size,
                 scheme=environ.get("wsgi.url_scheme"),
             )
+            emit_consumer_update_if_changed()
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally WSGI middleware")
         finally:

@@ -14,7 +14,7 @@ from opentelemetry.util.types import AttributeValue
 
 from apitally.shared import server_errors
 from apitally.shared.config import get_config
-from apitally.shared.consumer import consumer_holder_var, write_consumer_span_attributes
+from apitally.shared.consumers import consumer_holder_var, write_consumer_span_attributes
 from apitally.shared.context import (
     get_server_span,
     server_span_kept_var,

@@ -15,7 +15,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 import apitally
 from apitally.shared import activation
-from apitally.shared.consumer import set_consumer
+from apitally.shared.consumers import set_consumer
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
     WRITE_TOKEN,

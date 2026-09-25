@@ -21,7 +21,7 @@ from opentelemetry.trace import SpanKind
 
 from apitally.shared import activation, export, log_processor, metrics, server_errors, validation_errors
 from apitally.shared.asgi import Message, Receive, Scope, Send
-from apitally.shared.consumer import ConsumerHolder, consumer_holder_var
+from apitally.shared.consumers import ConsumerHolder, consumer_holder_var
 from apitally.shared.context import server_span_kept_var, server_span_processor_var, server_span_var
 from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.validation_errors import ValidationError

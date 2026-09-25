@@ -227,8 +227,13 @@ The top-level `apitally` package provides functions you can call from anywhere i
 ```python
 import apitally
 
-# Associate the current request with an API consumer
-apitally.set_consumer(user.identifier, name=user.name, group=user.group)
+# Associate the current request with an API consumer, with custom attributes
+apitally.set_consumer(
+    user.identifier,
+    name=user.name,
+    group=user.group,
+    attributes={"plan": user.plan},
+)
 
 # Attach a custom attribute to the current request
 apitally.set_request_attribute("tenant", tenant_id)

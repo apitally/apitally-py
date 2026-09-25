@@ -10,7 +10,7 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON, TraceIdRatioBased
 from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, TraceFlags, Tracer
 
 from apitally.shared.config import set_config
-from apitally.shared.consumer import get_consumer_identifier, reset_consumer, set_consumer
+from apitally.shared.consumers import get_consumer_identifier, reset_consumer, set_consumer
 from apitally.shared.context import get_server_span, is_server_span_kept
 from apitally.shared.span_processor import MAX_BUFFERED_SPANS, ApitallySpanProcessor
 from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, create_tracer, unwrap

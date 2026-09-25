@@ -12,7 +12,12 @@ from apitally.shared.config import (
     is_allowed_content_type,
     is_supported_content_encoding,
 )
-from apitally.shared.consumer import get_consumer_identifier, init_consumer, reset_consumer
+from apitally.shared.consumers import (
+    emit_consumer_update_if_changed,
+    get_consumer_identifier,
+    init_consumer,
+    reset_consumer,
+)
 from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
 from apitally.shared.validation_errors import ValidationError
 
@@ -241,6 +246,7 @@ class ApitallyASGIMiddleware:
                     response_size=final_response_size,
                     scheme=scope.get("scheme"),
                 )
+                emit_consumer_update_if_changed()
             finally:
                 reset_consumer()
 
