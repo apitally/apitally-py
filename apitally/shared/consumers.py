@@ -5,7 +5,6 @@ from collections import OrderedDict
 from collections.abc import Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
-from itertools import islice
 from typing import Any
 
 from opentelemetry._logs import Logger
@@ -68,6 +67,9 @@ def set_consumer(
             holder.identifier, holder.name, holder.group, holder.attributes = identifier, None, None, {}
         holder.name = name or holder.name
         holder.group = group or holder.group
+        span = get_server_span()
+        if span is not None and span.is_recording():
+            write_consumer_span_attributes(span, holder)
         for key, value in (attributes or {}).items():
             key = str(key).strip()
             match value:
@@ -78,11 +80,12 @@ def set_consumer(
                 case _:
                     continue
             value = (value.strip() or None) if value else None
-            if 0 < len(key) <= 64 and (value is None or len(value) <= 1024):
+            if (
+                0 < len(key) <= 64
+                and (value is None or len(value) <= 1024)
+                and (key in holder.attributes or len(holder.attributes) < MAX_ATTRIBUTES_PER_UPDATE)
+            ):
                 holder.attributes[key] = value
-        span = get_server_span()
-        if span is not None and span.is_recording():
-            write_consumer_span_attributes(span, holder)
     except Exception:  # pragma: no cover
         logger.debug("Error in set_consumer", exc_info=True)
 
@@ -108,11 +111,11 @@ def reset_consumer() -> None:
 
 
 def emit_consumer_update_if_changed() -> None:
-    """Emit the request's consumer profile unless it matches the last update emitted for this consumer."""
+    """Emit a consumer update event unless it matches the last one emitted for this identifier."""
     holder = consumer_holder_var.get()
     if update_logger is None or holder is None or not holder.identifier:
         return
-    attributes = dict(islice(holder.attributes.items(), MAX_ATTRIBUTES_PER_UPDATE))
+    attributes = holder.attributes
     if not (holder.name or holder.group or attributes):
         return
     payload_hash = hash((holder.identifier, holder.name, holder.group, frozenset(attributes.items())))

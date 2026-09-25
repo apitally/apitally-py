@@ -18,9 +18,10 @@ def test_set_consumer_targets_server_span_from_child_span(tracer: Tracer, span_e
         with tracer.start_as_current_span("child"):
             set_consumer(" acme-corp ", name=" Acme Corp ", group="enterprise")
     child, server = span_exporter.get_finished_spans()
-    assert unwrap(server.attributes)["apitally.consumer.identifier"] == "acme-corp"
-    assert "apitally.consumer.name" not in unwrap(server.attributes)
-    assert "apitally.consumer.group" not in unwrap(server.attributes)
+    consumer_attributes = {
+        key: value for key, value in unwrap(server.attributes).items() if key.startswith("apitally.consumer.")
+    }
+    assert consumer_attributes == {"apitally.consumer.identifier": "acme-corp"}
     assert not any(key.startswith("apitally.consumer.") for key in unwrap(child.attributes))
     assert get_consumer_identifier() == "acme-corp"
 
