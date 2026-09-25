@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
 from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -15,10 +16,11 @@ from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import metrics, server_errors
 from apitally.shared.config import BODY_TOO_LARGE, set_config
+from apitally.shared.consumers import set_consumer
 from apitally.shared.redaction import REDACTED, Redaction
 from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.wsgi import ApitallyWSGIMiddleware
-from tests.conftest import WRITE_TOKEN, collect_metrics, create_tracer, setup_metric_reader
+from tests.conftest import WRITE_TOKEN, collect_metrics, consumer_update_bodies, create_tracer, setup_metric_reader
 
 
 if TYPE_CHECKING:
@@ -374,3 +376,26 @@ def test_exception_after_response_start_records_metrics(
     assert point.count == 1
     assert (point.attributes or {})["http.response.status_code"] == 200
     assert server_errors.drain_server_errors() == []
+
+
+def test_consumer_update_reported_for_sampled_out_request(
+    span_exporter: InMemorySpanExporter, consumer_update_exporter: InMemoryLogRecordExporter
+):
+    set_config(write_token=WRITE_TOKEN, sample_rate=0.0)
+    tracer = create_tracer(span_exporter, scope="test")
+
+    def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
+        set_consumer("tenant-1", name="Tenant")
+        start_response("200 OK", [])
+        return [b"ok"]
+
+    def start_response(status: str, headers: list[tuple[str, str]], exc_info: Any = None) -> Any:
+        pass
+
+    with tracer.start_as_current_span("request", kind=SpanKind.SERVER):
+        response: Any = ApitallyWSGIMiddleware(app)(make_environ(), start_response)
+        list(response)
+        response.close()
+
+    assert span_exporter.get_finished_spans() == ()
+    assert consumer_update_bodies(consumer_update_exporter) == [{"identifier": "tenant-1", "name": "Tenant"}]

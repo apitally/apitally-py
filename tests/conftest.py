@@ -12,7 +12,8 @@ from opentelemetry import context as otel_context
 from opentelemetry import trace
 from opentelemetry._logs import LogRecord
 from opentelemetry.instrumentation._semconv import _OpenTelemetrySemanticConventionStability
-from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
+from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
 from opentelemetry.sdk.metrics.export import (
     DataPointT,
     ExponentialHistogramDataPoint,
@@ -27,8 +28,18 @@ from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler
 from opentelemetry.test.globals_test import reset_trace_globals
 from opentelemetry.trace import SpanKind, Tracer
 
-from apitally.shared import activation, config, export, metrics, providers, server_errors, startup, validation_errors
-from apitally.shared.consumer import consumer_holder_var
+from apitally.shared import (
+    activation,
+    config,
+    consumers,
+    export,
+    metrics,
+    providers,
+    server_errors,
+    startup,
+    validation_errors,
+)
+from apitally.shared.consumers import consumer_holder_var
 from apitally.shared.context import server_span_kept_var, server_span_processor_var, server_span_var
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.span_processor import ApitallySpanProcessor
@@ -176,6 +187,20 @@ def span_exporter() -> InMemorySpanExporter:
 
 
 @pytest.fixture()
+def consumer_update_exporter() -> InMemoryLogRecordExporter:
+    """Route consumer update events to an in-memory exporter without activating the SDK."""
+    exporter = InMemoryLogRecordExporter()
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+    consumers.update_logger = provider.get_logger("apitally")
+    return exporter
+
+
+def consumer_update_bodies(exporter: InMemoryLogRecordExporter) -> list[Any]:
+    return [exported.log_record.body for exported in exporter.get_finished_logs()]
+
+
+@pytest.fixture()
 def tracer(span_exporter: InMemorySpanExporter) -> Tracer:
     """Tracer with the Apitally span processor attached directly to the in-memory exporter,
     skipping the Apitally exporter so tests observe processed spans without redaction."""
@@ -291,6 +316,10 @@ def exported_error_records(exporters: InMemoryExporters) -> list[LogRecord]:
     unwrap(activation.export_worker).run_cycle(None)
     event_names = {validation_errors.EVENT_NAME, server_errors.EVENT_NAME}
     return [record for record in exported_log_records(exporters) if record.event_name in event_names]
+
+
+def exported_consumer_updates(exporters: InMemoryExporters) -> list[Any]:
+    return [r.body for r in exported_log_records(exporters) if r.event_name == consumers.EVENT_NAME]
 
 
 def startup_payload(exporters: InMemoryExporters) -> dict[str, Any]:

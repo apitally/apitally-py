@@ -30,6 +30,7 @@ from tests.conftest import (
     attach_metric_reader,
     collect_metrics,
     duration_data_points,
+    exported_consumer_updates,
     exported_error_records,
     exported_spans,
     startup_payload,
@@ -432,10 +433,29 @@ def test_set_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, m
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
     assert span.attributes["apitally.consumer.identifier"] == "tester"
-    assert span.attributes["apitally.consumer.name"] == "Tester"
-    assert span.attributes["apitally.consumer.group"] == "Testers"
     (point,) = duration_data_points(reader)
     assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
+
+
+def test_consumer_update_reported_for_sampled_out_request(
+    exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(monkeypatch, django_include_class_based_views=True, sample_rate=0.0)
+    activate_via_signal()
+
+    assert Client().get("/whoami/").status_code == 200
+
+    assert exported_spans(exporters) == []
+    assert exported_consumer_updates(exporters) == [{"identifier": "tester", "name": "Tester", "group": "Testers"}]
+
+
+def test_no_consumer_update_for_untracked_django_view(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(monkeypatch)
+    activate_via_signal()
+
+    assert Client().get("/whoami/").status_code == 200
+
+    assert exported_consumer_updates(exporters) == []
 
 
 @pytest.mark.parametrize("include_views", [False, True])

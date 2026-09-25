@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from apitally.otel import instrument, span
-from apitally.shared.consumer import set_consumer
+from apitally.shared.consumers import set_consumer
 from apitally.shared.helpers import capture_exception, set_request_attribute
 
 
