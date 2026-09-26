@@ -259,7 +259,7 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
             --jq '.jobs[] | select(.conclusion == "failure" and .name != "ci-gate") | .id' |
             while read -r job_id; do
-              gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$job_id/logs"
+              gh api --allow-escape-sequences "repos/$GITHUB_REPOSITORY/actions/jobs/$job_id/logs"
             done > "$RUNNER_TEMP/failed-ci.log"
       - name: Investigate and fix CI failure
         uses: shaftoe/pi-coding-agent-action@193431b0260194099a5e6c91e5b69b8e3c9d3fb1 # develop
