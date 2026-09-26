@@ -19,7 +19,8 @@ jobs:
     if: |
       github.actor == 'itssimon' &&
       github.triggering_actor == 'itssimon' &&
-      (startsWith(github.event.comment.body, '/pi ') || startsWith(github.event.review.body, '/pi '))
+      (startsWith(github.event.comment.body, '/pi ') || startsWith(github.event.review.body, '/pi ')) &&
+      (github.event_name == 'issue_comment' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - name: Resolve checkout ref
@@ -32,7 +33,11 @@ jobs:
           REVIEW_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if [[ "$EVENT_NAME" == "issue_comment" && -n "$ISSUE_PULL_REQUEST_URL" ]]; then
-            CHECKOUT_REF="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$ISSUE_NUMBER" --jq '.head.sha')"
+            read -r CHECKOUT_REF HEAD_REPOSITORY <<< "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$ISSUE_NUMBER" --jq '[.head.sha, .head.repo.full_name] | @tsv')"
+            if [[ "$HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
+              echo "::error::Cannot run Pi on a fork pull request"
+              exit 1
+            fi
           elif [[ "$EVENT_NAME" != "issue_comment" ]]; then
             CHECKOUT_REF="$REVIEW_HEAD_SHA"
           fi
