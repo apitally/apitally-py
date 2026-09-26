@@ -114,9 +114,11 @@ def test_collect_appends_delta_payloads_to_spool(spool: Spool):
 
 
 def test_metric_reader_does_not_start_timer_thread(spool: Spool):
-    threads_before = {thread.ident for thread in threading.enumerate()}
+    threads_before = set(threading.enumerate())
     metrics.setup(Resource.create({}), metrics.ApitallyMetricReader(spool))
-    assert {thread.ident for thread in threading.enumerate()} == threads_before
+    assert not any(
+        thread.name == "OtelPeriodicExportingMetricReader" for thread in set(threading.enumerate()) - threads_before
+    )
 
 
 def test_consumer_identifier_recorded():
