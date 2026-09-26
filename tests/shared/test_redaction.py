@@ -1,6 +1,6 @@
 from urllib.parse import parse_qsl
 
-from apitally.shared.redaction import REDACTED, Redaction
+from apitally.shared.redaction import REDACTED, JSONValue, Redaction
 
 
 def test_redact_query_params_mixed():
@@ -58,7 +58,13 @@ def test_redact_headers():
 
 def test_redact_body_fields():
     redaction = Redaction()
-    data = {"Password": "x", "card_number": "4111", "CardNumber": "4242", "amount": 100, "note": "hi"}
+    data: JSONValue = {
+        "Password": "x",
+        "card_number": "4111",
+        "CardNumber": "4242",
+        "amount": 100,
+        "note": "hi",
+    }
     assert redaction.redact_body(data) == {
         "Password": REDACTED,
         "card_number": REDACTED,
@@ -70,7 +76,7 @@ def test_redact_body_fields():
 
 def test_redact_body_recurses_into_nested_structures():
     redaction = Redaction()
-    data = {
+    data: JSONValue = {
         "user": {"password": "secret", "age": 30},
         "items": [{"token": "t1"}, {"token": 123}],
         "auth": {"nested": "keep"},
