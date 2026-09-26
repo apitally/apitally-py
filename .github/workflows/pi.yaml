@@ -54,6 +54,6 @@ jobs:
         with:
           github_token: ${{ github.token }}
           provider: openrouter
-          model: openai/gpt-6-sol
+          model: openai/gpt-5.6-sol
           token: ${{ secrets.PI_OPENROUTER_API_KEY }}
           thinking_level: high
