@@ -36,15 +36,18 @@ class ApitallyMetricReader(MetricReader):
         self.spool = spool
 
     def collect(self, timeout_millis: float = 10_000) -> None:  # ty: ignore[override-of-final-method]
-        if self._collect is not None:
-            if meter_provider is not None:
-                drop_empty_histogram_aggregations(meter_provider, self)
-            super().collect(timeout_millis=timeout_millis)
+        if self._collect is None or meter_provider is None:
+            return
+        # Keeps a request's duration and size measurements in the same collection
+        with histogram_lock:
+            drop_empty_histogram_aggregations(meter_provider, self)
+            # OTel's annotation of _collect does not match how MetricReader.collect calls it
+            metrics_data: MetricsData | None = self._collect(self, timeout_millis=timeout_millis)  # ty: ignore[missing-argument, unknown-argument, invalid-assignment]
+        if metrics_data is not None and metrics_data.resource_metrics:
+            self.spool.append("metrics", encode_metrics(metrics_data).SerializeToString())
 
     def _receive_metrics(self, metrics_data: MetricsData, timeout_millis: float = 10_000, **kwargs: Any) -> None:
-        if metrics_data is None or not metrics_data.resource_metrics:  # pragma: no cover
-            return
-        self.spool.append("metrics", encode_metrics(metrics_data).SerializeToString())
+        pass
 
     def shutdown(self, timeout_millis: float = 30_000, **kwargs: Any) -> None:
         pass
@@ -112,20 +115,20 @@ def record_request(
 
 def drop_empty_histogram_aggregations(provider: MeterProvider, metric_reader: MetricReader) -> None:
     """Remove histogram aggregations with no recorded measurements, so that attribute sets
-    seen only once (e.g. transient consumer identifiers) don't accumulate in memory."""
+    seen only once (e.g. transient consumer identifiers) don't accumulate in memory.
+    The caller must hold histogram_lock, since OTel's match lock does not cover the full
+    recording operation."""
     storage = provider._measurement_consumer._reader_storages[metric_reader]
-    # OTel's match lock does not cover the full recording operation.
-    with histogram_lock:
-        for instrument, matches in storage._instrument_view_instrument_matches.items():
-            if isinstance(instrument, SDKHistogram):
-                for match in matches:
-                    with match._lock:
-                        aggregations = match._attributes_aggregation
-                        match._attributes_aggregation = {
-                            key: aggregation
-                            for key, aggregation in aggregations.items()
-                            if aggregation._count  # ty: ignore[unresolved-attribute]
-                        }
+    for instrument, matches in storage._instrument_view_instrument_matches.items():
+        if isinstance(instrument, SDKHistogram):
+            for match in matches:
+                with match._lock:
+                    aggregations = match._attributes_aggregation
+                    match._attributes_aggregation = {
+                        key: aggregation
+                        for key, aggregation in aggregations.items()
+                        if aggregation._count  # ty: ignore[unresolved-attribute]
+                    }
 
 
 def reset() -> None:
