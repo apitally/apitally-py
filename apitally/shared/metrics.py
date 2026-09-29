@@ -37,7 +37,7 @@ class ApitallyMetricReader(MetricReader):
 
     def collect(self, timeout_millis: float = 10_000) -> None:  # ty: ignore[override-of-final-method]
         if self._collect is None or meter_provider is None:
-            return
+            return  # pragma: no cover
         # Keeps a request's duration and size measurements in the same collection
         with histogram_lock:
             drop_empty_histogram_aggregations(meter_provider, self)
@@ -47,10 +47,10 @@ class ApitallyMetricReader(MetricReader):
             self.spool.append("metrics", encode_metrics(metrics_data).SerializeToString())
 
     def _receive_metrics(self, metrics_data: MetricsData, timeout_millis: float = 10_000, **kwargs: Any) -> None:
-        pass
+        pass  # pragma: no cover
 
     def shutdown(self, timeout_millis: float = 30_000, **kwargs: Any) -> None:
-        pass
+        pass  # pragma: no cover
 
 
 meter_provider: MeterProvider | None = None
