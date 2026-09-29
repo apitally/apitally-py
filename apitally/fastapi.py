@@ -56,6 +56,9 @@ def _instrument_app(app: FastAPI) -> None:
     setattr(app, "_is_instrumented_by_apitally", True)
     if not getattr(app, "_is_instrumented_by_opentelemetry", False):
         FastAPIInstrumentor.instrument_app(app, exclude_spans=["receive", "send"])
+    # FastAPI 0.142+ marks excluded requests so mounted FastAPI apps don't start their own SERVER span
+    if (telemetry_config := getattr(app, "_telemetry", None)) is not None:
+        telemetry_config["exclude"] = lambda scope: True
 
     # The instrumentor already replaced build_middleware_stack; replace it again on top so the
     # transport middleware wraps the whole instrumented stack, outside ServerErrorMiddleware:
