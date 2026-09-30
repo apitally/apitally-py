@@ -499,7 +499,9 @@ async def test_asgi_exception_before_response_uses_500_and_accepts_late_sentry_i
 
     with pytest.raises(RuntimeError):
         await send_request(tracer, app, method="GET")
+    assert server_errors.drain_server_errors() == []
     server_errors.set_sentry_event_id("late-event-id")
+    await asyncio.sleep(0)
     (event,) = server_errors.drain_server_errors()
     assert event["message"] == "before"
     assert event["sentry_event_id"] == "late-event-id"

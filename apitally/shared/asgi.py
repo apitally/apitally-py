@@ -235,7 +235,10 @@ class ApitallyASGIMiddleware:
                         self.validation_error_extractor,
                     )
                 if status == 500:
-                    server_errors.add_server_error(consumer, method, route, exception_holder)
+                    # Runs after exception unwinding, so outer Sentry middleware has already set the event ID
+                    asyncio.get_running_loop().call_soon(
+                        server_errors.add_server_error, consumer, method, route, exception_holder
+                    )
                 metrics.record_request(
                     method=method,
                     route=route or "",
@@ -322,7 +325,7 @@ class ApitallyASGIMiddleware:
             except Exception:  # pragma: no cover
                 logger.exception("Error in Apitally ASGI middleware")
             # Outer Sentry middleware may add its event ID after this response is finalized.
-            if exception_holder.server_error_key is None:
+            if status != 500:
                 server_errors.reset_exception_holder()
 
 
