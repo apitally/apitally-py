@@ -33,8 +33,8 @@ from apitally.shared.context import get_server_span_processor
 from apitally.shared.export import (
     ENCODE_CHUNK_SIZE,
     EXPORT_INTERVAL_HEADER,
+    MAX_BACKLOG_SENDS_PER_CYCLE,
     MAX_EXPORT_INTERVAL,
-    MAX_SENDS_PER_CYCLE,
     MIN_EXPORT_INTERVAL,
     ExportWorker,
     SpoolLogExporter,
@@ -45,7 +45,7 @@ from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.log_processor import MAX_LOG_VALUE_LENGTH
 from apitally.shared.redaction import REDACTED
 from apitally.shared.span_processor import ApitallySpanProcessor
-from apitally.shared.spool import MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT, MAX_UNCOMPRESSED_FILE_SIZE, Spool
+from apitally.shared.spool import MAX_RETRY_TIME_AFTER_FIRST_ATTEMPT, Spool
 from tests.conftest import (
     CONTRIB_SCOPE,
     INSTANCE_ID,
@@ -264,13 +264,28 @@ def test_outage_sends_one_probe_per_cycle_without_accumulating_files(spool: Spoo
     assert otlp_server.paths() == ["/v1/traces"] * 3
 
 
-def test_sends_per_cycle_are_capped(spool: Spool, otlp_server: StubOTLPServer) -> None:
+def test_cycle_sends_all_files_closed_since_previous_cycle(spool: Spool, otlp_server: StubOTLPServer) -> None:
     worker = make_worker(spool, otlp_server.url)
-    for _ in range(MAX_SENDS_PER_CYCLE + 2):
-        spool.append("traces", b"x" * MAX_UNCOMPRESSED_FILE_SIZE)
-    worker.send_pending(None)
-    assert len(otlp_server.paths()) == MAX_SENDS_PER_CYCLE
-    assert len(spool.pending_files()) == 1
+    for _ in range(MAX_BACKLOG_SENDS_PER_CYCLE + 2):
+        spool.append("logs", b"log-payload")
+        spool.close_current_files()
+    worker.run_cycle(None)
+    assert len(otlp_server.paths()) == MAX_BACKLOG_SENDS_PER_CYCLE + 2
+    assert spool.pending_files() == []
+
+
+def test_cycle_sends_new_files_plus_limited_backlog_files(spool: Spool, otlp_server: StubOTLPServer) -> None:
+    otlp_server.respond = lambda path: (503, {})
+    worker = make_worker(spool, otlp_server.url)
+    for _ in range(MAX_BACKLOG_SENDS_PER_CYCLE + 2):
+        spool.append("logs", b"log-payload")
+        spool.close_current_files()
+    worker.run_cycle(None)
+    otlp_server.respond = lambda path: (200, {})
+    spool.append("traces", b"new-file")
+    worker.run_cycle(None)
+    assert len(otlp_server.paths()) == 1 + MAX_BACKLOG_SENDS_PER_CYCLE + 1
+    assert len(spool.pending_files()) == 2
 
 
 def test_stop_during_pacing_wait_ends_drain(

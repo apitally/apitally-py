@@ -43,7 +43,7 @@ EXPORT_INTERVAL_HEADER = "Apitally-Export-Interval"
 MIN_EXPORT_INTERVAL = 5
 MAX_EXPORT_INTERVAL = 60
 REQUEST_TIMEOUT = 10
-MAX_SENDS_PER_CYCLE = 10
+MAX_BACKLOG_SENDS_PER_CYCLE = 10
 RETRYABLE_STATUS_CODES = frozenset({408, 429})
 
 
@@ -177,19 +177,20 @@ class ExportWorker:
                     logger.exception("Error collecting Apitally metrics")
             if final:
                 self.spool.close_current_files()
+                self.send_pending(stop_event)
             else:
-                self.spool.rotate_for_export()
+                new_file_count = self.spool.rotate_for_export()
                 self.spool.touch_files()
-            self.send_pending(stop_event, cap=not final)
+                self.send_pending(stop_event, max_sends=MAX_BACKLOG_SENDS_PER_CYCLE + new_file_count)
         finally:
             otel_context.detach(token)
 
-    def send_pending(self, stop_event: threading.Event | None, cap: bool = True) -> None:
+    def send_pending(self, stop_event: threading.Event | None, max_sends: int | None = None) -> None:
         """During an outage this amounts to one probe POST per cycle. The final drain on
         shutdown passes no stop event and runs unpaced and uncapped."""
         sent = 0
         for file in self.spool.pending_files():
-            if (cap and sent >= MAX_SENDS_PER_CYCLE) or (stop_event is not None and stop_event.is_set()):
+            if (max_sends is not None and sent >= max_sends) or (stop_event is not None and stop_event.is_set()):
                 return
             if sent > 0 and stop_event is not None and stop_event.wait(self.random.uniform(0.1, 0.5)):
                 return
