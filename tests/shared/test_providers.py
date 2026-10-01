@@ -3,11 +3,10 @@ import logging
 import uuid
 
 import pytest
-from opentelemetry import metrics, trace
+from opentelemetry import trace
 from opentelemetry._logs import get_logger_provider
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
-from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -128,16 +127,9 @@ def test_pipeline_delivers_to_otlp_endpoint(otlp_server: StubOTLPServer, monkeyp
     assert span.name == "GET /items"
 
 
-def test_private_meter_and_logger_providers():
+def test_private_logger_provider():
     set_config(write_token=WRITE_TOKEN)
     resource = providers.create_resource("prod")
-
-    reader = InMemoryMetricReader()
-    meter_provider = providers.create_meter_provider(resource, [reader])
-    meter_provider.get_meter("apitally").create_counter("test.counter").add(1)
-    metrics_data = reader.get_metrics_data()
-    assert metrics_data is not None
-    assert metrics_data.resource_metrics[0].resource.attributes["service.instance.id"]
 
     log_exporter = InMemoryLogRecordExporter()
     logger_provider = providers.create_logger_provider(resource, [SimpleLogRecordProcessor(log_exporter)])
@@ -146,5 +138,4 @@ def test_private_meter_and_logger_providers():
     assert log_record.log_record.body == "hello"
     assert log_record.resource.attributes["service.instance.id"]
 
-    assert metrics.get_meter_provider() is not meter_provider
     assert get_logger_provider() is not logger_provider

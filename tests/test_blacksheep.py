@@ -20,11 +20,11 @@ from apitally.shared.redaction import REDACTED
 from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
-    attach_metric_reader,
     attach_stale_server_span,
     duration_data_points,
     exported_error_records,
     exported_spans,
+    point_attributes,
     startup_payload,
 )
 
@@ -64,7 +64,6 @@ async def test_request_exports_span_with_route_and_records_metrics(
     app = create_app()
     await app.start()
     assert activation.is_activated()
-    reader = attach_metric_reader()
 
     async with create_client(app) as client:
         response = await client.get("/items/123")
@@ -75,8 +74,8 @@ async def test_request_exports_span_with_route_and_records_metrics(
     assert span.attributes is not None
     assert span.attributes["http.route"] == "/items/{id}"
 
-    (point,) = duration_data_points(reader)
-    attributes = dict(point.attributes or {})
+    (point,) = duration_data_points()
+    attributes = point_attributes(point)
     assert attributes["http.route"] == "/items/{id}"
     assert attributes["http.request.method"] == "GET"
     assert attributes["http.response.status_code"] == 200
@@ -134,7 +133,6 @@ async def test_unmatched_request_has_no_route_and_no_histogram_point(
     allow_activation(monkeypatch)
     app = create_app()
     await app.start()
-    reader = attach_metric_reader()
 
     async with create_client(app) as client:
         response = await client.get("/nope")
@@ -143,7 +141,7 @@ async def test_unmatched_request_has_no_route_and_no_histogram_point(
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
     assert "http.route" not in span.attributes
-    assert duration_data_points(reader) == []
+    assert duration_data_points() == []
 
 
 async def test_first_request_activates_and_records_without_lifespan(

@@ -19,12 +19,12 @@ from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
     TrustedProxyASGIMiddleware,
-    attach_metric_reader,
     attach_stale_server_span,
     duration_data_points,
     exported_error_records,
     exported_log_records,
     exported_spans,
+    point_attributes,
     startup_payload,
     unwrap,
 )
@@ -120,13 +120,12 @@ def test_histogram_attributes_and_log_correlation(
 ):
     init(app, monkeypatch)
     with TestClient(app) as client:
-        reader = attach_metric_reader()
         client.get("/items/42")
         client.get("/v1/users/7")
+        points = {point_attributes(point)["http.route"]: point for point in duration_data_points()}
 
     spans = {unwrap(span.attributes)["http.route"]: span for span in exported_spans(exporters)}
-    points = {unwrap(point.attributes)["http.route"]: point for point in duration_data_points(reader)}
-    assert points["/items/{item_id}"].attributes == {
+    assert point_attributes(points["/items/{item_id}"]) == {
         "http.request.method": "GET",
         "http.route": "/items/{item_id}",
         "http.response.status_code": 200,
@@ -158,12 +157,11 @@ def test_healthz_excluded_from_spans_counted_in_metrics_options_in_neither(
 ):
     init(app, monkeypatch)
     with TestClient(app) as client:
-        reader = attach_metric_reader()
         client.get("/healthz")
         client.options("/items/42")
+        (point,) = duration_data_points()
     assert exported_spans(exporters) == []
-    (point,) = duration_data_points(reader)
-    assert unwrap(point.attributes)["http.route"] == "/healthz"
+    assert point_attributes(point)["http.route"] == "/healthz"
 
 
 def test_request_body_captured_and_redacted(
@@ -192,14 +190,13 @@ def test_mounted_subapp_route_in_metrics_and_startup_paths(
     app.mount("/sub", subapp)
     init(app, monkeypatch)
     with TestClient(app) as client:
-        reader = attach_metric_reader()
         client.get("/sub/things/7")
+        (point,) = duration_data_points()
 
     (span,) = exported_spans(exporters)
-    (point,) = duration_data_points(reader)
     assert span.name == "GET /sub/things/{thing_id}"
     assert unwrap(span.attributes)["http.route"] == "/sub/things/{thing_id}"
-    assert unwrap(point.attributes)["http.route"] == "/sub/things/{thing_id}"
+    assert point_attributes(point)["http.route"] == "/sub/things/{thing_id}"
 
     payload = startup_payload(exporters)
     assert {"method": "GET", "path": "/sub/things/{thing_id}"} in payload["paths"]
@@ -211,15 +208,14 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     FastAPIInstrumentor.instrument_app(app)
     init(app, monkeypatch)
     with TestClient(app) as client:
-        reader = attach_metric_reader()
         client.get("/items/42")
+        (point,) = duration_data_points()
     # The user instrumentor's receive/send spans are dropped by the span processor's built-in filter
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     response_body_size = unwrap(span.attributes)["http.response.body.size"]
     assert isinstance(response_body_size, int) and response_body_size > 0
-    (point,) = duration_data_points(reader)
-    assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
+    assert point_attributes(point)["http.route"] == "/items/{item_id}"
 
 
 def test_unhandled_exception_recorded_on_server_span(
@@ -368,10 +364,9 @@ def test_consumer_set_in_sync_endpoint_reaches_metrics(
     # through the holder shared by reference across context copies
     init(app, monkeypatch)
     with TestClient(app) as client:
-        reader = attach_metric_reader()
         client.get("/consumer")
-    (point,) = duration_data_points(reader)
-    assert unwrap(point.attributes)["apitally.consumer.identifier"] == "tester"
+        (point,) = duration_data_points()
+    assert point_attributes(point)["apitally.consumer.identifier"] == "tester"
 
 
 def test_sample_rate_zero_drops_spans_keeps_metrics(
@@ -380,11 +375,10 @@ def test_sample_rate_zero_drops_spans_keeps_metrics(
     # Pins that sampling kwargs passed to init reach the config, exercised through a real framework
     init(app, monkeypatch, sample_rate=0.0)
     with TestClient(app) as client:
-        reader = attach_metric_reader()
         client.get("/items/42")
+        (point,) = duration_data_points()
     assert exported_spans(exporters) == []
-    (point,) = duration_data_points(reader)
-    assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
+    assert point_attributes(point)["http.route"] == "/items/{item_id}"
 
 
 def test_init_twice_does_not_stack_middleware(

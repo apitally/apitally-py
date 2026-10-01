@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from opentelemetry import context as otel_context
 from opentelemetry import trace
-from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -31,6 +30,7 @@ from tests.conftest import (
     StubOTLPServer,
     attach_stale_server_span,
     configure_and_activate,
+    duration_data_points,
     exported_log_records,
     exported_spans,
     unwrap,
@@ -245,7 +245,7 @@ def test_on_activate_hooks_run_last(exporters: InMemoryExporters, monkeypatch: p
     observed = []
     activation.register_on_activate_hook(
         lambda: observed.append(
-            (activation.is_activated(), metrics.reader is not None, log_processor.installed_handler is not None)
+            (activation.is_activated(), metrics.resource is not None, log_processor.installed_handler is not None)
         )
     )
     activation.configure(write_token=WRITE_TOKEN)
@@ -303,19 +303,16 @@ def test_before_fork_stops_sdk_threads(exporters: InMemoryExporters, monkeypatch
 
     activation.before_fork()
     assert not any(t.is_alive() for t in started)
-    assert metrics.reader is None
 
 
 def test_after_fork_in_parent_reactivates_pipelines(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     configure_and_activate(monkeypatch)
     assert len(exporters.span) == 1
-    old_reader = metrics.reader
 
     activation.before_fork()
     activation.after_fork_in_parent()
 
     assert len(exporters.span) == 2
-    assert metrics.reader is not None and metrics.reader is not old_reader
 
     with trace.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
         pass
@@ -366,11 +363,13 @@ def test_child_reactivation_clears_inherited_request_state(
     server_errors.set_exception(RuntimeError("inherited"), holder)
     server_errors.add_server_error(None, "GET", "/items", holder)
     validation_errors.add_validation_errors(None, "POST", "/items", [ValidationError("body", "name", "x", "")])
+    metrics.record_request("GET", "/items", 200, consumer=None, duration=0.1)
 
     activation.before_fork()
     activation.after_fork_in_child()
     activation.activate()
 
+    assert duration_data_points() == []
     assert activation.span_processor is not None
     assert not activation.span_processor.spans
     assert not activation.span_processor.pending
@@ -390,6 +389,7 @@ def test_after_fork_in_parent_restarts_worker_and_delivers_prefork_files(
     activation.activate()
     with trace.get_tracer("test").start_as_current_span("GET /prefork", kind=SpanKind.SERVER):
         pass
+    metrics.record_request("GET", "/prefork", 200, consumer=None, duration=0.1)
 
     activation.before_fork()
     worker = unwrap(activation.export_worker)
@@ -401,22 +401,18 @@ def test_after_fork_in_parent_restarts_worker_and_delivers_prefork_files(
     worker.interval = 0.2
     activation.after_fork_in_parent()
     assert unwrap(worker.thread).is_alive()
-    metrics.record_request("GET", "/postfork", 200, consumer=None, duration=0.1)
 
-    def postfork_metric_received() -> bool:
+    def prefork_metric_received() -> bool:
         for path, _, body in otlp_server.requests:
-            if path == "/v1/metrics" and b"/postfork" in gzip.decompress(body):
+            if path == "/v1/metrics" and b"/prefork" in gzip.decompress(body):
                 return True
         return False
 
     deadline = time.time() + 10
-    while time.time() < deadline and not postfork_metric_received():
+    while time.time() < deadline and not prefork_metric_received():
         time.sleep(0.02)
     assert "/v1/traces" in otlp_server.paths()
-    # Proves the worker resolves the fresh reader; the detached one's collect is a no-op
-    assert postfork_metric_received()
-    metric_bodies = [body for path, _, body in otlp_server.requests if path == "/v1/metrics"]
-    assert ExportMetricsServiceRequest.FromString(gzip.decompress(metric_bodies[-1]))
+    assert prefork_metric_received()
 
 
 def test_fork_in_child_abandons_inherited_spool_without_touching_parent_files(

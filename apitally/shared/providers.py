@@ -6,8 +6,6 @@ from typing import Protocol, cast
 
 from opentelemetry import trace
 from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import MetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanLimits, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.sampling import ALWAYS_OFF, ALWAYS_ON, ParentBased, Sampler, TraceIdRatioBased
@@ -82,11 +80,6 @@ def attach_to_tracer_provider(user_provider: TracerProviderWithSpanProcessors, s
         warn_if_sampler_drops_spans(sampler)
     warn_if_attribute_length_limit_too_low(user_provider)
     user_provider.add_span_processor(span_processor)
-
-
-def create_meter_provider(resource: Resource, metric_readers: Sequence[MetricReader]) -> MeterProvider:
-    # Private instance, never registered via set_meter_provider
-    return MeterProvider(metric_readers=metric_readers, resource=resource)
 
 
 def create_logger_provider(resource: Resource, processors: Sequence[LogRecordProcessor] = ()) -> LoggerProvider:

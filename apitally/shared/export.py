@@ -170,11 +170,10 @@ class ExportWorker:
                         event_name=event_name,
                     )
             self.log_processor.downstream.force_flush()
-            if metrics.reader is not None:
-                try:
-                    metrics.reader.collect()
-                except Exception:
-                    logger.exception("Error collecting Apitally metrics")
+            try:
+                metrics.collect(self.spool)
+            except Exception:
+                logger.exception("Error collecting Apitally metrics")
             if final:
                 self.spool.close_current_files()
                 self.send_pending(stop_event)
