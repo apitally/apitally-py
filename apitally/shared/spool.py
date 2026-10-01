@@ -91,6 +91,7 @@ class Spool:
         self.lock = threading.Lock()
         self.current: dict[str, SpoolFile] = {}
         self.closed: list[SpoolFile] = []
+        self.files_closed_since_export_rotation = 0
 
     def append(self, signal: str, payload: bytes) -> None:
         with self.lock:
@@ -111,14 +112,18 @@ class Spool:
                 self.discard_current_locked(signal)
             self.evict_locked()
 
-    def rotate_for_export(self) -> None:
+    def rotate_for_export(self) -> int:
         """Close each signal's current file so it becomes sendable, unless closed files are
-        already waiting (a backlog grows the current file instead of adding one per cycle)."""
+        already waiting (a backlog grows the current file instead of adding one per cycle).
+        Returns the number of files closed since the previous call, including size rotations."""
         with self.lock:
             for signal in SIGNALS:
                 if signal in self.current and not any(file.signal == signal for file in self.closed):
                     self.rotate_locked(signal)
             self.evict_locked()
+            closed_count = self.files_closed_since_export_rotation
+            self.files_closed_since_export_rotation = 0
+            return closed_count
 
     def close_current_files(self) -> None:
         with self.lock:
@@ -163,6 +168,7 @@ class Spool:
             return
         self.write_error_logged = False
         self.closed.append(current)
+        self.files_closed_since_export_rotation += 1
 
     def discard_current_locked(self, signal: str) -> None:
         current = self.current.pop(signal, None)
