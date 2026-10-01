@@ -1,197 +1,158 @@
-import threading
-from collections.abc import Iterator
+import logging
 
 import pytest
-from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
-from opentelemetry.sdk.metrics import Histogram as SDKHistogram
-from opentelemetry.sdk.metrics.export import (
-    AggregationTemporality,
-    ExponentialHistogram,
-    Gauge,
-    InMemoryMetricReader,
-    Sum,
-)
+from opentelemetry.proto.metrics.v1.metrics_pb2 import AGGREGATION_TEMPORALITY_DELTA, ExponentialHistogramDataPoint
 from opentelemetry.sdk.resources import Resource
 
 from apitally.shared import metrics
-from apitally.shared.spool import Spool
-from tests.conftest import collect_metrics, read_spool_payload, setup_metric_reader, unwrap
+from tests.conftest import collect_data_points, collect_metrics, duration_data_points, point_attributes
+
+
+HISTOGRAM_NAMES = ("http.server.request.duration", "http.server.request.body.size", "http.server.response.body.size")
 
 
 @pytest.fixture(autouse=True)
-def reset_metrics() -> Iterator[None]:
-    yield
-    metrics.reset()
+def setup_metrics() -> None:
+    metrics.setup(Resource.create({}))
 
 
-@pytest.fixture
-def spool() -> Iterator[Spool]:
-    spool = Spool()
-    yield spool
-    spool.clear()
-
-
-def create_pipeline() -> InMemoryMetricReader:
-    return setup_metric_reader()
-
-
-def get_scope_names(reader: InMemoryMetricReader) -> dict[str, str]:
-    metrics_data = reader.get_metrics_data()
-    assert metrics_data is not None
-    return {
-        metric.name: scope_metrics.scope.name
-        for resource_metrics in metrics_data.resource_metrics
-        for scope_metrics in resource_metrics.scope_metrics
-        for metric in scope_metrics.metrics
+def test_collection_exports_complete_histogram_points():
+    for duration, response_size in ((0.1, 1000), (0.125, 1024), (0.125, 1025)):
+        metrics.record_request(
+            "get",
+            "/items/{id}",
+            200,
+            consumer="tenant-1",
+            duration=duration,
+            request_size=0,
+            response_size=response_size,
+            scheme="https",
+        )
+    _, histogram_entry = collect_metrics().resource_metrics
+    (scope_metrics,) = histogram_entry.scope_metrics
+    assert scope_metrics.scope.name == "apitally"
+    collected = {metric.name: metric for metric in scope_metrics.metrics}
+    assert {name: metric.unit for name, metric in collected.items()} == {
+        "http.server.request.duration": "s",
+        "http.server.request.body.size": "By",
+        "http.server.response.body.size": "By",
     }
-
-
-def test_request_histograms_exponential_delta_shape():
-    reader = create_pipeline()
-    metrics.record_request(
-        "get", "/items/{id}", 200, consumer=None, duration=0.123, request_size=10, response_size=250, scheme="https"
+    assert all(
+        metric.exponential_histogram.aggregation_temporality == AGGREGATION_TEMPORALITY_DELTA
+        for metric in collected.values()
     )
-    collected = collect_metrics(reader)
-
-    duration_metric = collected["http.server.request.duration"]
-    assert duration_metric.unit == "s"
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    assert duration_metric.data.aggregation_temporality == AggregationTemporality.DELTA
-    (point,) = duration_metric.data.data_points
-    assert -2 <= point.scale <= 3
-    assert point.count == 1
-    assert point.attributes == {
+    (duration_point,) = collected["http.server.request.duration"].exponential_histogram.data_points
+    (request_size_point,) = collected["http.server.request.body.size"].exponential_histogram.data_points
+    (response_size_point,) = collected["http.server.response.body.size"].exponential_histogram.data_points
+    assert point_attributes(duration_point) == {
         "http.request.method": "GET",
         "http.route": "/items/{id}",
         "http.response.status_code": 200,
         "url.scheme": "https",
+        "apitally.consumer.identifier": "tenant-1",
     }
+    assert 0 < duration_point.start_time_unix_nano < duration_point.time_unix_nano
 
-    for name in ("http.server.request.body.size", "http.server.response.body.size"):
-        size_metric = collected[name]
-        assert size_metric.unit == "By"
-        assert isinstance(size_metric.data, ExponentialHistogram)
-        (size_point,) = size_metric.data.data_points
-        assert size_point.attributes == point.attributes
+    def expected_point(**fields) -> ExponentialHistogramDataPoint:
+        return ExponentialHistogramDataPoint(
+            attributes=duration_point.attributes,
+            start_time_unix_nano=duration_point.start_time_unix_nano,
+            time_unix_nano=duration_point.time_unix_nano,
+            scale=3,
+            **fields,
+        )
 
-
-def test_histograms_under_apitally_scope():
-    reader = create_pipeline()
-    metrics.record_request("GET", "/items", 200, consumer=None, duration=0.1)
-    assert get_scope_names(reader)["http.server.request.duration"] == "apitally"
-
-
-def test_collect_appends_delta_payloads_to_spool(spool: Spool):
-    metrics.setup(Resource.create({}), metrics.ApitallyMetricReader(spool))
-    metrics.record_request("GET", "/a", 200, consumer="tenant-1", duration=1.0)
-    unwrap(metrics.reader).collect()
-    metrics.record_request("GET", "/a", 200, consumer="tenant-2", duration=2.0)
-    unwrap(metrics.reader).collect()
-    spool.rotate_for_export()
-    (file,) = [file for file in spool.pending_files() if file.signal == "metrics"]
-    request = ExportMetricsServiceRequest.FromString(read_spool_payload(file))
-    assert len(request.resource_metrics) == 2
-    points = [
-        point
-        for rm in request.resource_metrics
-        for sm in rm.scope_metrics
-        for metric in sm.metrics
-        if metric.name == "http.server.request.duration"
-        for point in metric.exponential_histogram.data_points
-    ]
-    assert [point.count for point in points] == [1, 1]
-    assert sum(point.sum for point in points) == pytest.approx(3.0)
-    # Aggregations left empty for a full cycle are dropped so consumer cardinality does not accumulate
-    unwrap(metrics.reader).collect()
-    storage = unwrap(metrics.meter_provider)._measurement_consumer._reader_storages[unwrap(metrics.reader)]
-    histogram_matches = [
-        match
-        for instrument, matches in storage._instrument_view_instrument_matches.items()
-        if isinstance(instrument, SDKHistogram)
-        for match in matches
-    ]
-    assert histogram_matches and all(not match._attributes_aggregation for match in histogram_matches)
-
-
-def test_metric_reader_does_not_start_timer_thread(spool: Spool):
-    threads_before = set(threading.enumerate())
-    metrics.setup(Resource.create({}), metrics.ApitallyMetricReader(spool))
-    assert not any(
-        thread.name == "OtelPeriodicExportingMetricReader" for thread in set(threading.enumerate()) - threads_before
+    # 0.1 maps through the logarithm and 0.125 through the exact power-of-two branch
+    assert duration_point == expected_point(
+        count=3,
+        sum=0.1 + 0.125 + 0.125,
+        min=0.1,
+        max=0.125,
+        positive=ExponentialHistogramDataPoint.Buckets(offset=-27, bucket_counts=[1, 0, 2]),
+    )
+    assert request_size_point == expected_point(count=3, sum=0, min=0, max=0, zero_count=3)
+    # An exact power of two (1024) belongs to the bucket below its boundary, with 1000
+    assert response_size_point == expected_point(
+        count=3,
+        sum=1000 + 1024 + 1025,
+        min=1000,
+        max=1025,
+        positive=ExponentialHistogramDataPoint.Buckets(offset=79, bucket_counts=[2, 1]),
     )
 
 
-def test_consumer_identifier_recorded():
-    reader = create_pipeline()
-    metrics.record_request("GET", "/a", 200, consumer="tenant-1", duration=0.01)
-    metrics.record_request("GET", "/b", 200, consumer=None, duration=0.01)
-    duration_metric = collect_metrics(reader)["http.server.request.duration"]
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    by_route = {
-        (point.attributes or {})["http.route"]: point.attributes or {} for point in duration_metric.data.data_points
+def test_new_combinations_beyond_capacity_are_dropped_with_one_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    monkeypatch.setattr(metrics, "MAX_COMBINATIONS", 2)
+    for _ in range(2):
+        for route in ("/a", "/b", "/c", "/a"):
+            metrics.record_request("GET", route, 200, consumer=None, duration=0.1)
+        points = duration_data_points()
+        assert {point_attributes(point)["http.route"]: point.count for point in points} == {"/a": 2, "/b": 1}
+    warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "some request metrics are missing" in warnings[0].getMessage()
+
+
+def test_each_collection_contains_only_combinations_recorded_since_previous():
+    metrics.record_request("GET", "/a", 200, consumer=None, duration=0.1)
+    (first_point,) = duration_data_points()
+    metrics.record_request("GET", "/b", 200, consumer=None, duration=0.1)
+    (second_point,) = duration_data_points()
+    assert point_attributes(second_point)["http.route"] == "/b"
+    assert second_point.start_time_unix_nano == first_point.time_unix_nano
+
+
+def test_split_requests_keep_combination_histograms_together(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(metrics, "COMBINATIONS_PER_REQUEST", 2)
+    for route in ("/a", "/b", "/c"):
+        metrics.record_request("GET", route, 200, consumer=None, duration=0.1, request_size=10, response_size=100)
+    _, *histogram_entries = collect_metrics().resource_metrics
+    routes_by_entry = [
+        {
+            metric.name: [point_attributes(point)["http.route"] for point in metric.exponential_histogram.data_points]
+            for scope_metrics in entry.scope_metrics
+            for metric in scope_metrics.metrics
+        }
+        for entry in histogram_entries
+    ]
+    assert routes_by_entry == [
+        dict.fromkeys(HISTOGRAM_NAMES, ["/a", "/b"]),
+        dict.fromkeys(HISTOGRAM_NAMES, ["/c"]),
+    ]
+
+
+def test_process_gauges_exported_without_traffic():
+    (entry,) = collect_metrics().resource_metrics
+    (scope_metrics,) = entry.scope_metrics
+    assert {metric.name: (metric.unit, metric.WhichOneof("data")) for metric in scope_metrics.metrics} == {
+        "process.uptime": ("s", "gauge"),
+        "process.cpu.utilization": ("1", "gauge"),
+        "process.memory.usage": ("By", "gauge"),
     }
-    assert by_route["/a"]["apitally.consumer.identifier"] == "tenant-1"
-    assert "apitally.consumer.identifier" not in by_route["/b"]
+    points = [point for metric in scope_metrics.metrics for point in metric.gauge.data_points]
+    assert len(points) == 3
+    assert all(not point.attributes for point in points)
+    assert len({point.time_unix_nano for point in points}) == 1
 
 
 def test_options_and_unmatched_route_not_recorded():
-    reader = create_pipeline()
     metrics.record_request("OPTIONS", "/items", 204, consumer=None, duration=0.01)
     metrics.record_request("GET", "", 404, consumer=None, duration=0.01)
-    assert "http.server.request.duration" not in collect_metrics(reader)
-
-
-def test_excluded_request_still_recorded():
-    # Exclusion filters spans only; the transport calls the helper for excluded requests too
-    reader = create_pipeline()
-    metrics.record_request("GET", "/healthz", 200, consumer=None, duration=0.005)
-    duration_metric = collect_metrics(reader)["http.server.request.duration"]
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    (point,) = duration_metric.data.data_points
-    assert (point.attributes or {})["http.route"] == "/healthz"
+    assert duration_data_points() == []
 
 
 def test_unknown_sizes_skip_size_observations():
-    reader = create_pipeline()
-    metrics.record_request("GET", "/a", 500, consumer=None, duration=0.01)
-    collected = collect_metrics(reader)
-    duration_metric = collected["http.server.request.duration"]
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    (point,) = duration_metric.data.data_points
-    assert (point.attributes or {})["error.type"] == "500"
-    assert "http.server.request.body.size" not in collected
-    assert "http.server.response.body.size" not in collected
-
-
-def test_setup_twice_moves_system_metrics_to_new_provider():
-    # Fork re-activation sets up a second pipeline in the child
-    create_pipeline()
-    reader = create_pipeline()
-    assert "process.cpu.utilization" in collect_metrics(reader)
-
-
-def test_system_metrics_exact_instrument_set():
-    reader = create_pipeline()
-    assert set(collect_metrics(reader)) == {"process.cpu.utilization", "process.memory.usage", "process.uptime"}
-
-
-def test_cpu_and_memory_share_timestamp_with_empty_attributes():
-    reader = create_pipeline()
-    collected = collect_metrics(reader)
-    (cpu_point,) = collected["process.cpu.utilization"].data.data_points
-    (mem_point,) = collected["process.memory.usage"].data.data_points
-    assert cpu_point.time_unix_nano == mem_point.time_unix_nano
-    assert dict(cpu_point.attributes or {}) == {}
-    assert dict(mem_point.attributes or {}) == {}
-
-
-def test_process_gauges_keep_default_aggregation():
-    reader = create_pipeline()
-    collected = collect_metrics(reader)
-    assert isinstance(collected["process.cpu.utilization"].data, Gauge)
-    assert collected["process.cpu.utilization"].unit == "1"
-    assert isinstance(collected["process.memory.usage"].data, Sum)
-    assert collected["process.memory.usage"].unit == "By"
-    assert isinstance(collected["process.uptime"].data, Gauge)
-    (uptime_point,) = collected["process.uptime"].data.data_points
-    assert uptime_point.value >= 0
+    metrics.record_request("GET", "/a", 500, consumer=None, duration=0.01, scheme="http")
+    data_points = collect_data_points()
+    (point,) = data_points["http.server.request.duration"]
+    assert point_attributes(point) == {
+        "http.request.method": "GET",
+        "http.route": "/a",
+        "http.response.status_code": 500,
+        "url.scheme": "http",
+        "error.type": "500",
+    }
+    assert "http.server.request.body.size" not in data_points
+    assert "http.server.response.body.size" not in data_points

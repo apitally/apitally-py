@@ -8,7 +8,6 @@ import pytest
 from flask import Blueprint, Flask, Response, jsonify, request
 from flask.logging import default_handler
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import SpanKind
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -20,10 +19,10 @@ from apitally.shared.redaction import REDACTED
 from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
-    attach_metric_reader,
     duration_data_points,
     exported_error_records,
     exported_spans,
+    point_attributes,
     startup_payload,
     unwrap,
 )
@@ -68,11 +67,6 @@ def init(app: Flask, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
     apitally.init(app, write_token=WRITE_TOKEN, **kwargs)
 
 
-def activate_with_metric_reader() -> InMemoryMetricReader:
-    activation.activate()
-    return attach_metric_reader()
-
-
 def test_client_address_uses_framework_resolved_client_ip(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
@@ -107,16 +101,16 @@ def test_blueprint_route_includes_url_prefix(app: Flask, exporters: InMemoryExpo
 
     app.register_blueprint(blueprint)
     init(app, monkeypatch)
-    reader = activate_with_metric_reader()
+    activation.activate()
 
     response = app.test_client().get("/api/things/7")
 
     # Consume the body; telemetry is recorded when the response iterable completes
     assert response.get_json() == {"id": 7}
     (span,) = exported_spans(exporters)
-    (point,) = duration_data_points(reader)
+    (point,) = duration_data_points()
     assert unwrap(span.attributes)["http.route"] == "/api/things/<int:thing_id>"
-    assert unwrap(point.attributes)["http.route"] == "/api/things/<int:thing_id>"
+    assert point_attributes(point)["http.route"] == "/api/things/<int:thing_id>"
 
 
 def test_first_request_activates_and_is_recorded(
@@ -220,7 +214,7 @@ def test_streaming_response_size_and_body_captured(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch, capture_response_body=True)
-    reader = activate_with_metric_reader()
+    activation.activate()
 
     response = app.test_client().get("/stream")
 
@@ -231,8 +225,8 @@ def test_streaming_response_size_and_body_captured(
     # after the instrumentor ended it
     assert attributes["http.response.body.size"] == len(response.data)
     assert json.loads(str(attributes["apitally.response.body"])) == {"a": 1}
-    (point,) = duration_data_points(reader)
-    assert (point.attributes or {})["http.route"] == "/stream"
+    (point,) = duration_data_points()
+    assert point_attributes(point)["http.route"] == "/stream"
 
 
 def test_body_capture_does_not_consume_streaming_response_early(
@@ -289,15 +283,15 @@ def test_set_consumer_reaches_span_and_histogram(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch)
-    reader = activate_with_metric_reader()
+    activation.activate()
 
     response = app.test_client().get("/consumer")
 
     assert response.get_json() == {"ok": True}
     (span,) = exported_spans(exporters)
     assert dict(span.attributes or {})["apitally.consumer.identifier"] == "tester"
-    (point,) = duration_data_points(reader)
-    assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
+    (point,) = duration_data_points()
+    assert point_attributes(point)["apitally.consumer.identifier"] == "tester"
 
 
 def test_init_twice_does_not_stack_middleware(
@@ -330,14 +324,14 @@ def test_sampled_out_request_skips_capture(app: Flask, exporters: InMemoryExport
         mask_request_body=mask,
         mask_response_body=mask,
     )
-    reader = activate_with_metric_reader()
+    activation.activate()
 
     response = app.test_client().post("/items", json={"a": 1})
 
     assert response.get_json() == {"id": 1, "token": "abc123"}
     assert not mask_calls
     assert exported_spans(exporters) == []
-    (point,) = duration_data_points(reader)
+    (point,) = duration_data_points()
     assert point.count == 1
 
 

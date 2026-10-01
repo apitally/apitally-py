@@ -24,11 +24,11 @@ from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
     TrustedProxyASGIMiddleware,
-    attach_metric_reader,
     attach_stale_server_span,
     duration_data_points,
     exported_error_records,
     exported_spans,
+    point_attributes,
     startup_payload,
     unwrap,
 )
@@ -90,17 +90,14 @@ def test_client_address_uses_framework_resolved_client_ip(
 
 def test_route_repair_metrics_and_no_noise_spans(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     with TestClient(app=make_app(monkeypatch)) as client:
-        reader = attach_metric_reader()
         assert client.get("/users/123").status_code == 200
+        (point,) = duration_data_points()
 
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     assert span.name == "GET /users/{user_id}"
     assert (span.attributes or {})["http.route"] == "/users/{user_id}"
-
-    points = [dict(point.attributes or {}) for point in duration_data_points(reader)]
-    assert len(points) == 1
-    assert points[0]["http.route"] == "/users/{user_id}"
+    assert point_attributes(point)["http.route"] == "/users/{user_id}"
 
 
 @pytest.mark.parametrize(
@@ -203,13 +200,12 @@ def test_route_includes_router_path_prefix(exporters: InMemoryExporters, monkeyp
     router = Router(path="/v1", route_handlers=[get_user])
     app = Litestar(route_handlers=[router], plugins=[ApitallyPlugin(write_token=WRITE_TOKEN)])
     with TestClient(app=app) as client:
-        reader = attach_metric_reader()
         assert client.get("/v1/users/123").status_code == 200
+        (point,) = duration_data_points()
 
     (span,) = exported_spans(exporters)
-    (point,) = duration_data_points(reader)
     assert (span.attributes or {})["http.route"] == "/v1/users/{user_id}"
-    assert (point.attributes or {})["http.route"] == "/v1/users/{user_id}"
+    assert point_attributes(point)["http.route"] == "/v1/users/{user_id}"
 
 
 def test_client_error_not_recorded_as_exception(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

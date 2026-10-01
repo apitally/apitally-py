@@ -192,7 +192,7 @@ def test_apitally_scope_records_are_exempt_from_truncation(spool: Spool) -> None
 
 def test_export_cycle_posts_all_three_signals_in_lockstep(spool: Spool, otlp_server: StubOTLPServer) -> None:
     worker = make_worker(spool, otlp_server.url)
-    metrics.setup(Resource.create({}), metrics.ApitallyMetricReader(spool))
+    metrics.setup(Resource.create({}))
     metrics.record_request("GET", "/a", 200, consumer=None, duration=0.1)
     spool.append("traces", b"trace-payload")
     spool.append("logs", b"log-payload")
@@ -212,13 +212,11 @@ def test_metrics_collection_error_does_not_block_export(
     spool: Spool, otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     worker = make_worker(spool, otlp_server.url)
-    reader = metrics.ApitallyMetricReader(spool)
-    metrics.setup(Resource.create({}), reader)
 
-    def fail() -> None:
+    def fail(spool: Spool) -> None:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(reader, "collect", fail)
+    monkeypatch.setattr(metrics, "collect", fail)
     spool.append("traces", b"trace-payload")
     worker.run_cycle(None)
     assert otlp_server.paths() == ["/v1/traces"]

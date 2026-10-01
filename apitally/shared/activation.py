@@ -211,7 +211,7 @@ def start_pipelines() -> None:
     env = config.get_config().env
     resource = providers.create_resource(env)
     spool = Spool()
-    metrics.setup(resource, metrics.ApitallyMetricReader(spool))
+    metrics.setup(resource)
     if inherited_span_processor is not None:
         # Forked child re-activation: swap in a fresh downstream batch processor, like
         # after_fork_in_parent, and drop the parent's in-flight and pending request state
@@ -248,7 +248,6 @@ def before_fork() -> None:
     try:
         if export_worker is not None:
             export_worker.stop()
-        metrics.reset()
         if span_processor is not None:
             retired_processors.append(span_processor.downstream)
             span_processor.downstream.shutdown()
@@ -264,13 +263,12 @@ def before_fork() -> None:
 def after_fork_in_parent() -> None:
     """Re-activate by swapping fresh batch processors into the registered wrappers."""
     try:
-        if not activated or resource is None or spool is None:  # pragma: no cover
+        if not activated or spool is None:  # pragma: no cover
             return
         if span_processor is not None:
             span_processor.downstream = create_batch_span_processor(spool)
         if log_processor is not None:
             log_processor.downstream = create_batch_log_processor(spool)
-        metrics.setup(resource, metrics.ApitallyMetricReader(spool))
         if export_worker is not None:
             export_worker.start()
     except Exception:  # pragma: no cover

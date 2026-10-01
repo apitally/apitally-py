@@ -8,10 +8,10 @@ from opentelemetry.trace import SpanKind
 
 from tests.conftest import (
     InMemoryExporters,
-    attach_metric_reader,
     duration_data_points,
     exported_error_records,
     exported_spans,
+    point_attributes,
     startup_payload,
 )
 from tests.django.utils import (
@@ -55,7 +55,6 @@ def test_startup_event_paths_match_routes_and_openapi_parses(
 def test_request_flow(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
-    reader = attach_metric_reader()
 
     response = Client().get("/api/foo/123")
     assert response.status_code == 200
@@ -64,8 +63,8 @@ def test_request_flow(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPa
     assert span.attributes is not None
     assert span.attributes["http.route"] == "/api/foo/{bar}"
     assert span.attributes["http.response.status_code"] == 200
-    (point,) = duration_data_points(reader)
-    assert (point.attributes or {})["http.route"] == "/api/foo/{bar}"
+    (point,) = duration_data_points()
+    assert point_attributes(point)["http.route"] == "/api/foo/{bar}"
 
 
 def test_validation_error_uses_path_source_and_route(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

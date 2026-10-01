@@ -7,10 +7,10 @@ from opentelemetry.trace import SpanKind
 
 from tests.conftest import (
     InMemoryExporters,
-    attach_metric_reader,
     duration_data_points,
     exported_spans,
     installed,
+    point_attributes,
     startup_payload,
     unwrap,
 )
@@ -73,14 +73,13 @@ def test_openapi_generated_via_drf_spectacular_subclass(exporters: InMemoryExpor
 def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
-    reader = attach_metric_reader()
 
     assert Client().get("/api/things/42/").status_code == 200
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
-    (point,) = duration_data_points(reader)
+    (point,) = duration_data_points()
     assert unwrap(span.attributes)["http.route"] == "/api/things/{pk}/"
-    assert unwrap(point.attributes)["http.route"] == "/api/things/{pk}/"
+    assert point_attributes(point)["http.route"] == "/api/things/{pk}/"
 
 
 def test_request_tracking_is_limited_to_configured_urlconf(
@@ -88,7 +87,6 @@ def test_request_tracking_is_limited_to_configured_urlconf(
 ):
     init(monkeypatch, django_urlconf="tests.django.rest_framework_selected_urls")
     activate_via_signal()
-    reader = attach_metric_reader()
     client = Client()
 
     included_response = client.get("/api/things/42/")
@@ -98,15 +96,14 @@ def test_request_tracking_is_limited_to_configured_urlconf(
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert unwrap(span.attributes)["http.route"] == "/api/things/{pk}/"
-    (point,) = duration_data_points(reader)
-    assert unwrap(point.attributes)["http.route"] == "/api/things/{pk}/"
+    (point,) = duration_data_points()
+    assert point_attributes(point)["http.route"] == "/api/things/{pk}/"
     assert point.count == 1
 
 
 def test_request_flow(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch)
     activate_via_signal()
-    reader = attach_metric_reader()
 
     response = Client().get("/items/42/")
     assert response.status_code == 200
@@ -115,5 +112,5 @@ def test_request_flow(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPa
     assert span.attributes is not None
     assert span.attributes["http.route"] == "/items/{pk}/"
     assert span.attributes["http.response.status_code"] == 200
-    (point,) = duration_data_points(reader)
-    assert (point.attributes or {})["http.route"] == "/items/{pk}/"
+    (point,) = duration_data_points()
+    assert point_attributes(point)["http.route"] == "/items/{pk}/"

@@ -12,15 +12,10 @@ from opentelemetry import context as otel_context
 from opentelemetry import trace
 from opentelemetry._logs import LogRecord
 from opentelemetry.instrumentation._semconv import _OpenTelemetrySemanticConventionStability
+from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
+from opentelemetry.proto.metrics.v1.metrics_pb2 import ExponentialHistogramDataPoint
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
-from opentelemetry.sdk.metrics.export import (
-    DataPointT,
-    ExponentialHistogramDataPoint,
-    InMemoryMetricReader,
-    Metric,
-)
-from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, Span, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -251,50 +246,36 @@ def otlp_server() -> Iterator[StubOTLPServer]:
     stub.server.server_close()
 
 
-def setup_metric_reader() -> InMemoryMetricReader:
-    """Create a standalone in-memory metrics pipeline for tests before SDK activation."""
-    reader = InMemoryMetricReader(
-        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
-        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
-    )
-    metrics.setup(Resource.create({}), reader)
-    return reader
+def collect_metrics() -> ExportMetricsServiceRequest:
+    """Run one metrics collection into a temporary spool and decode the appended requests."""
+    spool = Spool()
+    try:
+        metrics.collect(spool)
+        spool.close_current_files()
+        return ExportMetricsServiceRequest.FromString(
+            b"".join(read_spool_payload(file) for file in spool.pending_files())
+        )
+    finally:
+        spool.clear()
 
 
-def attach_metric_reader() -> InMemoryMetricReader:
-    """Recreate the active metrics pipeline with an in-memory reader, preserving its resource and spool."""
-    apitally_reader = unwrap(metrics.reader)
-    assert isinstance(apitally_reader, metrics.ApitallyMetricReader)
-    reader = InMemoryMetricReader(
-        preferred_temporality=metrics.HISTOGRAM_PREFERRED_TEMPORALITY,
-        preferred_aggregation=metrics.HISTOGRAM_PREFERRED_AGGREGATION,
-    )
-    resource = unwrap(activation.resource)
-    metrics.reset()
-    metrics.setup(resource, metrics.ApitallyMetricReader(apitally_reader.spool), reader)
-    return reader
+def collect_data_points() -> dict[str, list[Any]]:
+    """Data points by metric name from one collection, across all appended requests."""
+    data_points: dict[str, list[Any]] = {}
+    for resource_metrics in collect_metrics().resource_metrics:
+        for scope_metrics in resource_metrics.scope_metrics:
+            for metric in scope_metrics.metrics:
+                data = getattr(metric, unwrap(metric.WhichOneof("data")))
+                data_points.setdefault(metric.name, []).extend(data.data_points)
+    return data_points
 
 
-def collect_metrics(reader: InMemoryMetricReader) -> dict[str, Metric]:
-    metrics_data = reader.get_metrics_data()
-    if metrics_data is None:
-        return {}
-    return {
-        metric.name: metric
-        for resource_metrics in metrics_data.resource_metrics
-        for scope_metrics in resource_metrics.scope_metrics
-        for metric in scope_metrics.metrics
-    }
+def duration_data_points() -> list[ExponentialHistogramDataPoint]:
+    return collect_data_points().get("http.server.request.duration", [])
 
 
-def metric_data_points(reader: InMemoryMetricReader, name: str) -> list[DataPointT]:
-    metric = collect_metrics(reader).get(name)
-    return list(metric.data.data_points) if metric is not None else []
-
-
-def duration_data_points(reader: InMemoryMetricReader) -> list[ExponentialHistogramDataPoint]:
-    points = metric_data_points(reader, "http.server.request.duration")
-    return [point for point in points if isinstance(point, ExponentialHistogramDataPoint)]
+def point_attributes(point: Any) -> dict[str, Any]:
+    return {kv.key: getattr(kv.value, unwrap(kv.value.WhichOneof("value"))) for kv in point.attributes}
 
 
 def exported_spans(exporters: InMemoryExporters, kind: SpanKind | None = None) -> list[ReadableSpan]:

@@ -26,12 +26,12 @@ from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
     TrustedProxyASGIMiddleware,
-    attach_metric_reader,
     attach_stale_server_span,
     duration_data_points,
     exported_error_records,
     exported_log_records,
     exported_spans,
+    point_attributes,
     unwrap,
 )
 
@@ -84,8 +84,8 @@ def test_request_flow_span_histogram_and_startup_event(
     assert not activation.is_activated()
     with TestClient(app) as client:
         assert activation.is_activated()
-        reader = attach_metric_reader()
         client.get("/items/42")
+        (point,) = duration_data_points()
 
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
@@ -93,9 +93,8 @@ def test_request_flow_span_histogram_and_startup_event(
     assert unwrap(span.attributes)["http.route"] == "/items/{item_id}"
     assert unwrap(span.attributes)["http.response.status_code"] == 200
 
-    (point,) = duration_data_points(reader)
-    assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
-    assert unwrap(point.attributes)["http.request.method"] == "GET"
+    assert point_attributes(point)["http.route"] == "/items/{item_id}"
+    assert point_attributes(point)["http.request.method"] == "GET"
 
     records = exported_log_records(exporters)
     assert records[0].event_name == startup.EVENT_NAME
@@ -113,14 +112,13 @@ def test_mounted_route_includes_mount_prefix(
 ):
     init(app, monkeypatch)
     with TestClient(app) as client:
-        reader = attach_metric_reader()
         client.get("/admin/users")
+        (point,) = duration_data_points()
 
     (span,) = exported_spans(exporters)
-    (point,) = duration_data_points(reader)
     assert span.name == "GET /admin/users"
     assert unwrap(span.attributes)["http.route"] == "/admin/users"
-    assert unwrap(point.attributes)["http.route"] == "/admin/users"
+    assert point_attributes(point)["http.route"] == "/admin/users"
 
 
 def test_request_body_captured_and_redacted(
@@ -216,8 +214,8 @@ def test_unhandled_exception_recorded_on_server_span(
 ):
     init(app, monkeypatch)
     with TestClient(app, raise_server_exceptions=False) as client:
-        reader = attach_metric_reader()
         response = client.get("/error")
+        (point,) = duration_data_points()
     assert response.status_code == 500
 
     (span,) = exported_spans(exporters)
@@ -226,8 +224,7 @@ def test_unhandled_exception_recorded_on_server_span(
     (event,) = [e for e in span.events if e.name == "exception"]
     assert unwrap(event.attributes)["exception.type"] == "ValueError"
     assert unwrap(event.attributes)["exception.message"] == "boom"
-    (point,) = duration_data_points(reader)
-    assert unwrap(point.attributes)["http.response.status_code"] == 500
+    assert point_attributes(point)["http.response.status_code"] == 500
     (record,) = exported_error_records(exporters)
     assert record.event_name == "apitally.request.server_error"
 
@@ -304,14 +301,13 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
     assert classes.index(ApitallyASGIMiddleware) == classes.index(OpenTelemetryMiddleware) + 1
 
     with TestClient(app) as client:
-        reader = attach_metric_reader()
         client.get("/items/42")
+        (point,) = duration_data_points()
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
     response_body_size = unwrap(span.attributes)["http.response.body.size"]
     assert isinstance(response_body_size, int) and response_body_size > 0
-    (point,) = duration_data_points(reader)
-    assert unwrap(point.attributes)["http.route"] == "/items/{item_id}"
+    assert point_attributes(point)["http.route"] == "/items/{item_id}"
 
 
 def test_pre_instrumented_app_reports_escaping_exception(

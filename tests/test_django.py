@@ -16,7 +16,6 @@ from django.test.client import AsyncClient
 from django.urls import path
 from django.utils.functional import empty
 from opentelemetry.instrumentation.django import DjangoInstrumentor
-from opentelemetry.sdk.metrics.export import ExponentialHistogramDataPoint
 from opentelemetry.trace import SpanKind
 
 import apitally
@@ -27,12 +26,12 @@ from apitally.shared.redaction import REDACTED
 from tests.conftest import (
     WRITE_TOKEN,
     InMemoryExporters,
-    attach_metric_reader,
-    collect_metrics,
+    collect_data_points,
     duration_data_points,
     exported_consumer_updates,
     exported_error_records,
     exported_spans,
+    point_attributes,
     startup_payload,
     unwrap,
 )
@@ -291,21 +290,19 @@ def test_sampled_out_request_skips_capture(exporters: InMemoryExporters, monkeyp
         mask_response_body=mask,
     )
     activate_via_signal()
-    reader = attach_metric_reader()
 
     response = Client().post("/items/", data={"name": "a"}, content_type="application/json")
     assert response.status_code == 201
 
     assert not mask_calls
     assert exported_spans(exporters, kind=SpanKind.SERVER) == []
-    (point,) = duration_data_points(reader)
+    (point,) = duration_data_points()
     assert point.count == 1
 
 
 def test_streaming_response_size_and_body_captured(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch, django_include_class_based_views=True, capture_response_body=True)
     activate_via_signal()
-    reader = attach_metric_reader()
 
     response = Client().get("/stream/")
     assert b"".join(response.streaming_content) == b"chunk1chunk2"  # ty: ignore[unresolved-attribute]
@@ -316,12 +313,11 @@ def test_streaming_response_size_and_body_captured(exporters: InMemoryExporters,
     # after the OTel middleware ended it
     assert span.attributes["http.response.body.size"] == 12
     assert span.attributes["apitally.response.body"] == "chunk1chunk2"
-    # Single collection: the reader's delta temporality clears data points on each collect
-    collected = collect_metrics(reader)
-    (point,) = collected["http.server.request.duration"].data.data_points
-    assert (point.attributes or {})["http.route"] == "/stream/"
-    (size_point,) = collected["http.server.response.body.size"].data.data_points
-    assert isinstance(size_point, ExponentialHistogramDataPoint)
+    # Single collection: each collection only returns data recorded since the previous one
+    collected = collect_data_points()
+    (point,) = collected["http.server.request.duration"]
+    assert point_attributes(point)["http.route"] == "/stream/"
+    (size_point,) = collected["http.server.response.body.size"]
     assert size_point.sum == 12
 
 
@@ -330,7 +326,6 @@ def test_no_response_size_when_client_stops_reading_mid_stream(
 ):
     init(monkeypatch, django_include_class_based_views=True)
     activate_via_signal()
-    reader = attach_metric_reader()
 
     response = Client().get("/stream/")
     assert next(iter(response.streaming_content)) == b"chunk1"  # ty: ignore[unresolved-attribute]
@@ -339,8 +334,8 @@ def test_no_response_size_when_client_stops_reading_mid_stream(
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
     assert "http.response.body.size" not in span.attributes
-    (point,) = duration_data_points(reader)
-    assert (point.attributes or {})["http.route"] == "/stream/"
+    (point,) = duration_data_points()
+    assert point_attributes(point)["http.route"] == "/stream/"
 
 
 def test_span_export_waits_for_streaming_response_with_content_length_to_complete(
@@ -348,7 +343,6 @@ def test_span_export_waits_for_streaming_response_with_content_length_to_complet
 ):
     init(monkeypatch, django_include_class_based_views=True)
     activate_via_signal()
-    reader = attach_metric_reader()
 
     response = Client().get("/stream-sized/")
     assert exported_spans(exporters, kind=SpanKind.SERVER) == []
@@ -358,8 +352,8 @@ def test_span_export_waits_for_streaming_response_with_content_length_to_complet
     assert span.attributes is not None
     # The declared Content-Length remains the reported size
     assert span.attributes["http.response.body.size"] == 12
-    (point,) = duration_data_points(reader)
-    assert (point.attributes or {})["http.route"] == "/stream-sized/"
+    (point,) = duration_data_points()
+    assert point_attributes(point)["http.route"] == "/stream-sized/"
 
 
 @pytest.mark.skipif(django.VERSION < (4, 2), reason="async streaming responses require Django 4.2")
@@ -368,7 +362,6 @@ async def test_span_export_waits_for_async_streaming_response_to_complete(
 ):
     init(monkeypatch, django_include_class_based_views=True, capture_response_body=True)
     activate_via_signal()
-    reader = attach_metric_reader()
 
     response = await AsyncClient().get("/stream-async/")
     assert exported_spans(exporters, kind=SpanKind.SERVER) == []
@@ -379,8 +372,8 @@ async def test_span_export_waits_for_async_streaming_response_to_complete(
     assert span.attributes is not None
     assert span.attributes["http.response.body.size"] == 12
     assert span.attributes["apitally.response.body"] == "chunk1chunk2"
-    (point,) = duration_data_points(reader)
-    assert (point.attributes or {})["http.route"] == "/stream-async/"
+    (point,) = duration_data_points()
+    assert point_attributes(point)["http.route"] == "/stream-async/"
 
 
 async def test_buffered_telemetry_flushed_on_lifespan_shutdown(
@@ -413,28 +406,26 @@ async def test_buffered_telemetry_flushed_on_lifespan_shutdown(
 def test_nested_urlconf_route_includes_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch, django_include_class_based_views=True)
     activate_via_signal()
-    reader = attach_metric_reader()
 
     assert Client().get("/api/things/7/").status_code == 200
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
-    (point,) = duration_data_points(reader)
+    (point,) = duration_data_points()
     assert unwrap(span.attributes)["http.route"] == "/api/things/{pk}/"
-    assert unwrap(point.attributes)["http.route"] == "/api/things/{pk}/"
+    assert point_attributes(point)["http.route"] == "/api/things/{pk}/"
 
 
 def test_set_consumer_reaches_span_and_histogram(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
     init(monkeypatch, django_include_class_based_views=True)
     activate_via_signal()
-    reader = attach_metric_reader()
 
     assert Client().get("/whoami/").status_code == 200
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
     assert span.attributes["apitally.consumer.identifier"] == "tester"
-    (point,) = duration_data_points(reader)
-    assert (point.attributes or {})["apitally.consumer.identifier"] == "tester"
+    (point,) = duration_data_points()
+    assert point_attributes(point)["apitally.consumer.identifier"] == "tester"
 
 
 def test_consumer_update_reported_for_sampled_out_request(
@@ -464,14 +455,13 @@ def test_unhandled_exception_recorded_only_for_included_views(
 ):
     init(monkeypatch, django_include_class_based_views=include_views)
     activate_via_signal()
-    reader = attach_metric_reader()
 
     response = Client(raise_request_exception=False).get("/error/")
     assert response.status_code == 500
 
     if not include_views:
         assert exported_spans(exporters) == []
-        assert not any(name.startswith("http.") for name in collect_metrics(reader))
+        assert not any(name.startswith("http.") for name in collect_data_points())
         assert exported_error_records(exporters) == []
         return
 
@@ -481,9 +471,9 @@ def test_unhandled_exception_recorded_only_for_included_views(
     (event,) = [e for e in span.events if e.name == "exception"]
     assert event.attributes is not None
     assert event.attributes["exception.type"] == "ValueError"
-    (point,) = duration_data_points(reader)
-    assert (point.attributes or {})["http.response.status_code"] == 500
-    assert (point.attributes or {})["error.type"] == "500"
+    (point,) = duration_data_points()
+    assert point_attributes(point)["http.response.status_code"] == 500
+    assert point_attributes(point)["error.type"] == "500"
     (record,) = exported_error_records(exporters)
     assert record.event_name == "apitally.request.server_error"
 
@@ -523,7 +513,6 @@ def test_django_view_request_tracking_requires_explicit_inclusion(
 ):
     init(monkeypatch, django_include_class_based_views=include_views)
     activate_via_signal()
-    reader = attach_metric_reader()
 
     response = Client().get(path)
     assert response.status_code == 200
@@ -531,13 +520,13 @@ def test_django_view_request_tracking_requires_explicit_inclusion(
 
     if not include_views:
         assert exported_spans(exporters) == []
-        assert not any(name.startswith("http.") for name in collect_metrics(reader))
+        assert not any(name.startswith("http.") for name in collect_data_points())
         return
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert unwrap(span.attributes)["http.route"] == path
-    (point,) = duration_data_points(reader)
-    assert unwrap(point.attributes)["http.route"] == path
+    (point,) = duration_data_points()
+    assert point_attributes(point)["http.route"] == path
     assert point.count == 1
 
 
@@ -556,14 +545,13 @@ def test_unmatched_request_has_no_route_and_no_histogram_point(
 ):
     init(monkeypatch)
     activate_via_signal()
-    reader = attach_metric_reader()
 
     assert Client().get("/nonexistent/").status_code == 404
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert unwrap(span.attributes)["http.response.status_code"] == 404
     assert "http.route" not in unwrap(span.attributes)
-    assert duration_data_points(reader) == []
+    assert duration_data_points() == []
 
 
 def test_django_include_class_based_views_adds_paths(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

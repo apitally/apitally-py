@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
-from opentelemetry.sdk.metrics.export import ExponentialHistogram, InMemoryMetricReader
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler, TraceIdRatioBased
 from opentelemetry.trace import SpanKind, Tracer
@@ -18,10 +18,10 @@ from apitally.shared.consumers import set_consumer
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
     WRITE_TOKEN,
-    collect_metrics,
     consumer_update_bodies,
     create_trace_pipeline,
-    setup_metric_reader,
+    duration_data_points,
+    point_attributes,
 )
 
 
@@ -35,10 +35,8 @@ def reset_config() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def metric_reader() -> Iterator[InMemoryMetricReader]:
-    reader = setup_metric_reader()
-    yield reader
-    metrics.reset()
+def setup_metrics() -> None:
+    metrics.setup(Resource.create({}))
 
 
 def header_values(span: ReadableSpan, key: str) -> tuple[str, ...]:
@@ -337,17 +335,15 @@ async def test_size_backfill_and_chunked_response_counter():
     assert span.attributes["http.response.body.size"] == 5
 
 
-async def test_histogram_records_once_with_consumer(metric_reader: InMemoryMetricReader):
+async def test_histogram_records_once_with_consumer():
     set_config(write_token=WRITE_TOKEN)
     tracer, _ = create_trace_pipeline()
     app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
     await send_request(tracer, app, method="GET", route="/items/{id}")
 
-    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    (point,) = duration_metric.data.data_points
+    (point,) = duration_data_points()
     assert point.count == 1
-    assert dict(point.attributes or {}) == {
+    assert point_attributes(point) == {
         "http.request.method": "GET",
         "http.route": "/items/{id}",
         "http.response.status_code": 200,
@@ -364,22 +360,18 @@ async def test_histogram_records_once_with_consumer(metric_reader: InMemoryMetri
         pytest.param({"sample_on_response": lambda span: False}, ALWAYS_ON, id="response-stage-drop"),
     ],
 )
-async def test_dropped_request_still_records_metrics(
-    metric_reader: InMemoryMetricReader, config_kwargs: dict[str, Any], sampler: Sampler
-):
+async def test_dropped_request_still_records_metrics(config_kwargs: dict[str, Any], sampler: Sampler):
     set_config(write_token=WRITE_TOKEN, **config_kwargs)
     tracer, exporter = create_trace_pipeline(sampler=sampler)
     app = EchoApp(on_request=lambda: set_consumer("tenant-1"))
     await send_request(tracer, app, method="GET")
 
     assert exporter.get_finished_spans() == ()
-    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    (point,) = duration_metric.data.data_points
-    assert (point.attributes or {})["apitally.consumer.identifier"] == "tenant-1"
+    (point,) = duration_data_points()
+    assert point_attributes(point)["apitally.consumer.identifier"] == "tenant-1"
 
 
-async def test_consumer_set_in_copied_context_still_reaches_metrics(metric_reader: InMemoryMetricReader):
+async def test_consumer_set_in_copied_context_still_reaches_metrics():
     set_config(write_token=WRITE_TOKEN, sample_rate=0.0)
     tracer, exporter = create_trace_pipeline()
 
@@ -391,14 +383,12 @@ async def test_consumer_set_in_copied_context_still_reaches_metrics(metric_reade
     await send_request(tracer, app, method="GET")
 
     assert exporter.get_finished_spans() == ()
-    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    (point,) = duration_metric.data.data_points
-    assert (point.attributes or {})["apitally.consumer.identifier"] == "tenant-1"
+    (point,) = duration_data_points()
+    assert point_attributes(point)["apitally.consumer.identifier"] == "tenant-1"
 
 
 async def test_consumer_set_in_outer_middleware_reaches_span_and_metrics(
-    metric_reader: InMemoryMetricReader, consumer_update_exporter: InMemoryLogRecordExporter
+    consumer_update_exporter: InMemoryLogRecordExporter,
 ):
     set_config(write_token=WRITE_TOKEN)
     tracer, exporter = create_trace_pipeline()
@@ -433,9 +423,7 @@ async def test_consumer_set_in_outer_middleware_reaches_span_and_metrics(
         {"identifier": "tenant-1", "name": "Tenant", "group": "tenants"},
         {"identifier": "tenant-2", "name": "Tenant", "group": "tenants"},
     ]
-    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    consumers = {(p.attributes or {}).get("apitally.consumer.identifier") for p in duration_metric.data.data_points}
+    consumers = {point_attributes(point).get("apitally.consumer.identifier") for point in duration_data_points()}
     assert consumers == {"tenant-1", "tenant-2"}
 
 
@@ -448,19 +436,17 @@ async def test_consumer_update_reported_for_sampled_out_request(consumer_update_
     assert consumer_update_bodies(consumer_update_exporter) == [{"identifier": "tenant-1", "name": "Tenant"}]
 
 
-async def test_consumer_not_carried_over_to_next_request_in_same_context(metric_reader: InMemoryMetricReader):
+async def test_consumer_not_carried_over_to_next_request_in_same_context():
     set_config(write_token=WRITE_TOKEN)
     tracer, _ = create_trace_pipeline()
     await send_request(tracer, EchoApp(on_request=lambda: set_consumer("tenant-1")), method="GET")
     await send_request(tracer, EchoApp(), method="GET")
 
-    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    consumers = {(p.attributes or {}).get("apitally.consumer.identifier") for p in duration_metric.data.data_points}
+    consumers = {point_attributes(point).get("apitally.consumer.identifier") for point in duration_data_points()}
     assert consumers == {"tenant-1", None}
 
 
-async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricReader):
+async def test_sampled_out_request_skips_capture():
     mask_calls: list[bytes] = []
 
     def mask(span: ReadableSpan, body: bytes) -> bytes:
@@ -484,9 +470,7 @@ async def test_sampled_out_request_skips_capture(metric_reader: InMemoryMetricRe
 
     assert not mask_calls
     assert exporter.get_finished_spans() == ()
-    duration_metric = collect_metrics(metric_reader)["http.server.request.duration"]
-    assert isinstance(duration_metric.data, ExponentialHistogram)
-    (point,) = duration_metric.data.data_points
+    (point,) = duration_data_points()
     assert point.count == 1
 
 
