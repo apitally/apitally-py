@@ -44,12 +44,19 @@ class ServerErrorKey:
     path: str
     type: str
     message: str
+    stacktrace_fingerprint: tuple[Any, ...]
+
+
+@dataclass(slots=True)
+class ServerErrorAggregate:
     stacktrace: str
+    count: int = 1
+    sentry_event_id: str | None = None
 
 
 exception_holder_var: ContextVar[ExceptionHolder | None] = ContextVar("apitally_exception_holder", default=None)
 server_error_lock = threading.Lock()
-server_error_aggregates: dict[ServerErrorKey, tuple[int, str | None]] = {}
+server_error_aggregates: dict[ServerErrorKey, ServerErrorAggregate] = {}
 
 
 def init_exception_holder() -> ExceptionHolder:
@@ -88,7 +95,7 @@ def set_sentry_event_id(event_id: str, exception: BaseException | None = None) -
         with server_error_lock:
             aggregate = server_error_aggregates.get(holder.server_error_key)
             if aggregate is not None:
-                server_error_aggregates[holder.server_error_key] = (aggregate[0], event_id)
+                aggregate.sentry_event_id = event_id
 
 
 def collapse_exception_group(exception: BaseException) -> BaseException:
@@ -115,18 +122,19 @@ def add_server_error(
         path=path,
         type=format_exception_type(exception),
         message=format_exception_message(exception),
-        stacktrace=format_exception_stacktrace(exception),
+        stacktrace_fingerprint=get_stacktrace_fingerprint(exception),
     )
     with server_error_lock:
         aggregate = server_error_aggregates.get(key)
         if aggregate is not None:
-            count, sentry_event_id = aggregate
-            server_error_aggregates[key] = (
-                count + 1,
-                exception_holder.sentry_event_id or sentry_event_id,
-            )
+            aggregate.count += 1
+            aggregate.sentry_event_id = exception_holder.sentry_event_id or aggregate.sentry_event_id
         elif len(server_error_aggregates) < MAX_GROUPS:
-            server_error_aggregates[key] = (1, exception_holder.sentry_event_id)
+            # Formatting is expensive, so it only happens once per group
+            server_error_aggregates[key] = ServerErrorAggregate(
+                stacktrace=format_exception_stacktrace(exception),
+                sentry_event_id=exception_holder.sentry_event_id,
+            )
         else:
             return
         exception_holder.server_error_key = key
@@ -138,19 +146,19 @@ def drain_server_errors() -> list[dict[str, Any]]:
         aggregates = server_error_aggregates
         server_error_aggregates = {}
     events = []
-    for error, (count, sentry_event_id) in aggregates.items():
+    for error, aggregate in aggregates.items():
         body: dict[str, Any] = {
             "method": error.method,
             "path": error.path,
             "type": error.type,
             "message": error.message,
-            "stacktrace": error.stacktrace,
-            "count": min(count, MAX_COUNT),
+            "stacktrace": aggregate.stacktrace,
+            "count": min(aggregate.count, MAX_COUNT),
         }
         if error.consumer is not None:
             body["consumer"] = error.consumer
-        if sentry_event_id is not None:
-            body["sentry_event_id"] = sentry_event_id
+        if aggregate.sentry_event_id is not None:
+            body["sentry_event_id"] = aggregate.sentry_event_id
         events.append(body)
     return events
 
@@ -173,6 +181,22 @@ def format_exception_message(exception: BaseException) -> str:
         return message
     cutoff = MAX_EXCEPTION_MESSAGE_LENGTH - len(MESSAGE_TRUNCATION_SUFFIX)
     return message[:cutoff] + MESSAGE_TRUNCATION_SUFFIX
+
+
+def get_stacktrace_fingerprint(exception: BaseException | None) -> tuple[Any, ...]:
+    # Follows the same exception chain as traceback.format_exception
+    fingerprint: list[Any] = []
+    seen: set[int] = set()
+    while exception is not None and id(exception) not in seen:
+        seen.add(id(exception))
+        fingerprint.append(type(exception))
+        traceback_entry = exception.__traceback__
+        while traceback_entry is not None:
+            code = traceback_entry.tb_frame.f_code
+            fingerprint.append((code.co_filename, code.co_name, traceback_entry.tb_lineno))
+            traceback_entry = traceback_entry.tb_next
+        exception = exception.__cause__ or (None if exception.__suppress_context__ else exception.__context__)
+    return tuple(fingerprint)
 
 
 def format_exception_stacktrace(exception: BaseException) -> str:

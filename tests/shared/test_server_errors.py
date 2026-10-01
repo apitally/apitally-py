@@ -28,6 +28,25 @@ def test_server_errors_are_collapsed_aggregated_and_enriched() -> None:
     }
 
 
+def test_server_errors_from_different_call_sites_are_grouped_separately() -> None:
+    def raise_from_first_line() -> None:
+        raise RuntimeError("boom")
+
+    def raise_from_second_line() -> None:
+        raise RuntimeError("boom")
+
+    for raise_error in (raise_from_first_line, raise_from_second_line, raise_from_first_line):
+        try:
+            raise_error()
+        except RuntimeError as exception:
+            server_errors.add_server_error(None, "GET", "/items", ExceptionHolder(exception))
+
+    events = sorted(server_errors.drain_server_errors(), key=lambda event: event["count"])
+    assert [event["count"] for event in events] == [1, 2]
+    assert "raise_from_second_line" in events[0]["stacktrace"]
+    assert "raise_from_first_line" in events[1]["stacktrace"]
+
+
 def test_server_error_requires_exception_route_and_non_options_method() -> None:
     holder = ExceptionHolder(RuntimeError("boom"))
     server_errors.add_server_error(None, "OPTIONS", "/items", holder)
