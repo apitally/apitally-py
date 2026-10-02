@@ -192,7 +192,7 @@ def test_validation_error_uses_litestar_source_and_opaque_key(
     assert body["field"] == "data"
     assert body["message"]
     assert body["type"] == ""
-    assert body["count"] == 1
+    assert body["counts"] == [{"count": 1}]
 
 
 def test_route_includes_router_path_prefix(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

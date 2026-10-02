@@ -12,9 +12,9 @@ def test_validation_errors_are_recorded_aggregated_and_drained() -> None:
         b'{"loc":["querystring","page"],"msg":"invalid","type":"int_parsing"}'
         b"]}"
     )
-    for _ in range(2):
+    for consumer in ("consumer", "consumer", None):
         validation_errors.record_validation_response(
-            "consumer",
+            consumer,
             "post",
             "/items",
             body,
@@ -25,24 +25,22 @@ def test_validation_errors_are_recorded_aggregated_and_drained() -> None:
 
     assert validation_errors.drain_validation_errors() == [
         {
-            "consumer": "consumer",
             "method": "POST",
             "path": "/items",
             "source": "body",
             "field": "user.0.email",
             "message": "required",
             "type": "missing",
-            "count": 2,
+            "counts": [{"consumer": "consumer", "count": 2}, {"count": 1}],
         },
         {
-            "consumer": "consumer",
             "method": "POST",
             "path": "/items",
             "source": "query",
             "field": "page",
             "message": "invalid",
             "type": "int_parsing",
-            "count": 2,
+            "counts": [{"consumer": "consumer", "count": 2}, {"count": 1}],
         },
     ]
 
@@ -73,7 +71,7 @@ def test_validation_response_rejects_ineligible_or_unreadable_body() -> None:
     assert validation_errors.drain_validation_errors() == []
 
 
-def test_validation_error_groups_and_fields_are_bounded() -> None:
+def test_distinct_validation_errors_and_fields_are_bounded() -> None:
     prefix = "é"
     long_error = ValidationError(prefix * 33, prefix * 2_049, prefix * 2_049, prefix * 129)
     validation_errors.add_validation_errors(None, "POST", "/items", [long_error])
@@ -83,7 +81,17 @@ def test_validation_error_groups_and_fields_are_bounded() -> None:
     assert len(body["message"]) == validation_errors.MAX_MESSAGE_LENGTH
     assert len(body["type"]) == validation_errors.MAX_TYPE_LENGTH
 
-    for index in range(validation_errors.MAX_GROUPS + 1):
+    for index in range(validation_errors.MAX_ERRORS + 1):
         error = ValidationError("query", str(index), "invalid", "")
         validation_errors.add_validation_errors(None, "GET", "/items", [error])
-    assert len(validation_errors.drain_validation_errors()) == validation_errors.MAX_GROUPS
+    consumers = [f"consumer-{index}" for index in range(validation_errors.MAX_ERRORS + 1)]
+    for consumer in consumers:
+        error = ValidationError("query", "0", "invalid", "")
+        validation_errors.add_validation_errors(consumer, "GET", "/items", [error])
+
+    events = validation_errors.drain_validation_errors()
+    assert len(events) == validation_errors.MAX_ERRORS
+    assert next(event for event in events if event["field"] == "0")["counts"] == [
+        {"count": 1},
+        *({"consumer": consumer, "count": 1} for consumer in consumers),
+    ]

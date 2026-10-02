@@ -4,7 +4,7 @@ import sys
 import threading
 import traceback
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -19,11 +19,10 @@ else:  # pragma: no cover
         exception_group_types = ()
 
 EVENT_NAME = "apitally.request.server_error"
-MAX_GROUPS = 100
+MAX_ERRORS = 100
 MAX_EXCEPTION_TYPE_LENGTH = 256
 MAX_EXCEPTION_MESSAGE_LENGTH = 2_048
 MAX_STACKTRACE_LENGTH = 65_536
-MAX_COUNT = 2**32 - 1
 MESSAGE_TRUNCATION_SUFFIX = "... (truncated)"
 STACKTRACE_TRUNCATION_PREFIX = "... (truncated) ...\n"
 
@@ -39,7 +38,6 @@ class ExceptionHolder:
 
 @dataclass(frozen=True, slots=True)
 class ServerErrorKey:
-    consumer: str | None
     method: str
     path: str
     type: str
@@ -50,7 +48,7 @@ class ServerErrorKey:
 @dataclass(slots=True)
 class ServerErrorAggregate:
     stacktrace: str
-    count: int = 1
+    counts: dict[str | None, int] = field(default_factory=dict)
     sentry_event_id: str | None = None
 
 
@@ -117,7 +115,6 @@ def add_server_error(
         return
     exception = exception_holder.exception
     key = ServerErrorKey(
-        consumer=consumer,
         method=method,
         path=path,
         type=format_exception_type(exception),
@@ -126,17 +123,15 @@ def add_server_error(
     )
     with server_error_lock:
         aggregate = server_error_aggregates.get(key)
-        if aggregate is not None:
-            aggregate.count += 1
-            aggregate.sentry_event_id = exception_holder.sentry_event_id or aggregate.sentry_event_id
-        elif len(server_error_aggregates) < MAX_GROUPS:
-            # Formatting is expensive, so it only happens once per group
-            server_error_aggregates[key] = ServerErrorAggregate(
-                stacktrace=format_exception_stacktrace(exception),
-                sentry_event_id=exception_holder.sentry_event_id,
+        if aggregate is None:
+            if len(server_error_aggregates) >= MAX_ERRORS:
+                return
+            # Formatting is expensive, so it only happens once per error
+            aggregate = server_error_aggregates[key] = ServerErrorAggregate(
+                stacktrace=format_exception_stacktrace(exception)
             )
-        else:
-            return
+        aggregate.counts[consumer] = aggregate.counts.get(consumer, 0) + 1
+        aggregate.sentry_event_id = exception_holder.sentry_event_id or aggregate.sentry_event_id
         exception_holder.server_error_key = key
 
 
@@ -153,10 +148,11 @@ def drain_server_errors() -> list[dict[str, Any]]:
             "type": error.type,
             "message": error.message,
             "stacktrace": aggregate.stacktrace,
-            "count": min(aggregate.count, MAX_COUNT),
+            "counts": [
+                {"count": count} if consumer is None else {"consumer": consumer, "count": count}
+                for consumer, count in aggregate.counts.items()
+            ],
         }
-        if error.consumer is not None:
-            body["consumer"] = error.consumer
         if aggregate.sentry_event_id is not None:
             body["sentry_event_id"] = aggregate.sentry_event_id
         events.append(body)
