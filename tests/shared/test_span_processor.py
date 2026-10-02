@@ -312,17 +312,6 @@ def test_finish_export_without_attributes_releases_span(
     assert "http.response.body.size" not in unwrap(span.attributes)
 
 
-def test_shutdown_exports_held_spans(
-    tracer: Tracer, processor: ApitallySpanProcessor, span_exporter: InMemorySpanExporter
-):
-    with tracer.start_as_current_span("GET /stream", kind=SpanKind.SERVER) as server:
-        processor.defer_export(server.get_span_context().span_id)
-    assert span_exporter.get_finished_spans() == ()
-    processor.shutdown()
-    (span,) = span_exporter.get_finished_spans()
-    assert span.name == "GET /stream"
-
-
 def test_shutdown_flushes_queued_spans(span_exporter: InMemorySpanExporter):
     processor = ApitallySpanProcessor(BatchSpanProcessor(span_exporter))
     provider = TracerProvider(sampler=ALWAYS_ON)

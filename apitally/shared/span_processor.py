@@ -275,9 +275,7 @@ class ApitallySpanProcessor(SpanProcessor):
         return entry[1] if entry else None
 
     def shutdown(self) -> None:
-        # Held spans only miss late attributes; export them as they are
-        for span_id in list(self.held):
-            self.finish_export(span_id)
+        self.held.clear()
         self.deferred.clear()
         # Pending requests' SERVER spans can never export after shutdown, so their telemetry is unreachable
         self.pending.clear()
