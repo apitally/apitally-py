@@ -14,21 +14,21 @@ def test_server_errors_are_collapsed_aggregated_and_enriched() -> None:
     server_errors.add_server_error("consumer", "get", "/items", holder)
     server_errors.set_sentry_event_id("event-id")
     server_errors.add_server_error("consumer", "GET", "/items", holder)
+    server_errors.add_server_error(None, "GET", "/items", holder)
 
     (body,) = server_errors.drain_server_errors()
     assert body == {
-        "consumer": "consumer",
         "method": "GET",
         "path": "/items",
         "type": "builtins.ValueError",
         "message": "boom",
         "stacktrace": "ValueError: boom",
-        "count": 2,
+        "counts": [{"consumer": "consumer", "count": 2}, {"count": 1}],
         "sentry_event_id": "event-id",
     }
 
 
-def test_server_errors_from_different_call_sites_are_grouped_separately() -> None:
+def test_server_errors_from_different_call_sites_are_counted_separately() -> None:
     def raise_error(use_second_line: bool) -> None:
         if not use_second_line:
             raise RuntimeError("boom")
@@ -41,7 +41,7 @@ def test_server_errors_from_different_call_sites_are_grouped_separately() -> Non
             server_errors.add_server_error(None, "GET", "/items", ExceptionHolder(exception))
 
     events = server_errors.drain_server_errors()
-    assert sorted(event["count"] for event in events) == [1, 2]
+    assert sorted(event["counts"][0]["count"] for event in events) == [1, 2]
     assert len({event["stacktrace"] for event in events}) == 2
 
 
@@ -86,18 +86,23 @@ def test_concurrent_server_error_add_and_drain_preserves_count() -> None:
     start.set()
     count = 0
     while any(thread.is_alive() for thread in threads):
-        count += sum(event["count"] for event in server_errors.drain_server_errors())
+        count += sum(event["counts"][0]["count"] for event in server_errors.drain_server_errors())
     for thread in threads:
         thread.join()
-    count += sum(event["count"] for event in server_errors.drain_server_errors())
+    count += sum(event["counts"][0]["count"] for event in server_errors.drain_server_errors())
     assert count == 4_000
 
 
-def test_server_error_groups_are_bounded() -> None:
-    for index in range(server_errors.MAX_GROUPS + 1):
+def test_distinct_server_errors_are_bounded() -> None:
+    for index in range(server_errors.MAX_ERRORS + 1):
         server_errors.add_server_error(None, "GET", "/items", ExceptionHolder(RuntimeError(str(index))))
-    server_errors.add_server_error(None, "GET", "/items", ExceptionHolder(RuntimeError("0")))
+    consumers = [f"consumer-{index}" for index in range(server_errors.MAX_ERRORS + 1)]
+    for consumer in consumers:
+        server_errors.add_server_error(consumer, "GET", "/items", ExceptionHolder(RuntimeError("0")))
 
     events = server_errors.drain_server_errors()
-    assert len(events) == server_errors.MAX_GROUPS
-    assert next(event for event in events if event["message"] == "0")["count"] == 2
+    assert len(events) == server_errors.MAX_ERRORS
+    assert next(event for event in events if event["message"] == "0")["counts"] == [
+        {"count": 1},
+        *({"consumer": consumer, "count": 1} for consumer in consumers),
+    ]

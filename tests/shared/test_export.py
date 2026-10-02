@@ -605,6 +605,8 @@ def test_end_to_end_structured_errors_have_no_trace_context(
     assert validation_body["path"].string_value == "/items/{item_id}"
     assert validation_body["source"].string_value == "path"
     assert validation_body["field"].string_value == "item_id"
+    (count_entry,) = validation_body["counts"].array_value.values
+    assert [(entry.key, entry.value.int_value) for entry in count_entry.kvlist_value.values] == [("count", 1)]
     server_body = {entry.key: entry.value for entry in error_records[server_errors.EVENT_NAME].body.kvlist_value.values}
     assert server_body["path"].string_value == "/error"
     assert server_body["message"].string_value == "boom"

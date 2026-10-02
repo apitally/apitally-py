@@ -363,7 +363,7 @@ def test_unhandled_exception_recorded_on_server_span(
     assert record.event_name == "apitally.request.server_error"
     body: Any = record.body
     assert isinstance(body, dict)
-    assert body["count"] == 1
+    assert body["counts"] == [{"count": 1}]
 
 
 def test_pre_instrumented_app_adapts_without_duplicate_spans(

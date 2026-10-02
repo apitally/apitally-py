@@ -4,7 +4,7 @@ import gzip
 import json
 import threading
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from typing import Any
 
@@ -12,12 +12,11 @@ from apitally.shared.config import MAX_BODY_SIZE
 
 
 EVENT_NAME = "apitally.request.validation_error"
-MAX_GROUPS = 100
+MAX_ERRORS = 100
 MAX_SOURCE_LENGTH = 32
 MAX_FIELD_LENGTH = 2_048
 MAX_MESSAGE_LENGTH = 2_048
 MAX_TYPE_LENGTH = 128
-MAX_COUNT = 2**32 - 1
 
 SOURCE_ALIASES = {
     "body": "body",
@@ -43,7 +42,6 @@ class ValidationError:
 
 @dataclass(frozen=True, slots=True)
 class ValidationErrorKey:
-    consumer: str | None
     method: str
     path: str
     source: str
@@ -52,8 +50,13 @@ class ValidationErrorKey:
     type: str
 
 
+@dataclass(slots=True)
+class ValidationErrorAggregate:
+    counts: dict[str | None, int] = field(default_factory=dict)
+
+
 validation_error_lock = threading.Lock()
-validation_error_counts: dict[ValidationErrorKey, int] = {}
+validation_error_aggregates: dict[ValidationErrorKey, ValidationErrorAggregate] = {}
 
 
 def add_validation_errors(
@@ -66,7 +69,6 @@ def add_validation_errors(
     with validation_error_lock:
         for error in validation_errors:
             key = ValidationErrorKey(
-                consumer=consumer,
                 method=method,
                 path=path,
                 source=error.source[:MAX_SOURCE_LENGTH],
@@ -74,10 +76,12 @@ def add_validation_errors(
                 message=error.message[:MAX_MESSAGE_LENGTH],
                 type=error.type[:MAX_TYPE_LENGTH],
             )
-            if key in validation_error_counts:
-                validation_error_counts[key] += 1
-            elif len(validation_error_counts) < MAX_GROUPS:
-                validation_error_counts[key] = 1
+            aggregate = validation_error_aggregates.get(key)
+            if aggregate is None:
+                if len(validation_error_aggregates) >= MAX_ERRORS:
+                    continue
+                aggregate = validation_error_aggregates[key] = ValidationErrorAggregate()
+            aggregate.counts[consumer] = aggregate.counts.get(consumer, 0) + 1
 
 
 def record_validation_response(
@@ -97,12 +101,12 @@ def record_validation_response(
 
 
 def drain_validation_errors() -> list[dict[str, Any]]:
-    global validation_error_counts
+    global validation_error_aggregates
     with validation_error_lock:
-        counts = validation_error_counts
-        validation_error_counts = {}
+        aggregates = validation_error_aggregates
+        validation_error_aggregates = {}
     events = []
-    for error, count in counts.items():
+    for error, aggregate in aggregates.items():
         body: dict[str, Any] = {
             "method": error.method,
             "path": error.path,
@@ -110,17 +114,18 @@ def drain_validation_errors() -> list[dict[str, Any]]:
             "field": error.field,
             "message": error.message,
             "type": error.type,
-            "count": min(count, MAX_COUNT),
+            "counts": [
+                {"count": count} if consumer is None else {"consumer": consumer, "count": count}
+                for consumer, count in aggregate.counts.items()
+            ],
         }
-        if error.consumer is not None:
-            body["consumer"] = error.consumer
         events.append(body)
     return events
 
 
 def reset() -> None:
-    global validation_error_counts, validation_error_lock
-    validation_error_counts = {}
+    global validation_error_aggregates, validation_error_lock
+    validation_error_aggregates = {}
     validation_error_lock = threading.Lock()
 
 

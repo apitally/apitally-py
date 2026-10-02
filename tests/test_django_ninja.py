@@ -80,4 +80,4 @@ def test_validation_error_uses_path_source_and_route(exporters: InMemoryExporter
     assert body["path"] == "/api/foo/{bar}"
     assert body["source"] == "path"
     assert body["field"] == "bar"
-    assert body["count"] == 1
+    assert body["counts"] == [{"count": 1}]

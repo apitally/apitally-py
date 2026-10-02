@@ -292,7 +292,7 @@ def test_validation_error_reported_without_request_trace(
     assert body["path"] == "/items/{item_id}"
     assert body["source"] == "path"
     assert body["field"] == "item_id"
-    assert body["count"] == 1
+    assert body["counts"] == [{"count": 1}]
 
 
 def test_unhandled_exception_with_http_middleware_recorded_unwrapped(
