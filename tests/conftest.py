@@ -11,6 +11,7 @@ import pytest
 from opentelemetry import context as otel_context
 from opentelemetry import trace
 from opentelemetry._logs import LogRecord
+from opentelemetry.context import Context
 from opentelemetry.instrumentation._semconv import _OpenTelemetrySemanticConventionStability
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
 from opentelemetry.proto.metrics.v1.metrics_pb2 import ExponentialHistogramDataPoint
@@ -19,9 +20,9 @@ from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogR
 from opentelemetry.sdk.trace import ReadableSpan, Span, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler
+from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler, TraceIdRatioBased
 from opentelemetry.test.globals_test import reset_trace_globals
-from opentelemetry.trace import SpanKind, Tracer
+from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, Tracer
 
 from apitally.shared import (
     activation,
@@ -44,6 +45,7 @@ from apitally.shared.spool import Spool, SpoolFile
 WRITE_TOKEN = "apt_" + "a" * 24
 INSTANCE_ID = "apitally-instance"
 CONTRIB_SCOPE = "opentelemetry.instrumentation.test"
+BOUND_HALF = TraceIdRatioBased.get_bound_for_rate(0.5)
 
 
 def installed(*modules: str) -> bool:
@@ -76,6 +78,11 @@ def read_spool_payload(file: SpoolFile) -> bytes:
     """Decompressed concatenation of the OTLP payloads appended to a spool file."""
     file.sink.seek(0)
     return gzip.decompress(file.sink.read())
+
+
+def remote_parent_context(trace_id: int) -> Context:
+    remote = SpanContext(trace_id=trace_id, span_id=1, is_remote=True)
+    return trace.set_span_in_context(NonRecordingSpan(remote))
 
 
 def attach_stale_server_span() -> tuple[Span, Any]:

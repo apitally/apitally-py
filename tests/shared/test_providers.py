@@ -10,14 +10,28 @@ from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogR
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.test.globals_test import reset_trace_globals
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared import activation, export, providers
 from apitally.shared import metrics as apitally_metrics
 from apitally.shared.config import set_config
-from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, StubOTLPServer, unwrap
+from apitally.shared.context import is_server_span_kept
+from apitally.shared.span_processor import ApitallySpanProcessor
+from tests.conftest import (
+    BOUND_HALF,
+    CONTRIB_SCOPE,
+    WRITE_TOKEN,
+    StubOTLPServer,
+    remote_parent_context,
+    unwrap,
+)
+
+
+def create_own_tracer(exporter: InMemorySpanExporter) -> Tracer:
+    span_processor = ApitallySpanProcessor(SimpleSpanProcessor(exporter))
+    provider = providers.setup_tracer_provider(providers.create_resource("dev"), span_processor)
+    return provider.get_tracer(CONTRIB_SCOPE)
 
 
 def test_user_tracer_provider_detection():
@@ -44,7 +58,6 @@ def test_setup_own_tracer_provider(monkeypatch: pytest.MonkeyPatch):
     provider = providers.setup_tracer_provider(resource, SimpleSpanProcessor(exporter))
 
     assert trace.get_tracer_provider() is provider
-    assert provider.sampler is ALWAYS_ON
 
     with trace.get_tracer("test").start_as_current_span("span") as span:
         span.set_attribute("body", "x" * 70_000)
@@ -59,6 +72,36 @@ def test_setup_own_tracer_provider(monkeypatch: pytest.MonkeyPatch):
     assert attributes["telemetry.distro.name"] == "apitally-py"
     assert attributes["telemetry.distro.version"]
     assert attributes["service.name"] == "test-service"
+
+
+def test_own_tracer_provider_does_not_record_requests_sampled_out_by_sample_rate():
+    set_config(write_token=WRITE_TOKEN, sample_rate=0.5)
+    exporter = InMemorySpanExporter()
+    tracer = create_own_tracer(exporter)
+
+    with tracer.start_as_current_span("GET /kept", kind=SpanKind.SERVER, context=remote_parent_context(BOUND_HALF - 1)):
+        pass
+    with tracer.start_as_current_span(
+        "GET /dropped", kind=SpanKind.SERVER, context=remote_parent_context(BOUND_HALF)
+    ) as server:
+        with tracer.start_as_current_span("child") as child:
+            assert not server.is_recording()
+            assert not child.is_recording()
+        # The kept request's handles must not leak into this request
+        assert not is_server_span_kept()
+
+    assert [span.name for span in exporter.get_finished_spans()] == ["GET /kept"]
+
+
+def test_own_tracer_provider_records_every_request_with_sample_on_request():
+    set_config(write_token=WRITE_TOKEN, sample_rate=0.0, sample_on_request=lambda span: True)
+    exporter = InMemorySpanExporter()
+    tracer = create_own_tracer(exporter)
+
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        pass
+
+    assert len(exporter.get_finished_spans()) == 1
 
 
 def test_attach_to_user_tracer_provider():

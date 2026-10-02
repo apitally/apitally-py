@@ -1,27 +1,17 @@
 import contextvars
 
 import pytest
-from opentelemetry import trace
-from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, TraceIdRatioBased
-from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, TraceFlags, Tracer
+from opentelemetry.trace import SpanKind, Tracer
 
 from apitally.shared.config import set_config
 from apitally.shared.consumers import get_consumer_identifier, reset_consumer, set_consumer
 from apitally.shared.context import get_server_span, is_server_span_kept
 from apitally.shared.span_processor import MAX_BUFFERED_SPANS, ApitallySpanProcessor
-from tests.conftest import CONTRIB_SCOPE, WRITE_TOKEN, create_tracer, unwrap
-
-
-BOUND_HALF = TraceIdRatioBased.get_bound_for_rate(0.5)
-
-
-def remote_parent_context(trace_id: int) -> Context:
-    remote = SpanContext(trace_id=trace_id, span_id=1, is_remote=True, trace_flags=TraceFlags(TraceFlags.SAMPLED))
-    return trace.set_span_in_context(NonRecordingSpan(remote))
+from tests.conftest import BOUND_HALF, CONTRIB_SCOPE, WRITE_TOKEN, create_tracer, remote_parent_context, unwrap
 
 
 @pytest.fixture()
@@ -64,9 +54,7 @@ def test_nothing_exported_before_server_span_ends(tracer: Tracer, span_exporter:
 
 
 def test_server_span_with_unsampled_remote_parent_kept(tracer: Tracer, span_exporter: InMemorySpanExporter):
-    remote = SpanContext(trace_id=1, span_id=2, is_remote=True, trace_flags=TraceFlags(TraceFlags.DEFAULT))
-    context = trace.set_span_in_context(NonRecordingSpan(remote))
-    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER, context=context):
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER, context=remote_parent_context(1)):
         pass
     assert len(span_exporter.get_finished_spans()) == 1
 
