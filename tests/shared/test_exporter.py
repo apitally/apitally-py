@@ -64,6 +64,16 @@ def test_client_span_url_full_redacted():
     assert dict(parse_qsl(url.partition("?")[2])) == {"api-key": REDACTED, "ok": "1"}
 
 
+def test_nested_server_span_exported_as_internal_with_one_warning(caplog: pytest.LogCaptureFixture):
+    tracer, exporter = create_trace_pipeline()
+    for _ in range(2):
+        with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+            with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+                pass
+    assert [s.kind for s in exporter.get_finished_spans()] == [SpanKind.INTERNAL, SpanKind.SERVER] * 2
+    assert sum("duplicate SERVER span" in record.getMessage() for record in caplog.records) == 1
+
+
 def test_span_without_sensitive_attributes_passes_through_unchanged():
     tracer, exporter = create_trace_pipeline()
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER, attributes={"url.path": "/items"}):

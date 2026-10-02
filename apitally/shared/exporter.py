@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+from opentelemetry.trace import SpanKind
 
 from apitally.shared.config import BODY_TOO_LARGE, MAX_BODY_SIZE, get_config, is_supported_content_encoding
 from apitally.shared.redaction import REDACTED, Redaction
@@ -54,10 +55,14 @@ class ApitallySpanExporter(SpanExporter):
         sentry_event_id = pop_sentry_event_id(context.span_id) if context is not None else None
         resource = span.resource.merge(self.resource_overrides)
         resource_changed = resource != span.resource
+        # The Apitally server turns every SERVER span into a request log, so a SERVER span nested inside
+        # the request (stacked HTTP-server instrumentation) is exported as INTERNAL
+        is_nested_server_span = span.kind == SpanKind.SERVER and span.parent is not None and not span.parent.is_remote
         if (
             stash is None
             and sentry_event_id is None
             and not resource_changed
+            and not is_nested_server_span
             and not any(
                 key in QUERY_ATTRIBUTES or key.startswith(HEADER_ATTRIBUTE_PREFIXES) for key in span.attributes or {}
             )
@@ -82,6 +87,8 @@ class ApitallySpanExporter(SpanExporter):
             attributes[SENTRY_EVENT_ID_ATTRIBUTE] = sentry_event_id
             changed = True
         if stash is None:
+            if is_nested_server_span:
+                return copy_span_with_attributes(span, attributes, resource, kind=SpanKind.INTERNAL)
             return copy_span_with_attributes(span, attributes, resource) if changed else span
         for prefix, headers in (
             ("http.request.header.", stash.request_headers),
