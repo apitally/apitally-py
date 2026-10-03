@@ -34,7 +34,6 @@ except PackageNotFoundError:  # pragma: no cover
     DISTRO_VERSION = "unknown"
 
 sampler_warned = False
-span_limits_warned = False
 
 
 class TracerProviderWithSpanProcessors(Protocol):
@@ -122,7 +121,6 @@ def attach_to_tracer_provider(user_provider: TracerProviderWithSpanProcessors, s
     sampler = getattr(user_provider, "sampler", None)
     if sampler is not None:
         warn_if_sampler_drops_spans(sampler)
-    warn_if_attribute_length_limit_too_low(user_provider)
     user_provider.add_span_processor(span_processor)
 
 
@@ -135,9 +133,8 @@ def create_logger_provider(resource: Resource, processors: Sequence[LogRecordPro
 
 
 def reset() -> None:
-    global sampler_warned, span_limits_warned
+    global sampler_warned
     sampler_warned = False
-    span_limits_warned = False
 
 
 def warn_if_sampler_drops_spans(sampler: Sampler) -> None:
@@ -153,30 +150,6 @@ def warn_if_sampler_drops_spans(sampler: Sampler) -> None:
                 "tracer provider.",
                 sampler.get_description(),
             )
-
-
-def warn_if_attribute_length_limit_too_low(user_provider: TracerProviderWithSpanProcessors) -> None:
-    global span_limits_warned
-    config = get_config()
-    capture_enabled = (
-        config.capture_request_headers
-        or config.capture_request_body
-        or config.capture_response_headers
-        or config.capture_response_body
-    )
-    if not capture_enabled or span_limits_warned:
-        return
-    limits = getattr(user_provider, "_span_limits", None)
-    max_length = getattr(limits, "max_span_attribute_length", None)
-    if max_length is not None and max_length < MAX_ATTRIBUTE_LENGTH:
-        span_limits_warned = True
-        logger.warning(
-            "The existing OpenTelemetry tracer provider limits span attribute values to %d characters, so "
-            "request and response bodies captured by Apitally may be truncated. Raise the limit to at least "
-            "%d, e.g. via the OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT environment variable.",
-            max_length,
-            MAX_ATTRIBUTE_LENGTH,
-        )
 
 
 def endpoint_url(path: str) -> str:
