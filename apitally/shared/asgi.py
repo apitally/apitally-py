@@ -97,7 +97,7 @@ class ApitallyASGIMiddleware:
             capture_request_body = config.capture_request_body and is_allowed_content_type(
                 get_header(request_headers, b"content-type")
             )
-            count_request_body = capture_request_body and request_size is None
+            count_request_body = request_size is None
             capture_request_body = capture_request_body and is_supported_content_encoding(
                 get_header(request_headers, b"content-encoding")
             )
@@ -307,7 +307,7 @@ class ApitallyASGIMiddleware:
                 logger.exception("Error in Apitally ASGI middleware")
             await send(message)
 
-        # Keep counting eligible bodies without Content-Length even when their encoding prevents capture
+        # Count bodies without Content-Length even when they are not captured
         wrapped_receive = (
             receive_wrapper if count_request_body or (capture_request_body and not request_too_large) else receive
         )

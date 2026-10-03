@@ -323,7 +323,7 @@ async def test_headers_redacted_and_repeated_as_list():
 
 
 async def test_size_backfill_and_chunked_response_counter():
-    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
+    set_config(write_token=WRITE_TOKEN)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(response_chunks=[b"aa", b"bbb"])  # no Content-Length
     await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a"', b": 1}"])
