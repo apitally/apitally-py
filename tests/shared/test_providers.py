@@ -93,6 +93,26 @@ def test_own_tracer_provider_does_not_record_requests_sampled_out_by_sample_rate
     assert [span.name for span in exporter.get_finished_spans()] == ["GET /kept"]
 
 
+def test_own_tracer_provider_records_only_requests_passing_sample_rate_or_continuing_sampled_trace():
+    set_config(write_token=WRITE_TOKEN, sample_rate=0.0)
+    exporter = InMemorySpanExporter()
+    tracer = create_own_tracer(exporter)
+
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as request:
+        assert not request.is_recording()
+    with tracer.start_as_current_span(
+        "process message", kind=SpanKind.CONSUMER, context=remote_parent_context(1, sampled=True)
+    ) as consumer:
+        assert not consumer.is_recording()
+    with tracer.start_as_current_span(
+        "GET /items", kind=SpanKind.SERVER, context=remote_parent_context(1, sampled=True)
+    ) as continued_request:
+        assert continued_request.is_recording()
+
+    # The span processor still applies sample_rate to the recorded request
+    assert exporter.get_finished_spans() == ()
+
+
 def test_own_tracer_provider_records_every_request_with_sample_on_request():
     set_config(write_token=WRITE_TOKEN, sample_rate=0.0, sample_on_request=lambda span: True)
     exporter = InMemorySpanExporter()

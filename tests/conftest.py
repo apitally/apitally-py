@@ -22,7 +22,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, Sampler, TraceIdRatioBased
 from opentelemetry.test.globals_test import reset_trace_globals
-from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, Tracer
+from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, TraceFlags, Tracer
 
 from apitally.shared import (
     activation,
@@ -80,8 +80,9 @@ def read_spool_payload(file: SpoolFile) -> bytes:
     return gzip.decompress(file.sink.read())
 
 
-def remote_parent_context(trace_id: int) -> Context:
-    remote = SpanContext(trace_id=trace_id, span_id=1, is_remote=True)
+def remote_parent_context(trace_id: int, sampled: bool = False) -> Context:
+    trace_flags = TraceFlags(TraceFlags.SAMPLED if sampled else TraceFlags.DEFAULT)
+    remote = SpanContext(trace_id=trace_id, span_id=1, is_remote=True, trace_flags=trace_flags)
     return trace.set_span_in_context(NonRecordingSpan(remote))
 
 
