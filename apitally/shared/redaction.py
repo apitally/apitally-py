@@ -28,6 +28,8 @@ DEFAULT_BODY_FIELD_PATTERNS = [
     r"auth",
     r"card[-_ ]?number",
     r"ccv",
+    r"cvv",
+    r"cvc",
     r"ssn",
 ]
 URL_HEADER_NAMES = frozenset({"location", "content-location"})

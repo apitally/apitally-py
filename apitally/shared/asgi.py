@@ -74,7 +74,6 @@ class ApitallyASGIMiddleware:
         request_body_complete = False
         request_too_large = False
         capture_request_body = False
-        count_request_body = False
         status = 0
         response_started = False
         response_size: int | None = None
@@ -94,12 +93,10 @@ class ApitallyASGIMiddleware:
         exception_holder = server_errors.init_exception_holder()
         try:
             request_size = parse_int(get_header(request_headers, b"content-length"))
-            capture_request_body = config.capture_request_body and is_allowed_content_type(
-                get_header(request_headers, b"content-type")
-            )
-            count_request_body = capture_request_body and request_size is None
-            capture_request_body = capture_request_body and is_supported_content_encoding(
-                get_header(request_headers, b"content-encoding")
+            capture_request_body = (
+                config.capture_request_body
+                and is_allowed_content_type(get_header(request_headers, b"content-type"))
+                and is_supported_content_encoding(get_header(request_headers, b"content-encoding"))
             )
             request_too_large = capture_request_body and request_size is not None and request_size > MAX_BODY_SIZE
         except Exception:  # pragma: no cover
@@ -307,9 +304,9 @@ class ApitallyASGIMiddleware:
                 logger.exception("Error in Apitally ASGI middleware")
             await send(message)
 
-        # Keep counting eligible bodies without Content-Length even when their encoding prevents capture
+        # Count bodies without Content-Length even when they are not captured
         wrapped_receive = (
-            receive_wrapper if count_request_body or (capture_request_body and not request_too_large) else receive
+            receive_wrapper if request_size is None or (capture_request_body and not request_too_large) else receive
         )
         try:
             await self.app(scope, wrapped_receive, send_wrapper)

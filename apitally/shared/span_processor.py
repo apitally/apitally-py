@@ -102,6 +102,7 @@ class ApitallySpanProcessor(SpanProcessor):
         self.deferred: set[int] = set()
         self.held: dict[int, ReadableSpan] = {}
         self.stash: dict[int, RequestStash] = {}
+        self.warned_scopes: set[str] = set()
         # Assigned by the log processor so both buffers flush or discard on the same decision
         self.on_request_finished: Callable[[int, bool], None] | None = None
         self.config = get_config()
@@ -132,7 +133,19 @@ class ApitallySpanProcessor(SpanProcessor):
                 else:
                     self.spans[span.context.span_id] = (False, None)
             else:
-                self.spans[span.context.span_id] = self.spans.get(span.parent.span_id, (False, None))
+                entry = self.spans.get(span.parent.span_id, (False, None))
+                if span.kind == SpanKind.SERVER and entry[0]:
+                    scope = span.instrumentation_scope.name if span.instrumentation_scope else "unknown"
+                    if scope not in self.warned_scopes:
+                        self.warned_scopes.add(scope)
+                        logger.warning(
+                            'Detected a duplicate SERVER span produced by the instrumentation scope "%s" inside an '
+                            "active request. Apitally exports it as an INTERNAL span, but your own OpenTelemetry "
+                            "exporters still receive the duplicate. To resolve this, remove the middleware that "
+                            "produces it.",
+                            scope,
+                        )
+                self.spans[span.context.span_id] = entry
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally span processor")
 
@@ -265,9 +278,7 @@ class ApitallySpanProcessor(SpanProcessor):
         return entry[1] if entry else None
 
     def shutdown(self) -> None:
-        # Held spans only miss late attributes; export them as they are
-        for span_id in list(self.held):
-            self.finish_export(span_id)
+        self.held.clear()
         self.deferred.clear()
         # Pending requests' SERVER spans can never export after shutdown, so their telemetry is unreachable
         self.pending.clear()
@@ -355,6 +366,7 @@ def copy_span_with_attributes(
     span: ReadableSpan,
     attributes: dict[str, AttributeValue | bytes],
     resource: Resource | None = None,
+    kind: SpanKind | None = None,
 ) -> ReadableSpan:
     return ReadableSpan(
         name=span.name,
@@ -364,7 +376,7 @@ def copy_span_with_attributes(
         attributes=attributes,
         events=span.events,
         links=span.links,
-        kind=span.kind,
+        kind=kind if kind is not None else span.kind,
         status=span.status,
         start_time=span.start_time,
         end_time=span.end_time,

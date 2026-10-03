@@ -322,11 +322,11 @@ async def test_headers_redacted_and_repeated_as_list():
     assert header_values(span, "http.response.header.x-secret-key") == (REDACTED,)
 
 
-async def test_size_backfill_and_chunked_response_counter():
-    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
+async def test_body_sizes_counted_without_content_length_when_capture_disabled():
+    set_config(write_token=WRITE_TOKEN)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp(response_chunks=[b"aa", b"bbb"])  # no Content-Length
-    await send_request(tracer, app, request_headers=JSON_HEADERS, request_chunks=[b'{"a"', b": 1}"])
+    await send_request(tracer, app, request_chunks=[b'{"a"', b": 1}"])
 
     # Presence on the ended span proves the attributes were written while it was still recording
     (span,) = exporter.get_finished_spans()

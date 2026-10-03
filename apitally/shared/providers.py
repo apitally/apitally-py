@@ -5,12 +5,22 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Protocol, cast
 
 from opentelemetry import trace
+from opentelemetry.context import Context
 from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanLimits, SpanProcessor, TracerProvider
-from opentelemetry.sdk.trace.sampling import ALWAYS_OFF, ALWAYS_ON, ParentBased, Sampler, TraceIdRatioBased
+from opentelemetry.sdk.trace.sampling import (
+    ALWAYS_OFF,
+    ParentBased,
+    Sampler,
+    SamplingResult,
+    TraceIdRatioBased,
+)
+from opentelemetry.trace import Link, SpanKind, TraceState
+from opentelemetry.util.types import Attributes
 
 from apitally.shared.config import get_config
+from apitally.shared.context import reset_server_span
 
 
 logger = logging.getLogger(__name__)
@@ -23,11 +33,40 @@ except PackageNotFoundError:  # pragma: no cover
     DISTRO_VERSION = "unknown"
 
 sampler_warned = False
-span_limits_warned = False
 
 
 class TracerProviderWithSpanProcessors(Protocol):
     def add_span_processor(self, span_processor: SpanProcessor) -> None: ...
+
+
+class RequestSampler(Sampler):
+    """Applies the request-stage sample_rate test to SERVER spans and drops all other spans, which Apitally never
+    exports. Wrapped in ParentBased, so it only decides for root spans and spans with a remote parent."""
+
+    def __init__(self, rate: float) -> None:
+        self.ratio_sampler = TraceIdRatioBased(rate)
+
+    def should_sample(
+        self,
+        parent_context: Context | None,
+        trace_id: int,
+        name: str,
+        kind: SpanKind | None = None,
+        attributes: Attributes = None,
+        links: Sequence[Link] | None = None,
+        trace_state: TraceState | None = None,
+    ) -> SamplingResult:
+        is_server_span = kind == SpanKind.SERVER
+        sampler = self.ratio_sampler if is_server_span else ALWAYS_OFF
+        result = sampler.should_sample(parent_context, trace_id, name, kind=kind, attributes=attributes, links=links)
+        if is_server_span and not result.decision.is_recording():
+            # The span processor never sees a non-recording span, so clear the SERVER span context vars that
+            # a reused context (e.g. a WSGI worker thread) still holds from its previous request
+            reset_server_span()
+        return result
+
+    def get_description(self) -> str:
+        return f"RequestSampler{{{self.ratio_sampler.rate}}}"
 
 
 def get_user_tracer_provider() -> TracerProviderWithSpanProcessors | None:
@@ -60,9 +99,17 @@ def create_resource(env: str) -> Resource:
 
 def setup_tracer_provider(resource: Resource, span_processor: SpanProcessor) -> TracerProvider:
     # Sampler and limits are passed explicitly so OTEL_TRACES_SAMPLER and the attribute
-    # length limit env vars never apply
+    # length limit env vars never apply. A sample_on_request callback can raise the rate above
+    # sample_rate, so with a callback every request is recorded and the span processor decides.
+    # A sampled remote parent bypasses the rate test so the upstream trace stays complete downstream.
+    config = get_config()
+    request_sampler = RequestSampler(1.0 if config.sample_on_request is not None else config.sample_rate)
     provider = TracerProvider(
-        sampler=ALWAYS_ON,
+        sampler=ParentBased(
+            root=request_sampler,
+            remote_parent_sampled=RequestSampler(1.0),
+            remote_parent_not_sampled=request_sampler,
+        ),
         resource=resource,
         span_limits=SpanLimits(
             max_attribute_length=MAX_ATTRIBUTE_LENGTH,
@@ -78,7 +125,6 @@ def attach_to_tracer_provider(user_provider: TracerProviderWithSpanProcessors, s
     sampler = getattr(user_provider, "sampler", None)
     if sampler is not None:
         warn_if_sampler_drops_spans(sampler)
-    warn_if_attribute_length_limit_too_low(user_provider)
     user_provider.add_span_processor(span_processor)
 
 
@@ -91,9 +137,8 @@ def create_logger_provider(resource: Resource, processors: Sequence[LogRecordPro
 
 
 def reset() -> None:
-    global sampler_warned, span_limits_warned
+    global sampler_warned
     sampler_warned = False
-    span_limits_warned = False
 
 
 def warn_if_sampler_drops_spans(sampler: Sampler) -> None:
@@ -109,30 +154,6 @@ def warn_if_sampler_drops_spans(sampler: Sampler) -> None:
                 "tracer provider.",
                 sampler.get_description(),
             )
-
-
-def warn_if_attribute_length_limit_too_low(user_provider: TracerProviderWithSpanProcessors) -> None:
-    global span_limits_warned
-    config = get_config()
-    capture_enabled = (
-        config.capture_request_headers
-        or config.capture_request_body
-        or config.capture_response_headers
-        or config.capture_response_body
-    )
-    if not capture_enabled or span_limits_warned:
-        return
-    limits = getattr(user_provider, "_span_limits", None)
-    max_length = getattr(limits, "max_span_attribute_length", None)
-    if max_length is not None and max_length < MAX_ATTRIBUTE_LENGTH:
-        span_limits_warned = True
-        logger.warning(
-            "The existing OpenTelemetry tracer provider limits span attribute values to %d characters, so "
-            "request and response bodies captured by Apitally may be truncated. Raise the limit to at least "
-            "%d, e.g. via the OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT environment variable.",
-            max_length,
-            MAX_ATTRIBUTE_LENGTH,
-        )
 
 
 def endpoint_url(path: str) -> str:

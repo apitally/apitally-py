@@ -15,6 +15,12 @@ server_span_processor_var: ContextVar["ApitallySpanProcessor | None"] = ContextV
 )
 
 
+def reset_server_span() -> None:
+    server_span_var.set(None)
+    server_span_kept_var.set(False)
+    server_span_processor_var.set(None)
+
+
 def get_server_span() -> Span | None:
     return server_span_var.get()
 

@@ -19,7 +19,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from apitally.shared import config, consumers, export, metrics, providers, sentry, server_errors, validation_errors
 from apitally.shared.config import ApitallyConfig
 from apitally.shared.consumers import consumer_holder_var
-from apitally.shared.context import server_span_kept_var, server_span_processor_var, server_span_var
+from apitally.shared.context import reset_server_span
 from apitally.shared.export import ExportWorker
 from apitally.shared.exporter import ApitallySpanExporter
 from apitally.shared.log_processor import ApitallyLogRecordProcessor, install_root_handler, uninstall_root_handler
@@ -116,9 +116,7 @@ def fresh_request_context() -> Iterator[None]:
     can start a pipelined request's task with the previous request's context still attached."""
     token = otel_context.attach(Context())
     try:
-        server_span_var.set(None)
-        server_span_kept_var.set(False)
-        server_span_processor_var.set(None)
+        reset_server_span()
         holder = consumer_holder_var.get()
         if holder is not None and holder.owned:
             consumer_holder_var.set(None)
