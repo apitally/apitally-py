@@ -133,16 +133,19 @@ class ApitallySpanProcessor(SpanProcessor):
                 else:
                     self.spans[span.context.span_id] = (False, None)
             else:
-                if span.kind == SpanKind.SERVER:
+                entry = self.spans.get(span.parent.span_id, (False, None))
+                if span.kind == SpanKind.SERVER and entry[0]:
                     scope = span.instrumentation_scope.name if span.instrumentation_scope else "unknown"
                     if scope not in self.warned_scopes:
                         self.warned_scopes.add(scope)
                         logger.warning(
                             'Detected a duplicate SERVER span produced by the instrumentation scope "%s" inside an '
-                            "active request. Apitally exports it as an INTERNAL span.",
+                            "active request. Apitally exports it as an INTERNAL span, but your own OpenTelemetry "
+                            "exporters still receive the duplicate. To resolve this, remove the middleware that "
+                            "produces it.",
                             scope,
                         )
-                self.spans[span.context.span_id] = self.spans.get(span.parent.span_id, (False, None))
+                self.spans[span.context.span_id] = entry
         except Exception:  # pragma: no cover
             logger.exception("Error in Apitally span processor")
 

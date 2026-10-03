@@ -11,7 +11,6 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanLimits, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.sampling import (
     ALWAYS_OFF,
-    ALWAYS_ON,
     ParentBased,
     Sampler,
     SamplingResult,
@@ -41,9 +40,8 @@ class TracerProviderWithSpanProcessors(Protocol):
 
 
 class RequestSampler(Sampler):
-    """Applies the request-stage sample_rate test to SERVER spans and records all other spans.
-    Wrapped in ParentBased, so it only decides for root spans and spans with an unsampled remote parent.
-    A sampled remote parent is always recorded so the upstream trace stays complete in downstream services."""
+    """Applies the request-stage sample_rate test to SERVER spans and drops all other spans, which Apitally never
+    exports. Wrapped in ParentBased, so it only decides for root spans and spans with a remote parent."""
 
     def __init__(self, rate: float) -> None:
         self.ratio_sampler = TraceIdRatioBased(rate)
@@ -58,11 +56,12 @@ class RequestSampler(Sampler):
         links: Sequence[Link] | None = None,
         trace_state: TraceState | None = None,
     ) -> SamplingResult:
-        sampler = self.ratio_sampler if kind == SpanKind.SERVER else ALWAYS_ON
+        is_server_span = kind == SpanKind.SERVER
+        sampler = self.ratio_sampler if is_server_span else ALWAYS_OFF
         result = sampler.should_sample(parent_context, trace_id, name, kind=kind, attributes=attributes, links=links)
-        if not result.decision.is_recording():
-            # The span processor never sees a non-recording span, so clear the request handles that a
-            # reused context (e.g. a WSGI worker thread) still holds from its previous request
+        if is_server_span and not result.decision.is_recording():
+            # The span processor never sees a non-recording span, so clear the SERVER span context vars that
+            # a reused context (e.g. a WSGI worker thread) still holds from its previous request
             reset_server_span()
         return result
 
@@ -102,10 +101,15 @@ def setup_tracer_provider(resource: Resource, span_processor: SpanProcessor) -> 
     # Sampler and limits are passed explicitly so OTEL_TRACES_SAMPLER and the attribute
     # length limit env vars never apply. A sample_on_request callback can raise the rate above
     # sample_rate, so with a callback every request is recorded and the span processor decides.
+    # A sampled remote parent bypasses the rate test so the upstream trace stays complete downstream.
     config = get_config()
     request_sampler = RequestSampler(1.0 if config.sample_on_request is not None else config.sample_rate)
     provider = TracerProvider(
-        sampler=ParentBased(root=request_sampler, remote_parent_not_sampled=request_sampler),
+        sampler=ParentBased(
+            root=request_sampler,
+            remote_parent_sampled=RequestSampler(1.0),
+            remote_parent_not_sampled=request_sampler,
+        ),
         resource=resource,
         span_limits=SpanLimits(
             max_attribute_length=MAX_ATTRIBUTE_LENGTH,

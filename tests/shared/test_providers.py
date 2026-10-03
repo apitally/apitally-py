@@ -59,7 +59,7 @@ def test_setup_own_tracer_provider(monkeypatch: pytest.MonkeyPatch):
 
     assert trace.get_tracer_provider() is provider
 
-    with trace.get_tracer("test").start_as_current_span("span") as span:
+    with trace.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER) as span:
         span.set_attribute("body", "x" * 70_000)
 
     (exported,) = exporter.get_finished_spans()
