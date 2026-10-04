@@ -13,7 +13,6 @@ from opentelemetry import context as otel_context
 from opentelemetry._logs import Logger
 from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.exporter.otlp.proto.common._log_encoder import encode_logs
-from opentelemetry.exporter.otlp.proto.common.trace_encoder import encode_spans
 from opentelemetry.sdk._logs import ReadableLogRecord
 from opentelemetry.sdk._logs.export import LogRecordExporter, LogRecordExportResult
 from opentelemetry.sdk.trace import ReadableSpan
@@ -25,6 +24,7 @@ from apitally.shared.log_processor import ApitallyLogRecordProcessor, truncate_l
 from apitally.shared.providers import DISTRO_VERSION, endpoint_url, export_headers
 from apitally.shared.span_processor import ApitallySpanProcessor
 from apitally.shared.spool import Spool, SpoolFile
+from apitally.shared.trace_encoder import encode_spans
 
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class SpoolSpanExporter(SpanExporter):
         self.spool = spool
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
-        self.spool.append("traces", encode_spans(spans).SerializeToString())
+        self.spool.append("traces", encode_spans(spans))
         return SpanExportResult.SUCCESS
 
     def shutdown(self) -> None:

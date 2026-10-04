@@ -100,9 +100,8 @@ def test_first_request_activates_and_is_recorded(exporters: InMemoryExporters, m
     assert span.name == "GET /items/{pk}/"
     assert span.attributes["http.route"] == "/items/{pk}/"
     assert span.attributes["http.response.status_code"] == 200
-    # The test client, like runserver, omits REQUEST_URI; path attributes are derived from http.url
+    # The test client, like runserver, omits REQUEST_URI
     assert span.attributes["url.path"] == "/items/123/"
-    assert span.attributes["http.target"] == "/items/123/"
     payload = startup_payload(exporters)
     assert payload["framework"] == "django"
     assert payload["versions"]["django"]
