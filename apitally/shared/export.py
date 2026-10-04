@@ -29,12 +29,11 @@ from apitally.shared.spool import Spool, SpoolFile
 
 logger = logging.getLogger(__name__)
 
-# Small enough that no single append can overshoot the spool's rotation threshold
-ENCODE_CHUNK_SIZE = 32
-
 BATCH_SCHEDULE_DELAY_MILLIS = 1_000
 BATCH_MAX_QUEUE_SIZE = 2_048
-BATCH_MAX_EXPORT_BATCH_SIZE = 512
+# Small enough that no single append can overshoot the spool's rotation threshold, and that encoding
+# one batch on the export thread does not hold the GIL long enough to delay request handling
+BATCH_MAX_EXPORT_BATCH_SIZE = 32
 BATCH_EXPORT_TIMEOUT_MILLIS = 30_000
 
 DEFAULT_EXPORT_INTERVAL = 15.0
@@ -54,8 +53,7 @@ class SpoolSpanExporter(SpanExporter):
         self.spool = spool
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
-        for chunk in chunked(spans):
-            self.spool.append("traces", encode_spans(chunk).SerializeToString())
+        self.spool.append("traces", encode_spans(spans).SerializeToString())
         return SpanExportResult.SUCCESS
 
     def shutdown(self) -> None:
@@ -72,8 +70,7 @@ class SpoolLogExporter(LogRecordExporter):
     def export(self, batch: Sequence[ReadableLogRecord]) -> LogRecordExportResult:
         for record in batch:
             truncate_log_record(record)
-        for chunk in chunked(batch):
-            self.spool.append("logs", encode_logs(chunk).SerializeToString())
+        self.spool.append("logs", encode_logs(batch).SerializeToString())
         return LogRecordExportResult.SUCCESS
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
@@ -257,7 +254,3 @@ def resolve_proxy_urls() -> dict[str, str]:
     if not proxy_urls or urllib.request.proxy_bypass_environment(host, proxy_urls):  # ty: ignore[unresolved-attribute]
         return {}
     return proxy_urls
-
-
-def chunked(batch: Sequence) -> list[Sequence]:
-    return [batch[i : i + ENCODE_CHUNK_SIZE] for i in range(0, len(batch), ENCODE_CHUNK_SIZE)]

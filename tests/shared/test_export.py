@@ -22,7 +22,6 @@ from opentelemetry.sdk._logs.export import SimpleLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.trace import SpanKind
 
@@ -31,7 +30,6 @@ from apitally.shared import activation, export, metrics, server_errors, startup,
 from apitally.shared.config import set_config
 from apitally.shared.context import get_server_span_processor
 from apitally.shared.export import (
-    ENCODE_CHUNK_SIZE,
     EXPORT_INTERVAL_HEADER,
     MAX_BACKLOG_SENDS_PER_CYCLE,
     MAX_EXPORT_INTERVAL,
@@ -147,22 +145,6 @@ def test_log_batch_is_written_to_spool_as_parseable_payload(spool: Spool) -> Non
     emit_log(spool, "something happened")
     (record,) = read_log_records(spool)
     assert record.body.string_value == "something happened"
-
-
-def test_large_batch_appends_multiple_payloads_without_loss(spool: Spool) -> None:
-    provider = TracerProvider(sampler=ALWAYS_ON)
-    memory_exporter = InMemorySpanExporter()
-    provider.add_span_processor(SimpleSpanProcessor(memory_exporter))
-    tracer = provider.get_tracer(CONTRIB_SCOPE)
-    span_names = [f"span-{i}" for i in range(ENCODE_CHUNK_SIZE + 8)]
-    for name in span_names:
-        with tracer.start_as_current_span(name):
-            pass
-    SpoolSpanExporter(spool).export(memory_exporter.get_finished_spans())
-    request = read_trace_request(spool)
-    assert len(request.resource_spans) == 2
-    exported_names = [span.name for rs in request.resource_spans for ss in rs.scope_spans for span in ss.spans]
-    assert sorted(exported_names) == sorted(span_names)
 
 
 def test_oversized_log_body_is_truncated(spool: Spool) -> None:
