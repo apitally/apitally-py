@@ -33,6 +33,8 @@ class ApitallySpanExporter(SpanExporter):
                 "deployment.environment.name": self.config.env,
             }
         )
+        self.source_resource: Resource | None = None
+        self.merged_resource: Resource | None = None
         self.redaction = Redaction(
             self.config.mask_query_params, self.config.mask_headers, self.config.mask_body_fields
         )
@@ -53,8 +55,12 @@ class ApitallySpanExporter(SpanExporter):
         stash: RequestStash | None = getattr(span, STASH_ATTRIBUTE, None)
         context = span.get_span_context()
         sentry_event_id = pop_sentry_event_id(context.span_id) if context is not None else None
-        resource = span.resource.merge(self.resource_overrides)
-        resource_changed = resource != span.resource
+        if span.resource is not self.source_resource:
+            merged = span.resource.merge(self.resource_overrides)
+            self.source_resource = span.resource
+            self.merged_resource = span.resource if merged == span.resource else merged
+        resource = self.merged_resource
+        resource_changed = resource is not span.resource
         # The Apitally server turns every SERVER span into a request log, so a SERVER span nested inside
         # the request (stacked HTTP-server instrumentation) is exported as INTERNAL
         is_nested_server_span = span.kind == SpanKind.SERVER and span.parent is not None and not span.parent.is_remote
