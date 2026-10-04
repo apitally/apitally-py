@@ -2,7 +2,7 @@ name: Summary
 on:
   pull_request:
     branches:
-      - main
+      - v0
 jobs:
   wait-for-triggered-checks:
     runs-on: ubuntu-latest

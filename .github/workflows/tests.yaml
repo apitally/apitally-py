@@ -2,7 +2,7 @@ name: Tests
 on:
   push:
     branches:
-      - main
+      - v0
     paths-ignore:
       - .gitignore
       - LICENSE
