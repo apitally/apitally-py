@@ -8,6 +8,7 @@ from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterable, It
 from contextlib import suppress
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import quote
 
 import django
 from django.conf import settings
@@ -146,9 +147,14 @@ def _patch_asgi_handler() -> None:
     ASGIHandler.__call__ = _asgi_call
 
 
-def _handle_request_started(sender: object, **kwargs: Any) -> None:
+def _handle_request_started(sender: object, environ: dict[str, Any] | None = None, **kwargs: Any) -> None:
     if not activation.activation_attempted:
         activation.activate()
+    if environ is not None and not environ.get("RAW_URI") and not environ.get("REQUEST_URI"):
+        # The OTel WSGI instrumentation sets url.path only when one of these is present, and Django's runserver sets neither
+        path = quote(environ.get("SCRIPT_NAME", "") + environ.get("PATH_INFO", ""), safe="/;=,", encoding="latin1")
+        query = environ.get("QUERY_STRING")
+        environ["REQUEST_URI"] = f"{path}?{query}" if query else path
 
 
 class ApitallyDjangoMiddleware:

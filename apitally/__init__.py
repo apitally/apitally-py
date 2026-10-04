@@ -32,7 +32,7 @@ _UNSET: Any = object()
 
 
 # Instrumentors cache this on their first instrument call, which may happen before init()
-os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http/dup")
+os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http")
 
 
 def init(
