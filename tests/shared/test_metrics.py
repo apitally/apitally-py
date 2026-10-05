@@ -13,7 +13,7 @@ HISTOGRAM_NAMES = ("http.server.request.duration", "http.server.request.body.siz
 
 @pytest.fixture(autouse=True)
 def setup_metrics() -> None:
-    metrics.setup(Resource.create({}))
+    metrics.setup(Resource.create({"service.name": "test-service"}))
 
 
 def test_collection_exports_complete_histogram_points():
@@ -29,6 +29,7 @@ def test_collection_exports_complete_histogram_points():
             scheme="https",
         )
     _, histogram_entry = collect_metrics().resource_metrics
+    assert point_attributes(histogram_entry.resource)["service.name"] == "test-service"
     (scope_metrics,) = histogram_entry.scope_metrics
     assert scope_metrics.scope.name == "apitally"
     collected = {metric.name: metric for metric in scope_metrics.metrics}
@@ -126,10 +127,13 @@ def test_split_requests_keep_combination_histograms_together(monkeypatch: pytest
 def test_process_gauges_exported_without_traffic():
     (entry,) = collect_metrics().resource_metrics
     (scope_metrics,) = entry.scope_metrics
-    assert {metric.name: (metric.unit, metric.WhichOneof("data")) for metric in scope_metrics.metrics} == {
-        "process.uptime": ("s", "gauge"),
-        "process.cpu.utilization": ("1", "gauge"),
-        "process.memory.usage": ("By", "gauge"),
+    assert {
+        metric.name: (metric.unit, metric.WhichOneof("data"), metric.gauge.data_points[0].WhichOneof("value"))
+        for metric in scope_metrics.metrics
+    } == {
+        "process.uptime": ("s", "gauge", "as_double"),
+        "process.cpu.utilization": ("1", "gauge", "as_double"),
+        "process.memory.usage": ("By", "gauge", "as_int"),
     }
     points = [point for metric in scope_metrics.metrics for point in metric.gauge.data_points]
     assert len(points) == 3

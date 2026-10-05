@@ -1,4 +1,5 @@
 import logging
+import weakref
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import lru_cache, partial
@@ -76,10 +77,9 @@ def is_sampled_in(trace_id: int, bound: int) -> bool:
     return trace_id & TraceIdRatioBased.TRACE_ID_LIMIT < bound
 
 
-def record_first_exception(
-    span: Span, record_exception: Callable[..., None], exception: BaseException, *args: Any, **kwargs: Any
-) -> None:
-    if any(event.name == "exception" for event in span.events):
+def record_first_exception(span_ref: weakref.ref[Span], exception: BaseException, *args: Any, **kwargs: Any) -> None:
+    span = span_ref()
+    if span is None or any(event.name == "exception" for event in span.events):
         return
     exception = server_errors.collapse_exception_group(exception)
     if isinstance(exception, Exception):
@@ -87,7 +87,7 @@ def record_first_exception(
         server_errors.set_exception(exception, holder)
         if holder is not None and holder.exception is not None:
             exception = holder.exception
-    record_exception(exception, *args, **kwargs)
+    type(span).record_exception(span, exception, *args, **kwargs)
 
 
 class ApitallySpanProcessor(SpanProcessor):
@@ -118,7 +118,8 @@ class ApitallySpanProcessor(SpanProcessor):
                 if span.kind == SpanKind.SERVER:
                     server_span_var.set(span)
                     server_span_processor_var.set(self)
-                    span.record_exception = partial(record_first_exception, span, span.record_exception)
+                    # A strong reference stored on the span would form a cycle that only the garbage collector frees
+                    span.record_exception = partial(record_first_exception, weakref.ref(span))
                     holder = consumer_holder_var.get()
                     if holder is not None and holder.identifier:
                         # Consumer set by middleware outside the transport middleware, before this span existed
