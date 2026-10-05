@@ -91,6 +91,7 @@ class ApitallyASGIMiddleware:
         inspect_validation_response = False
         completed = False
         deferred_span_id: int | None = None
+        route: str | None = None
 
         init_consumer()
         exception_holder = server_errors.init_exception_holder()
@@ -126,8 +127,25 @@ class ApitallyASGIMiddleware:
                 logger.exception("Error in Apitally ASGI middleware")
             return message
 
+        def resolve_route_and_update_span() -> str | None:
+            try:
+                route = self.resolve_route(scope)
+            except Exception:  # pragma: no cover
+                logger.exception("Error resolving route in Apitally ASGI middleware")
+                return None
+            if route:
+                root_path = str(scope.get("root_path") or "")
+                if root_path.startswith(initial_root_path):
+                    route = root_path[len(initial_root_path) :] + route
+                span = get_server_span()
+                if span is not None and span.is_recording():
+                    # Overwrites the instrumentor's raw route so spans and metrics agree on the template
+                    span.set_attribute("http.route", route)
+                    span.update_name(f"{scope.get('method', '')} {route}".strip())
+            return route
+
         def finish() -> None:
-            nonlocal completed
+            nonlocal completed, route
             if completed:
                 return
             completed = True
@@ -139,15 +157,8 @@ class ApitallyASGIMiddleware:
             if final_response_size is None and response_started:
                 final_response_size = response_size_counter
             try:
-                try:
-                    route = self.resolve_route(scope)
-                except Exception:  # pragma: no cover
-                    logger.exception("Error resolving route in Apitally ASGI middleware")
-                    route = None
-                if route:
-                    root_path = str(scope.get("root_path") or "")
-                    if root_path.startswith(initial_root_path):
-                        route = root_path[len(initial_root_path) :] + route
+                if not response_started:
+                    route = resolve_route_and_update_span()
                 consumer = get_consumer_identifier()
                 span = get_server_span()
                 processor = get_server_span_processor()
@@ -163,11 +174,6 @@ class ApitallyASGIMiddleware:
                         client = scope.get("client")
                         if isinstance(client, (list, tuple)) and client and isinstance(client[0], str) and client[0]:
                             extra_attributes["client.address"] = client[0]
-                    if route:
-                        # Overwrites the instrumentor's raw route so spans and metrics agree on the template
-                        extra_attributes["http.route"] = route
-                        if span.is_recording():
-                            span.update_name(f"{scope.get('method', '')} {route}".strip())
                     if final_request_size is not None:
                         extra_attributes["http.request.body.size"] = final_request_size
                     if final_response_size is not None:
@@ -257,11 +263,13 @@ class ApitallyASGIMiddleware:
             nonlocal status, response_started, response_size, response_size_counter, response_headers
             nonlocal response_content_type, response_content_encoding, response_body, response_body_complete
             nonlocal response_too_large
-            nonlocal capture_response_body, inspect_validation_response, deferred_span_id
+            nonlocal capture_response_body, inspect_validation_response, deferred_span_id, route
             try:
                 if message["type"] == "http.response.start":
                     response_started = True
                     status = message["status"]
+                    # Routing is done and the SERVER span is still recording, also on the exception path
+                    route = resolve_route_and_update_span()
                     headers = message.get("headers") or []
                     content_length = parse_int(get_header(headers, b"content-length"))
                     if content_length is not None and get_header(headers, b"transfer-encoding") != b"chunked":

@@ -226,6 +226,7 @@ def test_unhandled_exception_recorded_on_server_span(
         response = client.get("/error")
     assert response.status_code == 500
     (span,) = exported_spans(exporters)
+    assert span.name == "GET /error"
     assert unwrap(span.attributes)["http.response.status_code"] == 500
     (event,) = [e for e in span.events if e.name == "exception"]
     assert unwrap(event.attributes)["exception.type"] == "ValueError"
