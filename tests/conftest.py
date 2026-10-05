@@ -254,11 +254,11 @@ def otlp_server() -> Iterator[StubOTLPServer]:
     stub.server.server_close()
 
 
-def collect_metrics() -> ExportMetricsServiceRequest:
+def collect_metrics(stop_event: threading.Event | None = None) -> ExportMetricsServiceRequest:
     """Run one metrics collection into a temporary spool and decode the appended requests."""
     spool = Spool()
     try:
-        metrics.collect(spool)
+        metrics.collect(spool, stop_event)
         spool.close_current_files()
         return ExportMetricsServiceRequest.FromString(
             b"".join(read_spool_payload(file) for file in spool.pending_files())
