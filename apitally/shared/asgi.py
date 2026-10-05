@@ -350,6 +350,8 @@ class ExceptionRecordingMiddleware:
 def get_default_span_details(scope: Scope) -> tuple[str, dict[str, Any]]:
     # The request is not routed yet when the SERVER span starts; ApitallyASGIMiddleware sets
     # http.route and the span name when the request finishes
+    if scope["type"] == "websocket":
+        return "WS", {}
     return str(scope.get("method", "")), {}
 
 
