@@ -5,23 +5,12 @@ import time
 from typing import NamedTuple
 
 import psutil
-from opentelemetry.exporter.otlp.proto.common.metrics_encoder import encode_metrics
-from opentelemetry.sdk.metrics.export import (
-    AggregationTemporality,
-    Buckets,
-    ExponentialHistogramDataPoint,
-    Gauge,
-    Metric,
-    MetricsData,
-    NumberDataPoint,
-    ResourceMetrics,
-    ScopeMetrics,
-)
-from opentelemetry.sdk.metrics.export import ExponentialHistogram as OtelExponentialHistogram
+from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
+from opentelemetry.proto.metrics.v1.metrics_pb2 import AGGREGATION_TEMPORALITY_DELTA, ScopeMetrics
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.util.instrumentation import InstrumentationScope
 
 from apitally.shared.spool import Spool
+from apitally.shared.trace_encoder import add_attributes
 
 
 logger = logging.getLogger(__name__)
@@ -32,7 +21,7 @@ SCALE_FACTOR = math.ldexp(1 / math.log(2), HISTOGRAM_SCALE)
 MAX_COMBINATIONS = 50_000
 # Keeps each appended request well below the spool's 4 MB rotation threshold
 COMBINATIONS_PER_REQUEST = 1_000
-SCOPE = InstrumentationScope("apitally")
+SCOPE_NAME = "apitally"
 # Name and unit for each field of RequestHistograms, in the same order
 HISTOGRAM_METRICS = (
     ("http.server.request.duration", "s"),
@@ -143,31 +132,48 @@ def collect(spool: Spool) -> None:
             "this persists.",
             f"{MAX_COMBINATIONS:,}",
         )
-    gauges = [
+    request, scope_metrics = create_request(collect_resource)
+    for name, unit, value in (
         ("process.uptime", "s", time.time() - process.create_time()),
         ("process.cpu.utilization", "1", process.cpu_percent() / 100 / (psutil.cpu_count() or 1)),
-        ("process.memory.usage", "By", process.memory_info().rss),
-    ]
-    append_metrics(
-        spool,
-        collect_resource,
-        [Metric(name, "", unit, Gauge([NumberDataPoint({}, 0, end_ns, value)])) for name, unit, value in gauges],
+    ):
+        scope_metrics.metrics.add(name=name, unit=unit).gauge.data_points.add(time_unix_nano=end_ns, as_double=value)
+    scope_metrics.metrics.add(name="process.memory.usage", unit="By").gauge.data_points.add(
+        time_unix_nano=end_ns, as_int=process.memory_info().rss
     )
+    spool.append("metrics", request.SerializeToString())
+
     combinations = [(get_attributes(key), histograms) for key, histograms in collected.items()]
     for slice_start in range(0, len(combinations), COMBINATIONS_PER_REQUEST):
-        combinations_slice = combinations[slice_start : slice_start + COMBINATIONS_PER_REQUEST]
-        histogram_metrics = []
+        request, scope_metrics = create_request(collect_resource)
         for histogram_index, (name, unit) in enumerate(HISTOGRAM_METRICS):
-            data_points = [
-                create_data_point(attributes, histograms[histogram_index], start_ns, end_ns)
-                for attributes, histograms in combinations_slice
-                if histograms[histogram_index].count
-            ]
-            if data_points:
-                histogram_metrics.append(
-                    Metric(name, "", unit, OtelExponentialHistogram(data_points, AggregationTemporality.DELTA))
+            metric = None
+            for attributes, histograms in combinations[slice_start : slice_start + COMBINATIONS_PER_REQUEST]:
+                histogram = histograms[histogram_index]
+                if not histogram.count:
+                    continue
+                if metric is None:
+                    metric = scope_metrics.metrics.add(name=name, unit=unit)
+                    metric.exponential_histogram.aggregation_temporality = AGGREGATION_TEMPORALITY_DELTA
+                data_point = metric.exponential_histogram.data_points.add(
+                    start_time_unix_nano=start_ns,
+                    time_unix_nano=end_ns,
+                    count=histogram.count,
+                    sum=histogram.sum,
+                    scale=HISTOGRAM_SCALE,
+                    zero_count=histogram.zero_count,
+                    min=histogram.min,
+                    max=histogram.max,
                 )
-        append_metrics(spool, collect_resource, histogram_metrics)
+                add_attributes(data_point.attributes, attributes)
+                if histogram.bucket_counts:
+                    offset = min(histogram.bucket_counts)
+                    bucket_counts = [0] * (max(histogram.bucket_counts) - offset + 1)
+                    for index, count in histogram.bucket_counts.items():
+                        bucket_counts[index - offset] = count
+                    data_point.positive.offset = offset
+                    data_point.positive.bucket_counts.extend(bucket_counts)
+        spool.append("metrics", request.SerializeToString())
 
 
 def reset() -> None:
@@ -180,32 +186,13 @@ def reset() -> None:
     request_histograms = {}
 
 
-def append_metrics(spool: Spool, collect_resource: Resource, metrics: list[Metric]) -> None:
-    metrics_data = MetricsData([ResourceMetrics(collect_resource, [ScopeMetrics(SCOPE, metrics, "")], "")])
-    spool.append("metrics", encode_metrics(metrics_data).SerializeToString())
-
-
-def create_data_point(
-    attributes: dict[str, str | int], histogram: ExponentialHistogram, start_ns: int, end_ns: int
-) -> ExponentialHistogramDataPoint:
-    bucket_counts = histogram.bucket_counts
-    offset = min(bucket_counts, default=0)
-    return ExponentialHistogramDataPoint(
-        attributes=attributes,
-        start_time_unix_nano=start_ns,
-        time_unix_nano=end_ns,
-        count=histogram.count,
-        sum=histogram.sum,
-        scale=HISTOGRAM_SCALE,
-        zero_count=histogram.zero_count,
-        positive=Buckets(
-            offset, [bucket_counts.get(index, 0) for index in range(offset, max(bucket_counts, default=-1) + 1)]
-        ),
-        negative=Buckets(0, []),
-        flags=0,
-        min=histogram.min,
-        max=histogram.max,
-    )
+def create_request(collect_resource: Resource) -> tuple[ExportMetricsServiceRequest, ScopeMetrics]:
+    request = ExportMetricsServiceRequest()
+    resource_metrics = request.resource_metrics.add(schema_url=collect_resource.schema_url)
+    add_attributes(resource_metrics.resource.attributes, collect_resource.attributes)
+    scope_metrics = resource_metrics.scope_metrics.add()
+    scope_metrics.scope.name = SCOPE_NAME
+    return request, scope_metrics
 
 
 def get_attributes(key: RequestMetricKey) -> dict[str, str | int]:

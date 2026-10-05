@@ -1,11 +1,13 @@
 import contextvars
+import gc
+import weakref
 
 import pytest
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.sampling import ALWAYS_ON, TraceIdRatioBased
-from opentelemetry.trace import SpanKind, Tracer
+from opentelemetry.trace import Span, SpanKind, Tracer
 
 from apitally.shared.config import set_config
 from apitally.shared.consumers import get_consumer_identifier, reset_consumer, set_consumer
@@ -42,6 +44,19 @@ def test_server_root_and_child_kept(
     assert {s.name for s in span_exporter.get_finished_spans()} == {"GET /items", "child"}
     assert not processor.spans
     assert not processor.pending
+
+
+def test_server_span_freed_without_garbage_collection(tracer: Tracer):
+    def handle_request() -> weakref.ref[Span]:
+        with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER) as server:
+            return weakref.ref(server)
+
+    gc.disable()
+    try:
+        server_ref = contextvars.copy_context().run(handle_request)
+        assert server_ref() is None
+    finally:
+        gc.enable()
 
 
 def test_nothing_exported_before_server_span_ends(tracer: Tracer, span_exporter: InMemorySpanExporter):
