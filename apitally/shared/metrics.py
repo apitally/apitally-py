@@ -6,7 +6,11 @@ from typing import NamedTuple
 
 import psutil
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
-from opentelemetry.proto.metrics.v1.metrics_pb2 import AGGREGATION_TEMPORALITY_DELTA, ScopeMetrics
+from opentelemetry.proto.metrics.v1.metrics_pb2 import (
+    AGGREGATION_TEMPORALITY_DELTA,
+    ExponentialHistogramDataPoint,
+    ScopeMetrics,
+)
 from opentelemetry.sdk.resources import Resource
 
 from apitally.shared.spool import Spool
@@ -21,6 +25,8 @@ SCALE_FACTOR = math.ldexp(1 / math.log(2), HISTOGRAM_SCALE)
 MAX_COMBINATIONS = 50_000
 # Keeps each appended request well below the spool's 4 MB rotation threshold
 COMBINATIONS_PER_REQUEST = 1_000
+# Pause between slices on the export thread, so request handling threads can take the GIL back
+SLICE_PAUSE_SECONDS = 0.05
 SCOPE_NAME = "apitally"
 # Name and unit for each field of RequestHistograms, in the same order
 HISTOGRAM_METRICS = (
@@ -114,7 +120,7 @@ def record_request(
             histograms.response_body_size.record(response_size)
 
 
-def collect(spool: Spool) -> None:
+def collect(spool: Spool, stop_event: threading.Event | None) -> None:
     global request_histograms, interval_start_ns, capacity_warned
     collect_resource = resource
     if collect_resource is None or process is None:
@@ -143,12 +149,19 @@ def collect(spool: Spool) -> None:
     )
     spool.append("metrics", request.SerializeToString())
 
-    combinations = [(get_attributes(key), histograms) for key, histograms in collected.items()]
+    combinations = list(collected.items())
     for slice_start in range(0, len(combinations), COMBINATIONS_PER_REQUEST):
+        # Returns immediately once the stop event is set, so the remaining slices are still written
+        if slice_start and stop_event is not None:
+            stop_event.wait(SLICE_PAUSE_SECONDS)
         request, scope_metrics = create_request(collect_resource)
+        combination_slice = [
+            (encode_attributes(key), histograms)
+            for key, histograms in combinations[slice_start : slice_start + COMBINATIONS_PER_REQUEST]
+        ]
         for histogram_index, (name, unit) in enumerate(HISTOGRAM_METRICS):
             metric = None
-            for attributes, histograms in combinations[slice_start : slice_start + COMBINATIONS_PER_REQUEST]:
+            for attribute_bytes, histograms in combination_slice:
                 histogram = histograms[histogram_index]
                 if not histogram.count:
                     continue
@@ -165,7 +178,7 @@ def collect(spool: Spool) -> None:
                     min=histogram.min,
                     max=histogram.max,
                 )
-                add_attributes(data_point.attributes, attributes)
+                data_point.MergeFromString(attribute_bytes)
                 if histogram.bucket_counts:
                     offset = min(histogram.bucket_counts)
                     bucket_counts = [0] * (max(histogram.bucket_counts) - offset + 1)
@@ -195,7 +208,8 @@ def create_request(collect_resource: Resource) -> tuple[ExportMetricsServiceRequ
     return request, scope_metrics
 
 
-def get_attributes(key: RequestMetricKey) -> dict[str, str | int]:
+def encode_attributes(key: RequestMetricKey) -> bytes:
+    """Encodes the attributes once as a serialized data point, to be merged into each histogram data point."""
     attributes: dict[str, str | int] = {
         "http.request.method": key.method,
         "http.route": key.route,
@@ -207,7 +221,9 @@ def get_attributes(key: RequestMetricKey) -> dict[str, str | int]:
         attributes["url.scheme"] = key.scheme
     if key.status_code >= 500:
         attributes["error.type"] = str(key.status_code)
-    return attributes
+    data_point = ExponentialHistogramDataPoint()
+    add_attributes(data_point.attributes, attributes)
+    return data_point.SerializeToString()
 
 
 def map_to_index(value: float) -> int:

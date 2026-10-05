@@ -1,4 +1,5 @@
 import logging
+import threading
 
 import pytest
 from opentelemetry.proto.metrics.v1.metrics_pb2 import AGGREGATION_TEMPORALITY_DELTA, ExponentialHistogramDataPoint
@@ -122,6 +123,28 @@ def test_split_requests_keep_combination_histograms_together(monkeypatch: pytest
         dict.fromkeys(HISTOGRAM_NAMES, ["/a", "/b"]),
         dict.fromkeys(HISTOGRAM_NAMES, ["/c"]),
     ]
+
+
+def test_collection_pauses_between_slices_but_not_after_last(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(metrics, "COMBINATIONS_PER_REQUEST", 1)
+    for route in ("/a", "/b", "/c"):
+        metrics.record_request("GET", route, 200, consumer=None, duration=0.1)
+    stop_event = threading.Event()
+    pauses: list[float | None] = []
+    monkeypatch.setattr(stop_event, "wait", lambda timeout=None: pauses.append(timeout) or False)
+    _, *histogram_entries = collect_metrics(stop_event).resource_metrics
+    assert len(histogram_entries) == 3
+    assert pauses == [metrics.SLICE_PAUSE_SECONDS] * 2
+
+
+def test_collection_writes_all_slices_when_stop_event_is_set(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(metrics, "COMBINATIONS_PER_REQUEST", 1)
+    for route in ("/a", "/b", "/c"):
+        metrics.record_request("GET", route, 200, consumer=None, duration=0.1)
+    stop_event = threading.Event()
+    stop_event.set()
+    _, *histogram_entries = collect_metrics(stop_event).resource_metrics
+    assert len(histogram_entries) == 3
 
 
 def test_process_gauges_exported_without_traffic():

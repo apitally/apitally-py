@@ -195,7 +195,7 @@ def test_metrics_collection_error_does_not_block_export(
 ) -> None:
     worker = make_worker(spool, otlp_server.url)
 
-    def fail(spool: Spool) -> None:
+    def fail(spool: Spool, stop_event: threading.Event | None) -> None:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(metrics, "collect", fail)

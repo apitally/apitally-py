@@ -168,7 +168,7 @@ class ExportWorker:
                     )
             self.log_processor.downstream.force_flush()
             try:
-                metrics.collect(self.spool)
+                metrics.collect(self.spool, stop_event)
             except Exception:
                 logger.exception("Error collecting Apitally metrics")
             if final:
