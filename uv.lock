@@ -45,9 +45,9 @@ source = { editable = "." }
 default-groups = "all"
 dependencies = [
     { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-otlp-proto-common" },
     { name = "opentelemetry-instrumentation" },
     { name = "opentelemetry-instrumentation-logging" },
+    { name = "opentelemetry-proto" },
     { name = "opentelemetry-sdk" },
     { name = "psutil" },
     { name = "requests" },
@@ -116,6 +116,7 @@ test = [
     { name = "inflection" },
     { name = "litestar" },
     { name = "loguru" },
+    { name = "opentelemetry-exporter-otlp-proto-common" },
     { name = "opentelemetry-instrumentation-asgi" },
     { name = "opentelemetry-instrumentation-django" },
     { name = "opentelemetry-instrumentation-fastapi" },
@@ -132,6 +133,7 @@ test = [
 test-base = [
     { name = "httpx" },
     { name = "loguru" },
+    { name = "opentelemetry-exporter-otlp-proto-common" },
     { name = "opentelemetry-test-utils" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -152,7 +154,6 @@ requires-dist = [
     { name = "inflection", marker = "extra == 'django'", specifier = ">=0.5.1" },
     { name = "litestar", marker = "extra == 'litestar'", specifier = ">=2.24.0" },
     { name = "opentelemetry-api", specifier = ">=1.42.0,<2.0.0" },
-    { name = "opentelemetry-exporter-otlp-proto-common", specifier = ">=1.42.0,<2.0.0" },
     { name = "opentelemetry-instrumentation", specifier = ">=0.63b0" },
     { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'blacksheep'", specifier = ">=0.63b0" },
     { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'fastapi'", specifier = ">=0.63b0" },
@@ -161,6 +162,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-django", extras = ["asgi"], marker = "extra == 'django'", specifier = ">=0.63b0" },
     { name = "opentelemetry-instrumentation-flask", marker = "extra == 'flask'", specifier = ">=0.63b0" },
     { name = "opentelemetry-instrumentation-logging", specifier = ">=0.63b0" },
+    { name = "opentelemetry-proto", specifier = ">=1.42.0,<2.0.0" },
     { name = "opentelemetry-sdk", specifier = ">=1.42.0,<2.0.0" },
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "requests", specifier = ">=2.26.0" },
@@ -200,6 +202,7 @@ test = [
     { name = "inflection" },
     { name = "litestar" },
     { name = "loguru" },
+    { name = "opentelemetry-exporter-otlp-proto-common", specifier = ">=1.42.0" },
     { name = "opentelemetry-instrumentation-asgi", specifier = ">=0.63b0" },
     { name = "opentelemetry-instrumentation-django", specifier = ">=0.63b0" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.63b0" },
@@ -216,6 +219,7 @@ test = [
 test-base = [
     { name = "httpx" },
     { name = "loguru" },
+    { name = "opentelemetry-exporter-otlp-proto-common", specifier = ">=1.42.0" },
     { name = "opentelemetry-test-utils", specifier = ">=0.63b0" },
     { name = "pytest", specifier = "~=8.4.0" },
     { name = "pytest-asyncio", specifier = "~=0.21.2" },

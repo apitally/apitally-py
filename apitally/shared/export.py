@@ -12,7 +12,6 @@ import requests
 from opentelemetry import context as otel_context
 from opentelemetry._logs import Logger
 from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry.exporter.otlp.proto.common._log_encoder import encode_logs
 from opentelemetry.sdk._logs import ReadableLogRecord
 from opentelemetry.sdk._logs.export import LogRecordExporter, LogRecordExportResult
 from opentelemetry.sdk.trace import ReadableSpan
@@ -20,6 +19,7 @@ from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.trace import INVALID_SPAN, set_span_in_context
 
 from apitally.shared import metrics, server_errors, validation_errors
+from apitally.shared.log_encoder import encode_logs
 from apitally.shared.log_processor import ApitallyLogRecordProcessor, truncate_log_record
 from apitally.shared.providers import DISTRO_VERSION, endpoint_url, export_headers
 from apitally.shared.span_processor import ApitallySpanProcessor
@@ -70,7 +70,7 @@ class SpoolLogExporter(LogRecordExporter):
     def export(self, batch: Sequence[ReadableLogRecord]) -> LogRecordExportResult:
         for record in batch:
             truncate_log_record(record)
-        self.spool.append("logs", encode_logs(batch).SerializeToString())
+        self.spool.append("logs", encode_logs(batch))
         return LogRecordExportResult.SUCCESS
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
