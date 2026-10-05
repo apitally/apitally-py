@@ -1,6 +1,5 @@
 import json
 import logging
-from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -8,7 +7,6 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from opentelemetry import context as otel_context
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.trace import SpanKind
 
 import apitally
@@ -66,10 +64,8 @@ def create_app() -> FastAPI:
 
 
 @pytest.fixture()
-def app() -> Iterator[FastAPI]:
-    app = create_app()
-    yield app
-    FastAPIInstrumentor.uninstrument_app(app)
+def app() -> FastAPI:
+    return create_app()
 
 
 def init(app: FastAPI, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
@@ -205,11 +201,15 @@ def test_mounted_subapp_route_in_metrics_and_startup_paths(
 def test_pre_instrumented_app_adapts_without_duplicate_spans(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    FastAPIInstrumentor.instrument_app(app)
-    init(app, monkeypatch)
-    with TestClient(app) as client:
-        client.get("/items/42")
-        (point,) = duration_data_points()
+    fastapi_instrumentation = pytest.importorskip("opentelemetry.instrumentation.fastapi")
+    fastapi_instrumentation.FastAPIInstrumentor.instrument_app(app)
+    try:
+        init(app, monkeypatch)
+        with TestClient(app) as client:
+            client.get("/items/42")
+            (point,) = duration_data_points()
+    finally:
+        fastapi_instrumentation.FastAPIInstrumentor.uninstrument_app(app)
     # The user instrumentor's receive/send spans are dropped by the span processor's built-in filter
     (span,) = exported_spans(exporters)
     assert span.kind == SpanKind.SERVER
@@ -226,6 +226,7 @@ def test_unhandled_exception_recorded_on_server_span(
         response = client.get("/error")
     assert response.status_code == 500
     (span,) = exported_spans(exporters)
+    assert span.name == "GET /error"
     assert unwrap(span.attributes)["http.response.status_code"] == 500
     (event,) = [e for e in span.events if e.name == "exception"]
     assert unwrap(event.attributes)["exception.type"] == "ValueError"
@@ -310,17 +311,14 @@ def test_unhandled_exception_with_http_middleware_recorded_unwrapped(
     def error() -> None:
         raise ValueError("boom")
 
-    try:
-        init(app, monkeypatch)
-        with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.get("/error")
-        assert response.status_code == 500
-        (span,) = exported_spans(exporters)
-        (event,) = [e for e in span.events if e.name == "exception"]
-        assert unwrap(event.attributes)["exception.type"] == "ValueError"
-        assert unwrap(event.attributes)["exception.message"] == "boom"
-    finally:
-        FastAPIInstrumentor.uninstrument_app(app)
+    init(app, monkeypatch)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/error")
+    assert response.status_code == 500
+    (span,) = exported_spans(exporters)
+    (event,) = [e for e in span.events if e.name == "exception"]
+    assert unwrap(event.attributes)["exception.type"] == "ValueError"
+    assert unwrap(event.attributes)["exception.message"] == "boom"
 
 
 def test_unhandled_exception_response_captured(

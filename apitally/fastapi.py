@@ -6,10 +6,12 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
+from opentelemetry.util.http import get_excluded_urls
+from starlette.middleware.errors import ServerErrorMiddleware
 
 from apitally.shared import activation, config, startup, validation_errors
-from apitally.shared.asgi import ApitallyASGIMiddleware
+from apitally.shared.asgi import ApitallyASGIMiddleware, ExceptionRecordingMiddleware, get_default_span_details
 
 
 if TYPE_CHECKING:
@@ -54,19 +56,31 @@ def _instrument_app(app: FastAPI) -> None:
     if getattr(app, "_is_instrumented_by_apitally", False):
         return
     setattr(app, "_is_instrumented_by_apitally", True)
-    if not getattr(app, "_is_instrumented_by_opentelemetry", False):
-        FastAPIInstrumentor.instrument_app(app, exclude_spans=["receive", "send"])
+    is_instrumented_by_user = getattr(app, "_is_instrumented_by_opentelemetry", False)
+    # Makes a later FastAPIInstrumentor.instrument_app call a no-op
+    setattr(app, "_is_instrumented_by_opentelemetry", True)
     # FastAPI 0.142+ marks excluded requests so mounted FastAPI apps don't start their own SERVER span
     if (telemetry_config := getattr(app, "_telemetry", None)) is not None:
         telemetry_config["exclude"] = lambda scope: True
 
-    # The instrumentor already replaced build_middleware_stack; replace it again on top so the
-    # transport middleware wraps the whole instrumented stack, outside ServerErrorMiddleware:
-    # responses to unhandled exceptions then pass through it, with the SERVER span still recording
+    # Replacing build_middleware_stack puts the transport middleware outside ServerErrorMiddleware
+    # (and outside a user's FastAPIInstrumentor stack), so 500 responses to unhandled exceptions
+    # pass through it
     build_inner = app.build_middleware_stack
 
     def build_with_shim() -> activation.ASGIActivationShim:
         inner = build_inner()
+        if not is_instrumented_by_user:
+            if isinstance(inner, ServerErrorMiddleware):
+                inner.app = ExceptionRecordingMiddleware(inner.app)  # ty: ignore[invalid-assignment, invalid-argument-type]
+            # Composed directly instead of via FastAPIInstrumentor.instrument_app, whose span
+            # details callback matches the request against every route before routing
+            inner = OpenTelemetryMiddleware(
+                inner,
+                excluded_urls=get_excluded_urls("FASTAPI"),
+                default_span_details=get_default_span_details,
+                exclude_spans=["receive", "send"],
+            )
         return activation.ASGIActivationShim(
             ApitallyASGIMiddleware(
                 inner,  # ty: ignore[invalid-argument-type]

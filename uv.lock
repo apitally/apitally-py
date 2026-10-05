@@ -67,7 +67,7 @@ django = [
 ]
 fastapi = [
     { name = "fastapi" },
-    { name = "opentelemetry-instrumentation-fastapi" },
+    { name = "opentelemetry-instrumentation-asgi" },
     { name = "starlette" },
 ]
 flask = [
@@ -155,10 +155,10 @@ requires-dist = [
     { name = "opentelemetry-exporter-otlp-proto-common", specifier = ">=1.42.0,<2.0.0" },
     { name = "opentelemetry-instrumentation", specifier = ">=0.63b0" },
     { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'blacksheep'", specifier = ">=0.63b0" },
+    { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'fastapi'", specifier = ">=0.63b0" },
     { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'litestar'", specifier = ">=0.63b0" },
     { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'starlette'", specifier = ">=0.63b0" },
     { name = "opentelemetry-instrumentation-django", extras = ["asgi"], marker = "extra == 'django'", specifier = ">=0.63b0" },
-    { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'fastapi'", specifier = ">=0.63b0" },
     { name = "opentelemetry-instrumentation-flask", marker = "extra == 'flask'", specifier = ">=0.63b0" },
     { name = "opentelemetry-instrumentation-logging", specifier = ">=0.63b0" },
     { name = "opentelemetry-sdk", specifier = ">=1.42.0,<2.0.0" },

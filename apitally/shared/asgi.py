@@ -4,6 +4,8 @@ import time
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
+from opentelemetry.trace import Status, StatusCode
+
 from apitally.shared import metrics, server_errors, validation_errors
 from apitally.shared.config import (
     BODY_TOO_LARGE,
@@ -19,6 +21,7 @@ from apitally.shared.consumers import (
     reset_consumer,
 )
 from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
+from apitally.shared.helpers import capture_exception
 from apitally.shared.validation_errors import ValidationError
 
 
@@ -88,6 +91,7 @@ class ApitallyASGIMiddleware:
         inspect_validation_response = False
         completed = False
         deferred_span_id: int | None = None
+        route: str | None = None
 
         init_consumer()
         exception_holder = server_errors.init_exception_holder()
@@ -123,8 +127,25 @@ class ApitallyASGIMiddleware:
                 logger.exception("Error in Apitally ASGI middleware")
             return message
 
+        def resolve_route_and_update_span() -> str | None:
+            try:
+                route = self.resolve_route(scope)
+            except Exception:  # pragma: no cover
+                logger.exception("Error resolving route in Apitally ASGI middleware")
+                return None
+            if route:
+                root_path = str(scope.get("root_path") or "")
+                if root_path.startswith(initial_root_path):
+                    route = root_path[len(initial_root_path) :] + route
+                span = get_server_span()
+                if span is not None and span.is_recording():
+                    # Overwrites the instrumentor's raw route so spans and metrics agree on the template
+                    span.set_attribute("http.route", route)
+                    span.update_name(f"{scope.get('method', '')} {route}".strip())
+            return route
+
         def finish() -> None:
-            nonlocal completed
+            nonlocal completed, route
             if completed:
                 return
             completed = True
@@ -136,15 +157,8 @@ class ApitallyASGIMiddleware:
             if final_response_size is None and response_started:
                 final_response_size = response_size_counter
             try:
-                try:
-                    route = self.resolve_route(scope)
-                except Exception:  # pragma: no cover
-                    logger.exception("Error resolving route in Apitally ASGI middleware")
-                    route = None
-                if route:
-                    root_path = str(scope.get("root_path") or "")
-                    if root_path.startswith(initial_root_path):
-                        route = root_path[len(initial_root_path) :] + route
+                if not response_started:
+                    route = resolve_route_and_update_span()
                 consumer = get_consumer_identifier()
                 span = get_server_span()
                 processor = get_server_span_processor()
@@ -160,11 +174,6 @@ class ApitallyASGIMiddleware:
                         client = scope.get("client")
                         if isinstance(client, (list, tuple)) and client and isinstance(client[0], str) and client[0]:
                             extra_attributes["client.address"] = client[0]
-                    if route:
-                        # Overwrites the instrumentor's raw route so spans and metrics agree on the template
-                        extra_attributes["http.route"] = route
-                        if span.is_recording():
-                            span.update_name(f"{scope.get('method', '')} {route}".strip())
                     if final_request_size is not None:
                         extra_attributes["http.request.body.size"] = final_request_size
                     if final_response_size is not None:
@@ -254,11 +263,13 @@ class ApitallyASGIMiddleware:
             nonlocal status, response_started, response_size, response_size_counter, response_headers
             nonlocal response_content_type, response_content_encoding, response_body, response_body_complete
             nonlocal response_too_large
-            nonlocal capture_response_body, inspect_validation_response, deferred_span_id
+            nonlocal capture_response_body, inspect_validation_response, deferred_span_id, route
             try:
                 if message["type"] == "http.response.start":
                     response_started = True
                     status = message["status"]
+                    # Routing is done and the SERVER span is still recording, also on the exception path
+                    route = resolve_route_and_update_span()
                     headers = message.get("headers") or []
                     content_length = parse_int(get_header(headers, b"content-length"))
                     if content_length is not None and get_header(headers, b"transfer-encoding") != b"chunked":
@@ -324,6 +335,32 @@ class ApitallyASGIMiddleware:
             # Outer Sentry middleware may add its event ID after this response is finalized.
             if status != 500:
                 server_errors.reset_exception_holder()
+
+
+class ExceptionRecordingMiddleware:
+    """Records unhandled exceptions before ServerErrorMiddleware sends the 500 response,
+    which ends the SERVER span."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await self.app(scope, receive, send)
+        except Exception as exc:
+            capture_exception(exc)
+            span = get_server_span()
+            if span is not None and span.is_recording():
+                span.set_status(Status(StatusCode.ERROR, f"{type(exc).__name__}: {exc}"))
+            raise
+
+
+def get_default_span_details(scope: Scope) -> tuple[str, dict[str, Any]]:
+    # The request is not routed yet when the SERVER span starts; ApitallyASGIMiddleware sets
+    # http.route and the span name when the request finishes
+    if scope["type"] == "websocket":
+        return "WS", {}
+    return str(scope.get("method", "")), {}
 
 
 def resolve_route_from_scope(scope: Scope) -> str | None:
