@@ -4,7 +4,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
-from opentelemetry.trace import Status, StatusCode
 from opentelemetry.util.http import get_excluded_urls
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -13,14 +12,12 @@ from starlette.routing import Match
 from starlette.schemas import SchemaGenerator
 
 from apitally.shared import activation, config, startup
-from apitally.shared.asgi import ApitallyASGIMiddleware
-from apitally.shared.context import get_server_span
-from apitally.shared.helpers import capture_exception
+from apitally.shared.asgi import ApitallyASGIMiddleware, ExceptionRecordingMiddleware, get_default_span_details
 
 
 if TYPE_CHECKING:
     from starlette.routing import BaseRoute
-    from starlette.types import ASGIApp, Receive, Scope, Send
+    from starlette.types import Scope
 
 
 __all__ = ["init"]
@@ -84,7 +81,7 @@ def _instrument_app(app: Starlette) -> None:
     def build_with_shim() -> activation.ASGIActivationShim:
         inner = build_inner()
         if isinstance(inner, ServerErrorMiddleware):
-            inner.app = _ExceptionRecordingMiddleware(inner.app)
+            inner.app = ExceptionRecordingMiddleware(inner.app)  # ty: ignore[invalid-assignment, invalid-argument-type]
         return activation.ASGIActivationShim(
             ApitallyASGIMiddleware(
                 # Composed directly instead of via StarletteInstrumentor.instrument_app, which
@@ -92,7 +89,7 @@ def _instrument_app(app: Starlette) -> None:
                 OpenTelemetryMiddleware(  # ty: ignore[invalid-argument-type]
                     inner,
                     excluded_urls=get_excluded_urls("STARLETTE"),
-                    default_span_details=_get_default_span_details,
+                    default_span_details=get_default_span_details,
                     exclude_spans=["receive", "send"],
                 ),
                 resolve_route=_resolve_route,
@@ -101,32 +98,6 @@ def _instrument_app(app: Starlette) -> None:
         )
 
     app.build_middleware_stack = build_with_shim  # ty: ignore[invalid-assignment]
-
-
-class _ExceptionRecordingMiddleware:
-    """Records unhandled exceptions before ServerErrorMiddleware sends the 500 response,
-    which ends the SERVER span."""
-
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        try:
-            await self.app(scope, receive, send)
-        except Exception as exc:
-            capture_exception(exc)
-            span = get_server_span()
-            if span is not None and span.is_recording():
-                span.set_status(Status(StatusCode.ERROR, f"{type(exc).__name__}: {exc}"))
-            raise
-
-
-def _get_default_span_details(scope: Scope) -> tuple[str, dict[str, Any]]:
-    route = _resolve_route(scope)
-    method = str(scope.get("method", ""))
-    if route is None:
-        return method, {}
-    return f"{method} {route}".strip(), {"http.route": route}
 
 
 def _resolve_route(scope: Scope, routes: list[BaseRoute] | None = None) -> str | None:

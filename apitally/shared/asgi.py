@@ -4,6 +4,8 @@ import time
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
+from opentelemetry.trace import Status, StatusCode
+
 from apitally.shared import metrics, server_errors, validation_errors
 from apitally.shared.config import (
     BODY_TOO_LARGE,
@@ -19,6 +21,7 @@ from apitally.shared.consumers import (
     reset_consumer,
 )
 from apitally.shared.context import get_server_span, get_server_span_processor, is_server_span_kept
+from apitally.shared.helpers import capture_exception
 from apitally.shared.validation_errors import ValidationError
 
 
@@ -324,6 +327,30 @@ class ApitallyASGIMiddleware:
             # Outer Sentry middleware may add its event ID after this response is finalized.
             if status != 500:
                 server_errors.reset_exception_holder()
+
+
+class ExceptionRecordingMiddleware:
+    """Records unhandled exceptions before ServerErrorMiddleware sends the 500 response,
+    which ends the SERVER span."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await self.app(scope, receive, send)
+        except Exception as exc:
+            capture_exception(exc)
+            span = get_server_span()
+            if span is not None and span.is_recording():
+                span.set_status(Status(StatusCode.ERROR, f"{type(exc).__name__}: {exc}"))
+            raise
+
+
+def get_default_span_details(scope: Scope) -> tuple[str, dict[str, Any]]:
+    # The request is not routed yet when the SERVER span starts; ApitallyASGIMiddleware sets
+    # http.route and the span name when the request finishes
+    return str(scope.get("method", "")), {}
 
 
 def resolve_route_from_scope(scope: Scope) -> str | None:

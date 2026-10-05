@@ -71,7 +71,7 @@ See the [SDK reference](https://docs.apitally.io/sdk-reference/python/v1/configu
 
 ### FastAPI
 
-Install the SDK with the `fastapi` extra, which also pulls in the OpenTelemetry instrumentation for FastAPI:
+Install the SDK with the `fastapi` extra:
 
 ```bash
 pip install "apitally[fastapi]"

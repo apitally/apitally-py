@@ -465,7 +465,7 @@ def test_export_worker_uses_proxies(spool: Spool, otlp_server: StubOTLPServer, m
 
 
 fastapi_required = pytest.mark.skipif(
-    not installed("fastapi", "opentelemetry.instrumentation.fastapi"),
+    not installed("fastapi", "opentelemetry.instrumentation.asgi"),
     reason="end-to-end tests use the FastAPI adapter",
 )
 

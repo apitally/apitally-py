@@ -112,7 +112,7 @@ if not installed("ninja"):
     collect_ignore.append("test_django_ninja.py")
 if not installed("rest_framework"):
     collect_ignore.append("test_django_rest_framework.py")
-if not installed("fastapi", "opentelemetry.instrumentation.fastapi"):
+if not installed("fastapi", "opentelemetry.instrumentation.asgi"):
     collect_ignore.append("test_fastapi.py")
 if not installed("flask", "opentelemetry.instrumentation.flask"):
     collect_ignore.append("test_flask.py")
