@@ -91,7 +91,7 @@ def add_attributes(key_values: RepeatedCompositeFieldContainer[KeyValue], attrib
 
 
 def set_any_value(any_value: AnyValue, value: Any) -> None:
-    # Attribute values are primitives or sequences of primitives; bool is checked before its superclass int
+    # Values are primitives, None, or lists and dicts of them; bool is checked before its superclass int
     if isinstance(value, str):
         any_value.string_value = value
     elif isinstance(value, (list, tuple)):
@@ -99,6 +99,9 @@ def set_any_value(any_value: AnyValue, value: Any) -> None:
         any_value.array_value.SetInParent()
         for item in value:
             set_any_value(values.add(), item)
+    elif isinstance(value, dict):
+        any_value.kvlist_value.SetInParent()
+        add_attributes(any_value.kvlist_value.values, value)
     elif isinstance(value, bool):
         any_value.bool_value = value
     elif isinstance(value, int):
@@ -107,6 +110,9 @@ def set_any_value(any_value: AnyValue, value: Any) -> None:
         any_value.double_value = value
     elif isinstance(value, bytes):
         any_value.bytes_value = value
+    elif value is None:
+        # OpenTelemetry encodes None as an empty value that is still present
+        any_value.SetInParent()
 
 
 def get_span_flags(parent: SpanContext | None) -> int:
