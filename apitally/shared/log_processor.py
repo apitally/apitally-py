@@ -6,6 +6,7 @@ from types import CodeType, FrameType
 from typing import TYPE_CHECKING, cast
 
 from opentelemetry import trace
+from opentelemetry._logs import LogRecord
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
 from opentelemetry.sdk._logs import LoggerProvider, LogRecordProcessor, ReadableLogRecord, ReadWriteLogRecord
 from opentelemetry.util.types import AnyValue
@@ -41,6 +42,13 @@ class ApitallyLoggingHandler(LoggingHandler):
         if last_resort is not None and record.levelno >= last_resort.level and not self.has_other_handlers(record):
             last_resort.handle(record)
         return super().handle(record)
+
+    def _translate(self, record: logging.LogRecord) -> LogRecord:
+        log_record = super()._translate(record)
+        attributes = cast(MutableMapping[str, AnyValue], log_record.attributes)
+        for key in [key for key, value in attributes.items() if not isinstance(value, (str, int, float))]:
+            del attributes[key]
+        return log_record
 
     def has_other_handlers(self, record: logging.LogRecord) -> bool:
         logger: logging.Logger | None = logging.getLogger(record.name)

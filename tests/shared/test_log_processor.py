@@ -97,6 +97,21 @@ def test_log_strings_truncated_before_buffering(
     assert unwrap(exported.log_record.attributes)["detail"] == "b" * MAX_LOG_VALUE_LENGTH
 
 
+def test_unencodable_extra_values_dropped_without_otel_warning(
+    tracer: Tracer,
+    log_exporter: InMemoryLogRecordExporter,
+    root_handler: LoggingHandler | None,
+    caplog: pytest.LogCaptureFixture,
+):
+    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        logging.getLogger("myapp").warning("bad request", extra={"request": object(), "status_code": 400})
+    (exported,) = log_exporter.get_finished_logs()
+    attributes = unwrap(exported.log_record.attributes)
+    assert "request" not in attributes
+    assert attributes["status_code"] == 400
+    assert [record.name for record in caplog.records] == ["myapp"]
+
+
 def test_logs_discarded_when_sample_on_response_returns_false(log_exporter: InMemoryLogRecordExporter):
     set_config(write_token=WRITE_TOKEN, sample_on_response=lambda span: False)
     span_processor = ApitallySpanProcessor(SpanProcessor())
