@@ -61,7 +61,7 @@ The SDK supports **Python** `>= 3.10`.
 
 \* For FastAPI on Cloudflare Workers use our [Python Serverless SDK](https://github.com/apitally/apitally-py-serverless) instead.
 
-Apitally also supports many other web frameworks in [JavaScript](https://github.com/apitally/apitally-js), [Go](https://github.com/apitally/apitally-go), [.NET](https://github.com/apitally/apitally-dotnet) and [Java](https://github.com/apitally/apitally-java) via our other SDKs.
+Apitally also supports many other web frameworks in [JavaScript](https://github.com/apitally/apitally-js), [Go](https://github.com/apitally/apitally-go) and [.NET](https://github.com/apitally/apitally-dotnet) via our other SDKs.
 
 ## Getting started
 
