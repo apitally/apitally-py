@@ -147,3 +147,7 @@ If you already have a global OpenTelemetry SDK `TracerProvider`, the SDK automat
 Review these settings when upgrading:
 
 - **Sampling:** Previously, your provider's sampler affected traces but not Apitally's request logs. It now affects both. Check that its sampling rate provides the request log coverage you want. Metrics remain unsampled.
+
+## Other changes
+
+- **Network access:** The SDK now sends data to `otlp.apitally.io` instead of `hub.apitally.io`. Update firewall allowlists if necessary.
