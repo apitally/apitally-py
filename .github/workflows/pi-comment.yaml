@@ -1,4 +1,4 @@
-name: Pi
+name: Pi Comment
 
 on:
   issue_comment:

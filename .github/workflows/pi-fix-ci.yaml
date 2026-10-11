@@ -1,0 +1,73 @@
+name: Pi Fix CI
+run-name: Pi Fix CI for run ${{ inputs.run_id }}
+
+# Dispatched by the pi-fix-ci job in tests.yaml when CI fails on a Renovate PR
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: ID of the failed Tests workflow run
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  fix-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Look up pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          branch=$(gh run view "$RUN_ID" --json headBranch --jq .headBranch)
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "number=$(gh pr view "$branch" --json number --jq .number)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ steps.pr.outputs.branch }}
+          fetch-depth: 0
+          token: ${{ secrets.PI_GITHUB_TOKEN }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.23"
+          enable-cache: true
+      - name: Install Python
+        run: uv python install 3.14
+      - name: Install dependencies
+        run: uv sync --all-groups --all-extras --frozen
+      # Logs are only available once the Tests run, which dispatched this workflow, has completed
+      - name: Capture failed CI logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          gh run watch "$RUN_ID" > /dev/null
+          gh run view "$RUN_ID" --log-failed > "$RUNNER_TEMP/failed-ci.log"
+      - name: Investigate and fix CI failure
+        uses: shaftoe/pi-coding-agent-action@f7496a9aea9798c5d52d39096d98d5c5b16559b3 # v2.30.0
+        with:
+          github_token: ${{ github.token }}
+          provider: openrouter
+          model: anthropic/claude-sonnet-5.5
+          token: ${{ secrets.PI_OPENROUTER_API_KEY }}
+          thinking_level: high
+          update_comment: true
+          pr_number: ${{ steps.pr.outputs.number }}
+          prompt: |
+            Investigate failed CI run ${{ inputs.run_id }} for Renovate PR #${{ steps.pr.outputs.number }}. Inspect the PR diff and confirm the dependency update caused the failure. Read `${{ runner.temp }}/failed-ci.log`. Do not call `get_workflow_run_logs`.
+
+            Only make an obvious, minimal, mechanical change that preserves behavior, such as formatting, removing an obsolete suppression, correcting an import or annotation, or applying an unambiguous API signature change. Never change logic, test assertions, dependencies, lockfiles, configuration, generated files, schemas, migrations, workflows, or unrelated code.
+
+            Reproduce the failure and run the relevant failed CI command after editing. If it does not pass or cannot run reliably, restore your changes and do not push.
+
+            If the validated fix meets every condition, call update_pull_request once with commit message "Fix CI after dependency update". Otherwise, leave the working tree unchanged and concisely report the failed job, likely cause, reason automation was unsafe, and suggested manual action.
