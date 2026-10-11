@@ -253,7 +253,6 @@ class ApitallyASGIMiddleware:
                     duration=duration,
                     request_size=final_request_size,
                     response_size=final_response_size,
-                    scheme=scope.get("scheme"),
                 )
                 emit_consumer_update_if_changed()
             finally:

@@ -314,7 +314,6 @@ class ApitallyDjangoMiddleware:
             duration=time.perf_counter() - start_time,
             request_size=request_size,
             response_size=response_size,
-            scheme=request.scheme,
         )
 
     def finalize_streaming(
@@ -347,7 +346,6 @@ class ApitallyDjangoMiddleware:
         status_code = response.status_code
         response_content_encoding = response.get("Content-Encoding")
         consumer = get_consumer_identifier()
-        scheme = request.scheme
 
         def finish(bytes_sent: int, body: bytearray | bytes | None, completed: bool) -> None:
             try:
@@ -373,7 +371,6 @@ class ApitallyDjangoMiddleware:
                     duration=time.perf_counter() - start_time,
                     request_size=request_size,
                     response_size=final_response_size,
-                    scheme=scheme,
                 )
             except Exception:  # pragma: no cover
                 logger.exception("Error in Apitally Django middleware")

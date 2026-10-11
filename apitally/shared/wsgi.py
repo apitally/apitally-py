@@ -187,7 +187,6 @@ class ApitallyWSGIMiddleware:
                 duration=duration,
                 request_size=state.request_size,
                 response_size=state.response_size,
-                scheme=environ.get("wsgi.url_scheme"),
             )
             emit_consumer_update_if_changed()
         except Exception:  # pragma: no cover
