@@ -50,10 +50,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24"
-      - uses: shaftoe/pi-coding-agent-action@193431b0260194099a5e6c91e5b69b8e3c9d3fb1 # develop
+      - uses: shaftoe/pi-coding-agent-action@f7496a9aea9798c5d52d39096d98d5c5b16559b3 # v2.30.0
         with:
           github_token: ${{ github.token }}
           provider: openrouter
-          model: openai/gpt-5.6-sol
+          model: anthropic/claude-sonnet-5.5
           token: ${{ secrets.PI_OPENROUTER_API_KEY }}
           thinking_level: high
