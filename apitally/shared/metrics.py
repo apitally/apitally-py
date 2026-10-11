@@ -215,8 +215,6 @@ def encode_attributes(key: RequestMetricKey) -> bytes:
     }
     if key.consumer:
         attributes["apitally.consumer.identifier"] = key.consumer
-    if key.status_code >= 500:
-        attributes["error.type"] = str(key.status_code)
     data_point = ExponentialHistogramDataPoint()
     add_attributes(data_point.attributes, attributes)
     return data_point.SerializeToString()

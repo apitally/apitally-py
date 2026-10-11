@@ -176,7 +176,6 @@ def test_unknown_sizes_skip_size_observations():
         "http.request.method": "GET",
         "http.route": "/a",
         "http.response.status_code": 500,
-        "error.type": "500",
     }
     assert "http.server.request.body.size" not in data_points
     assert "http.server.response.body.size" not in data_points
