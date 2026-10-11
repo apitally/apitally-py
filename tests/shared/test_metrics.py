@@ -27,7 +27,6 @@ def test_collection_exports_complete_histogram_points():
             duration=duration,
             request_size=0,
             response_size=response_size,
-            scheme="https",
         )
     _, histogram_entry = collect_metrics().resource_metrics
     assert point_attributes(histogram_entry.resource)["service.name"] == "test-service"
@@ -50,7 +49,6 @@ def test_collection_exports_complete_histogram_points():
         "http.request.method": "GET",
         "http.route": "/items/{id}",
         "http.response.status_code": 200,
-        "url.scheme": "https",
         "apitally.consumer.identifier": "tenant-1",
     }
     assert 0 < duration_point.start_time_unix_nano < duration_point.time_unix_nano
@@ -171,14 +169,13 @@ def test_options_and_unmatched_route_not_recorded():
 
 
 def test_unknown_sizes_skip_size_observations():
-    metrics.record_request("GET", "/a", 500, consumer=None, duration=0.01, scheme="http")
+    metrics.record_request("GET", "/a", 500, consumer=None, duration=0.01)
     data_points = collect_data_points()
     (point,) = data_points["http.server.request.duration"]
     assert point_attributes(point) == {
         "http.request.method": "GET",
         "http.route": "/a",
         "http.response.status_code": 500,
-        "url.scheme": "http",
         "error.type": "500",
     }
     assert "http.server.request.body.size" not in data_points

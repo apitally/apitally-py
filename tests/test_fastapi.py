@@ -125,7 +125,6 @@ def test_histogram_attributes_and_log_correlation(
         "http.request.method": "GET",
         "http.route": "/items/{item_id}",
         "http.response.status_code": 200,
-        "url.scheme": "http",
     }
     # Included-router route resolves to the full template, matching the SERVER span
     assert set(points) == set(spans) == {"/items/{item_id}", "/v1/users/{user_id}"}

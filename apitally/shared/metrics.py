@@ -40,7 +40,6 @@ class RequestMetricKey(NamedTuple):
     method: str
     route: str
     status_code: int
-    scheme: str | None
     consumer: str | None
 
 
@@ -98,14 +97,13 @@ def record_request(
     duration: float,
     request_size: int | None = None,
     response_size: int | None = None,
-    scheme: str | None = None,
 ) -> None:
     if resource is None:
         return
     method = method.upper()
     if method == "OPTIONS" or not route:
         return
-    key = RequestMetricKey(method, route, status_code, scheme, consumer)
+    key = RequestMetricKey(method, route, status_code, consumer)
     with request_metrics_lock:
         histograms = request_histograms.get(key)
         if histograms is None:
@@ -217,8 +215,6 @@ def encode_attributes(key: RequestMetricKey) -> bytes:
     }
     if key.consumer:
         attributes["apitally.consumer.identifier"] = key.consumer
-    if key.scheme:
-        attributes["url.scheme"] = key.scheme
     if key.status_code >= 500:
         attributes["error.type"] = str(key.status_code)
     data_point = ExponentialHistogramDataPoint()

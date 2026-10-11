@@ -348,7 +348,6 @@ async def test_histogram_records_once_with_consumer():
         "http.route": "/items/{id}",
         "http.response.status_code": 200,
         "apitally.consumer.identifier": "tenant-1",
-        "url.scheme": "http",
     }
 
 
