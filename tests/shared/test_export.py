@@ -1,4 +1,5 @@
 import gzip
+import json
 import logging
 import socket
 import threading
@@ -137,8 +138,15 @@ def test_stashed_body_and_headers_reach_spool_redacted(spool: Spool) -> None:
     payload = read_spool_payload(file)
     assert b"secret123" not in payload
     assert b"hunter2" not in payload
-    assert REDACTED.encode() in payload
     assert b"application/json" in payload
+    (exported,) = [
+        exported
+        for rs in ExportTraceServiceRequest.FromString(payload).resource_spans
+        for ss in rs.scope_spans
+        for exported in ss.spans
+    ]
+    attributes = {kv.key: kv.value for kv in exported.attributes}
+    assert json.loads(attributes["apitally.request.body"].string_value) == {"password": REDACTED}
 
 
 def test_log_batch_is_written_to_spool_as_parseable_payload(spool: Spool) -> None:
