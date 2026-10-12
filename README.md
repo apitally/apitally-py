@@ -239,6 +239,8 @@ See our [documentation on masking](https://docs.apitally.io/sdk-reference/python
 
 The following functions add context to the current request. Call them while handling a request, for example in an endpoint, middleware, or authentication code.
 
+### Consumers
+
 To associate the request with the API consumer making it, call `set_consumer`. Only the identifier is required.
 
 ```python
@@ -250,11 +252,17 @@ apitally.set_consumer(
 )
 ```
 
+### Custom attributes
+
 To attach custom data to the request's trace, call `set_request_attribute`. Sampling and masking callbacks can also read these attributes.
 
 ```python
 apitally.set_request_attribute("tenant.id", tenant_id)
 ```
+
+See our [documentation on attributes](https://docs.apitally.io/sdk-reference/python/v1/attributes#set-custom-attributes) for details.
+
+### Handled exceptions
 
 To capture an exception that your code handles itself, call `capture_exception`. Unhandled exceptions are captured automatically.
 
@@ -264,8 +272,6 @@ try:
 except Exception as exc:
     apitally.capture_exception(exc)
 ```
-
-See our documentation on [custom attributes](https://docs.apitally.io/sdk-reference/python/v1/attributes#set-custom-attributes) and [handled exceptions](https://docs.apitally.io/sdk-reference/python/v1/tracing#capture-handled-exceptions) for details.
 
 ## Existing OpenTelemetry setup
 
