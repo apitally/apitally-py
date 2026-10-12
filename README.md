@@ -239,7 +239,7 @@ See our [documentation on masking](https://docs.apitally.io/sdk-reference/python
 
 ## Adding context to requests
 
-The following functions add information that only your application knows to the current request. Call them while handling a request, for example in an endpoint, middleware, or authentication code.
+The following functions add context to the current request. Call them while handling a request, for example in an endpoint, middleware, or authentication code.
 
 To associate the request with the API consumer making it, call `set_consumer`. Only the identifier is required.
 
