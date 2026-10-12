@@ -137,7 +137,7 @@ def test_stashed_body_and_headers_reach_spool_redacted(spool: Spool) -> None:
     payload = read_spool_payload(file)
     assert b"secret123" not in payload
     assert b"hunter2" not in payload
-    assert b'{"password":"[REDACTED]"}' in payload
+    assert REDACTED.encode() in payload
     assert b"application/json" in payload
 
 

@@ -125,4 +125,4 @@ def _resolve_route(scope: Scope, routes: list[BaseRoute] | None = None) -> str |
 
 def _get_paths(app: Starlette) -> list[dict[str, str]]:
     endpoints = SchemaGenerator({}).get_endpoints(app.routes)
-    return [{"method": endpoint.http_method, "path": endpoint.path} for endpoint in endpoints]
+    return [{"method": endpoint.http_method.upper(), "path": endpoint.path} for endpoint in endpoints]

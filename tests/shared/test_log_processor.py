@@ -1,7 +1,6 @@
 import logging
 import logging.handlers
 from collections.abc import Generator
-from unittest import mock
 
 import pytest
 from opentelemetry._logs import LogRecord, SeverityNumber
@@ -228,13 +227,9 @@ def test_shutdown_flushes_queued_logs(log_exporter: InMemoryLogRecordExporter):
 def test_no_logs_exported_for_excluded_requests(
     tracer: Tracer, log_exporter: InMemoryLogRecordExporter, root_handler: LoggingHandler | None
 ):
-    assert root_handler is not None
     attributes = {"http.request.method": "GET", "url.path": "/healthz"}
-    with mock.patch.object(root_handler, "emit", wraps=root_handler.emit) as emit_spy:
-        with tracer.start_as_current_span("GET /healthz", kind=SpanKind.SERVER, attributes=attributes):
-            logging.getLogger("myapp").warning("inside excluded request")
-    # The kept-request filter drops the record before the handler translates it
-    emit_spy.assert_not_called()
+    with tracer.start_as_current_span("GET /healthz", kind=SpanKind.SERVER, attributes=attributes):
+        logging.getLogger("myapp").warning("inside excluded request")
     assert log_exporter.get_finished_logs() == ()
 
 

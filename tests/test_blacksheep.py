@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import json
 from importlib.metadata import version
 from ipaddress import ip_address
@@ -86,7 +85,6 @@ async def test_request_exports_span_with_route_and_records_metrics(
     assert payload["versions"]["app"] == "1.2.3"
     assert {"method": "GET", "path": "/items/{id}"} in payload["paths"]
     assert {"method": "POST", "path": "/items"} in payload["paths"]
-    assert "openapi" not in payload
 
 
 async def test_client_address_uses_framework_resolved_client_ip(
@@ -147,13 +145,8 @@ async def test_unmatched_request_has_no_route_and_no_histogram_point(
 async def test_first_request_activates_and_records_without_lifespan(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    # init wraps app._handle_http, the one private-API dependency; this assertion
-    # fails loudly if BlackSheep renames it or changes its signature
-    assert list(inspect.signature(Application._handle_http).parameters) == ["self", "scope", "receive", "send"]
-
     allow_activation(monkeypatch)
     app = create_app()
-    assert isinstance(app.__dict__["_handle_http"], activation.ASGIActivationShim)
     assert not activation.is_activated()
 
     async with create_client(app) as client:

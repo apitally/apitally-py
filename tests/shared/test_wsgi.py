@@ -198,7 +198,7 @@ def test_unsupported_content_encoding_skips_body_capture(tracer: Tracer, span_ex
     set_config(write_token=WRITE_TOKEN, capture_request_body=True, capture_response_body=True)
 
     def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
-        start_response("200 OK", [("Content-Type", "text/plain"), ("Content-Encoding", "br")])
+        start_response("200 OK", [("Content-Type", "text/plain"), ("Content-Encoding", "x-unknown")])
         return [b"response"]
 
     environ = make_environ(
@@ -206,7 +206,7 @@ def test_unsupported_content_encoding_skips_body_capture(tracer: Tracer, span_ex
         body=b"request",
         content_type="text/plain",
         content_length="7",
-        HTTP_CONTENT_ENCODING="br",
+        HTTP_CONTENT_ENCODING="x-unknown",
     )
     spy = environ["wsgi.input"]
     attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, span_exporter)
@@ -343,7 +343,7 @@ def test_no_response_size_when_client_stops_reading_mid_stream(tracer: Tracer, s
     assert "http.response.body.size" not in attributes
 
 
-def test_exception_after_response_start_records_metrics(tracer: Tracer, span_exporter: InMemorySpanExporter):
+def test_exception_after_response_start_recorded_as_server_error(tracer: Tracer, span_exporter: InMemorySpanExporter):
     set_config(write_token=WRITE_TOKEN, capture_request_headers=True)
     metrics.setup(Resource.create({}))
 
@@ -364,8 +364,9 @@ def test_exception_after_response_start_records_metrics(tracer: Tracer, span_exp
     assert dict(span.attributes or {})["http.request.header.accept"] == ["application/json"]
     (point,) = duration_data_points()
     assert point.count == 1
-    assert point_attributes(point)["http.response.status_code"] == 200
-    assert server_errors.drain_server_errors() == []
+    assert point_attributes(point)["http.response.status_code"] == 500
+    (error,) = server_errors.drain_server_errors()
+    assert error["message"] == "failed after response start"
 
 
 def test_consumer_update_reported_for_sampled_out_request(

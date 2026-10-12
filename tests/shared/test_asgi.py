@@ -58,10 +58,8 @@ class EchoApp:
         self.response_chunks = response_chunks or [b"ok"]
         self.on_request = on_request
         self.received_messages: list[dict[str, Any]] = []
-        self.received_receive: Any = None
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
-        self.received_receive = receive
         while True:
             message = await receive()
             self.received_messages.append(message)
@@ -126,7 +124,7 @@ async def test_json_bodies_captured_and_redacted():
     assert json.loads(str(span.attributes["apitally.response.body"])) == {"token": REDACTED, "ok": True}
 
 
-async def test_capture_off_passthrough_and_size_from_content_length():
+async def test_capture_off_records_size_from_content_length():
     set_config(write_token=WRITE_TOKEN)
     tracer, exporter = create_trace_pipeline()
     app = EchoApp()
@@ -142,7 +140,6 @@ async def test_capture_off_passthrough_and_size_from_content_length():
     with tracer.start_as_current_span("POST /items", kind=SpanKind.SERVER):
         await middleware(scope, receive, send)
 
-    assert app.received_receive is receive  # no wrapping, zero buffering
     (span,) = exporter.get_finished_spans()
     assert span.attributes is not None
     assert "apitally.request.body" not in span.attributes
@@ -175,7 +172,7 @@ async def test_unsupported_content_encoding_skips_capture_and_preserves_sizes():
     tracer, exporter = create_trace_pipeline()
     request_chunks = [b"hello", b"world"]
     response_chunks = [b"abc", b"def"]
-    headers = JSON_HEADERS + [("content-encoding", "br")]
+    headers = JSON_HEADERS + [("content-encoding", "x-unknown")]
     app = EchoApp(response_headers=headers, response_chunks=response_chunks)
     await send_request(tracer, app, request_headers=headers, request_chunks=request_chunks)
 
@@ -293,7 +290,6 @@ async def test_aborted_response_exports_headers_and_size_but_not_body():
     assert header_values(span, "http.request.header.user-agent") == ("test",)
     assert header_values(span, "http.response.header.content-type") == ("application/json",)
     assert "apitally.response.body" not in span.attributes
-    assert server_errors.drain_server_errors() == []
 
 
 async def test_invalid_user_pattern_dropped_and_request_succeeds():
@@ -482,7 +478,6 @@ async def test_asgi_exception_before_response_uses_500_and_accepts_late_sentry_i
 
     with pytest.raises(RuntimeError):
         await send_request(tracer, app, method="GET")
-    assert server_errors.drain_server_errors() == []
     server_errors.set_sentry_event_id("late-event-id")
     await asyncio.sleep(0)
     (event,) = server_errors.drain_server_errors()

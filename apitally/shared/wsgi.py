@@ -72,8 +72,8 @@ class ApitallyWSGIMiddleware:
             # No ResponseWrapper is created, so finalize here to release the deferral and record metrics
             if isinstance(exc, Exception):
                 server_errors.set_exception(exc, state.exception_holder)
-                if not state.status_code:
-                    state.status_code = 500
+                # Headers are only sent with the first body chunk, so the client receives a 500
+                state.status_code = 500
             self.finalize(environ, state)
             raise
         return ResponseWrapper(response, self, environ, state)

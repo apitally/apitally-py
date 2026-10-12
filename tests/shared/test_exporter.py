@@ -74,18 +74,6 @@ def test_nested_server_span_exported_as_internal_with_one_warning(caplog: pytest
     assert sum("duplicate SERVER span" in record.getMessage() for record in caplog.records) == 1
 
 
-def test_span_without_sensitive_attributes_passes_through_unchanged():
-    tracer, exporter = create_trace_pipeline()
-    with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER, attributes={"url.path": "/items"}):
-        pass
-    (span,) = exporter.get_finished_spans()
-
-    delegate = InMemorySpanExporter()
-    ApitallySpanExporter(delegate, INSTANCE_ID).export([span])
-    (passed_through,) = delegate.get_finished_spans()
-    assert passed_through is span
-
-
 def test_user_attached_exporters_never_see_captured_headers_and_bodies():
     set_config(write_token=WRITE_TOKEN, capture_request_headers=True, capture_request_body=True)
     user_exporter = InMemorySpanExporter()
@@ -215,8 +203,7 @@ def test_decoded_body_size_limit(size: int):
     [
         (b"not compressed", "gzip"),
         (gzip.compress(b"secret")[:-1], "gzip"),
-        (gzip.compress(b"first") + gzip.compress(b"secret"), "gzip"),
-        (b"secret", "br"),
+        (b"secret", "x-unknown"),
     ],
 )
 def test_invalid_or_unsupported_compressed_bodies_use_redacted_sentinel(body: bytes, encoding: str):

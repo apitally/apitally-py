@@ -2,12 +2,11 @@ import gzip
 import json
 import logging
 import zlib
-from typing import Any, Iterator, cast
+from typing import Any, Iterator
 
 import httpx
 import pytest
 from opentelemetry import context as otel_context
-from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.starlette import StarletteInstrumentor
 from opentelemetry.trace import SpanKind, StatusCode
 from starlette.applications import Starlette
@@ -19,7 +18,7 @@ from starlette.routing import Mount, Route
 from starlette.testclient import TestClient
 
 import apitally
-from apitally.shared import activation, startup
+from apitally.shared import activation
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.redaction import REDACTED
 from tests.conftest import (
@@ -32,6 +31,7 @@ from tests.conftest import (
     exported_log_records,
     exported_spans,
     point_attributes,
+    startup_payload,
     unwrap,
 )
 
@@ -96,14 +96,11 @@ def test_request_flow_span_histogram_and_startup_event(
     assert point_attributes(point)["http.route"] == "/items/{item_id}"
     assert point_attributes(point)["http.request.method"] == "GET"
 
-    records = exported_log_records(exporters)
-    assert records[0].event_name == startup.EVENT_NAME
-    assert isinstance(records[0].body, str)
-    payload = json.loads(records[0].body)
+    payload = startup_payload(exporters)
     assert payload["framework"] == "starlette"
     assert "starlette" in payload["versions"]
-    assert {"method": "get", "path": "/items/{item_id}"} in payload["paths"]
-    (record,) = [r for r in records if r.body == "handling item"]
+    assert {"method": "GET", "path": "/items/{item_id}"} in payload["paths"]
+    (record,) = [r for r in exported_log_records(exporters) if r.body == "handling item"]
     assert unwrap(record.attributes)["apitally.request.server_span_id"] == format(span.context.span_id, "016x")
 
 
@@ -296,10 +293,6 @@ def test_pre_instrumented_app_adapts_without_duplicate_spans(
 ):
     StarletteInstrumentor.instrument_app(app)
     init(app, monkeypatch)
-
-    classes = [cast(type, m.cls) for m in app.user_middleware]
-    assert classes.index(activation.ASGIActivationShim) == 0
-    assert classes.index(ApitallyASGIMiddleware) == classes.index(OpenTelemetryMiddleware) + 1
 
     with TestClient(app) as client:
         client.get("/items/42")

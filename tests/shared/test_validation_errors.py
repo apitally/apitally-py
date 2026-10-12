@@ -53,7 +53,7 @@ def test_validation_response_rejects_ineligible_or_unreadable_body() -> None:
         ("POST", None, "application/json", body, None),
         ("POST", "/items", "text/plain", body, None),
         ("POST", "/items", "application/json", b"{", None),
-        ("POST", "/items", "application/json", body, "br"),
+        ("POST", "/items", "application/json", body, "x-unknown"),
         ("POST", "/items", "application/json", oversized_body, None),
         ("POST", "/items", "application/json", gzip.compress(oversized_body), "gzip"),
     ]
