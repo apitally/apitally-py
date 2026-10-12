@@ -223,11 +223,11 @@ apitally.init(
 
 Apitally automatically masks common sensitive values, such as `password` fields and the `Authorization` header. To mask additional values, pass regular expressions to `mask_query_params`, `mask_headers`, and `mask_body_fields`. See our [documentation on masking](https://docs.apitally.io/sdk-reference/python/v1/masking) for details.
 
-### Sampling
+### Exclusions and sampling
 
-To capture logs and traces for only a fraction of requests, set `sample_rate`, for example to `0.1` for 10%. To decide for each request individually, pass a callback to `sample_on_request` or `sample_on_response`.
+Apitally automatically excludes common health checks and static assets, such as `/healthz` and `/robots.txt`, from logs and traces. To exclude additional paths, pass regular expressions to `exclude_paths`.
 
-To exclude requests by path, pass regular expressions to `exclude_paths`.
+To capture logs and traces for only a fraction of the remaining requests, set `sample_rate`, for example to `0.1` for 10%. To decide for each request individually, pass a callback to `sample_on_request` or `sample_on_response`.
 
 Metrics always include all requests. See our [documentation on sampling](https://docs.apitally.io/sdk-reference/python/v1/sampling) for details.
 
