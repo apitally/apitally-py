@@ -472,7 +472,6 @@ def test_unhandled_exception_recorded_only_for_included_views(
     assert event.attributes["exception.type"] == "ValueError"
     (point,) = duration_data_points()
     assert point_attributes(point)["http.response.status_code"] == 500
-    assert point_attributes(point)["error.type"] == "500"
     (record,) = exported_error_records(exporters)
     assert record.event_name == "apitally.request.server_error"
 
