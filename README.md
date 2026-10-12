@@ -254,7 +254,7 @@ apitally.set_consumer(
 
 ### Custom attributes
 
-To attach custom data to the request's trace, call `set_request_attribute`. Sampling and masking callbacks can also read these attributes.
+To attach custom data to the request's trace, call `set_request_attribute`. The `sample_on_response`, `mask_request_body`, and `mask_response_body` callbacks can also read these attributes.
 
 ```python
 apitally.set_request_attribute("tenant.id", tenant_id)
