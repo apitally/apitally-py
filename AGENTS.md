@@ -36,8 +36,8 @@
 
 - Never replace Apitally's own classes or functions with mocks. Mocking is only acceptable where the test would otherwise leave the process (the network, `os.fork` where forking in a test is impractical).
 - One focused test module per shared module, one integration module per framework driving a small real app, shared fixtures in `tests/conftest.py`. Test files are named after the module they test, never after scenarios.
+- A test may only fail when user-observable behavior regresses against a contract. Documented gaps, internal mechanisms, and constants are never pinned; decisions without a user-observable failure mode are enforced in review, not tests. A test never fails because the code improves.
 - Every test needs an important reason to exist: it pins a spec MUST, a settled design decision, or a behavior a plausible change would silently break. Tests that restate the implementation, or assert theoretical edge cases no real deployment hits, do not get written.
-- Never pin behavior no one relies on, including known gaps and limitations. A test fails only when relied-upon behavior breaks, never when the code improves.
 - Prefer one integration test proving a flow end-to-end over several micro-tests asserting its intermediate steps.
 - A test name states the observable behavior it pins, readable without the test body: `test_no_response_size_when_client_stops_reading_mid_stream`, `test_request_body_not_read_for_disallowed_content_type`, `test_span_export_waits_for_streaming_response_to_complete`. Name the behavior, not the mechanism or an internal codename.
 - Tests pinning the same scenario in different framework integrations share the same name.
