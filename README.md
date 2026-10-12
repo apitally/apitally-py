@@ -66,8 +66,6 @@ Apitally also supports many other web frameworks in [JavaScript](https://github.
 
 If you don't have an Apitally account yet, first [sign up here](https://app.apitally.io/?signup). Then create an app in the Apitally dashboard. You'll see detailed setup instructions with code snippets you can copy and paste. These also include your write token.
 
-See the [SDK reference](https://docs.apitally.io/sdk-reference/python/v1/configuration) for all available configuration options, including how to mask sensitive data, capture request and response payloads, and more.
-
 ### FastAPI
 
 Install the SDK with the `fastapi` extra:
