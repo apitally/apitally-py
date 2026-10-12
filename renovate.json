@@ -4,12 +4,23 @@
   "ignoreDeps": ["pytest-asyncio"],
   "packageRules": [
     {
-      "matchPackageNames": ["pytest"],
-      "allowedVersions": "<9"
+      "description": "Never raise lower bounds of runtime dependencies",
+      "matchManagers": ["pep621"],
+      "matchDepTypes": ["project.dependencies", "project.optional-dependencies"],
+      "rangeStrategy": "widen",
+      "dependencyDashboardApproval": false,
+      "automerge": false
     },
     {
-      "matchPackageNames": ["pytest-httpx"],
-      "allowedVersions": "<0.36"
+      "description": "OpenTelemetry packages pin each other",
+      "matchManagers": ["pep621"],
+      "matchDepTypes": ["project.dependencies", "project.optional-dependencies"],
+      "matchPackageNames": ["opentelemetry-*"],
+      "groupName": "OpenTelemetry"
+    },
+    {
+      "matchPackageNames": ["pytest"],
+      "allowedVersions": "<9"
     }
   ]
 }
