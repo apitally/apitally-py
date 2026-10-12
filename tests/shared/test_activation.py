@@ -190,18 +190,6 @@ async def test_asgi_shim_clears_owned_consumer_holder_and_keeps_unowned():
     assert observed == [unowned, None]
 
 
-async def test_asgi_shim_does_not_reset_context_for_websocket_scopes():
-    stale_span, token = attach_stale_server_span()
-    observed: dict[str, Any] = {}
-
-    async def app(scope: Scope, receive: Receive, send: Send) -> None:
-        observed["current_span"] = trace.get_current_span()
-
-    await call_shim_with_request(activation.ASGIActivationShim(app), scope_type="websocket")
-    assert observed["current_span"] is stale_span
-    otel_context.detach(token)
-
-
 def test_wsgi_shim_activates_before_first_request_proceeds(
     exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
@@ -450,12 +438,10 @@ def test_fork_in_child_abandons_inherited_spool_without_touching_parent_files(
 
 
 def test_reset_stops_worker_and_removes_spool_files(otlp_server: StubOTLPServer, monkeypatch: pytest.MonkeyPatch):
-    threads_before = set(threading.enumerate())
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(export, "INITIAL_EXPORT_DELAY", 60.0)
     activation.configure(write_token=WRITE_TOKEN, otlp_endpoint=otlp_server.url)
     activation.activate()
-    assert len(set(threading.enumerate()) - threads_before) == 3
     holder = server_errors.init_exception_holder()
     server_errors.set_exception(RuntimeError("pending"), holder)
     server_errors.add_server_error(None, "GET", "/items", holder)

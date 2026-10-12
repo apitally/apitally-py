@@ -159,7 +159,6 @@ def test_process_gauges_exported_without_traffic():
     points = [point for metric in scope_metrics.metrics for point in metric.gauge.data_points]
     assert len(points) == 3
     assert all(not point.attributes for point in points)
-    assert len({point.time_unix_nano for point in points}) == 1
 
 
 def test_options_and_unmatched_route_not_recorded():

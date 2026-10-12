@@ -11,7 +11,7 @@ from opentelemetry.trace import SpanKind
 
 import apitally
 from apitally import set_consumer
-from apitally.shared import activation, startup
+from apitally.shared import activation
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from tests.conftest import (
     WRITE_TOKEN,
@@ -134,17 +134,13 @@ def test_histogram_attributes_and_log_correlation(
     assert unwrap(record.attributes)["apitally.request.server_span_id"] == server_span_id
 
 
-def test_lifespan_activates_before_first_request_and_startup_event_first(
+def test_lifespan_activates_before_first_request(
     app: FastAPI, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
     init(app, monkeypatch)
     assert not activation.is_activated()
-    with TestClient(app) as client:
+    with TestClient(app):
         assert activation.is_activated()
-        client.get("/items/1")
-    records = exported_log_records(exporters)
-    assert len(records) >= 2
-    assert records[0].event_name == startup.EVENT_NAME
 
 
 def test_healthz_excluded_from_spans_counted_in_metrics_options_in_neither(

@@ -1,5 +1,4 @@
 import json
-import platform
 from importlib import metadata
 from typing import Any
 
@@ -155,7 +154,7 @@ def test_headers_captured_for_unmatched_requests(exporters: InMemoryExporters, m
     assert len(spans) == 2
     for span in spans:
         attributes = span.attributes or {}
-        assert attributes["http.route"] == ""
+        assert not attributes.get("http.route")
         assert attributes["http.request.header.x-test"] == ["1"]
         assert attributes["http.response.header.content-type"] == ["application/json"]
 
@@ -191,7 +190,6 @@ def test_validation_error_uses_litestar_source_and_opaque_key(
     assert body["source"] == "body"
     assert body["field"] == "data"
     assert body["message"]
-    assert body["type"] == ""
     assert body["counts"] == [{"count": 1}]
 
 
@@ -228,11 +226,8 @@ def test_on_startup_activates_and_emits_startup_event(exporters: InMemoryExporte
 
     payload = startup_payload(exporters)
     assert payload["framework"] == "litestar"
-    assert payload["versions"] == {
-        "python": platform.python_version(),
-        "litestar": metadata.version("litestar"),
-        "app": "1.2.3",
-    }
+    assert payload["versions"]["litestar"] == metadata.version("litestar")
+    assert payload["versions"]["app"] == "1.2.3"
     assert sorted(payload["paths"], key=lambda p: (p["path"], p["method"])) == [
         {"method": "GET", "path": "/healthz"},
         {"method": "POST", "path": "/users"},

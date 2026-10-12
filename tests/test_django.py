@@ -222,7 +222,7 @@ def test_unsupported_content_encoding_skips_body_capture(
             if streaming
             else HttpResponse(body, content_type="text/plain")
         )
-        response["Content-Encoding"] = "br"
+        response["Content-Encoding"] = "x-unknown"
         return response
 
     class Urls:
@@ -239,7 +239,7 @@ def test_unsupported_content_encoding_skips_body_capture(
             "/encoded/",
             data=body,
             content_type="text/plain",
-            HTTP_CONTENT_ENCODING="br",
+            HTTP_CONTENT_ENCODING="x-unknown",
         )
         response_body = (
             b"".join(response.streaming_content)  # ty: ignore[unresolved-attribute]
