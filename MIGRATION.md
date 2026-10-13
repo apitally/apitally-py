@@ -109,7 +109,7 @@ def mask_request_body(span: ReadableSpan, body: bytes) -> bytes | None:
 
 Use sampling callbacks to exclude requests: `sample_on_request(span)` for early decisions based on the request, or `sample_on_response(span)` for decisions based on the response status or consumer.
 
-The callbacks should return `True` to capture the request, and `False` to exclude it. Callbacks can also return a probability as `float` between 0 and 1. Returning `None` preserves a previously made sampling decision.
+The callbacks should return `True` to capture the request, and `False` to exclude it. Callbacks can also return a probability as `float` between 0 and 1. Returning `None` from `sample_on_request` applies `sample_rate`, and returning `None` from `sample_on_response` preserves the earlier sampling decision.
 
 For example, to capture only error responses:
 
