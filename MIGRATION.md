@@ -37,8 +37,8 @@ The following options have been changed:
 | `mask_response_body_callback` | Renamed to `mask_response_body` with new arguments. |
 | `exclude_callback` | Replaced by `sample_on_request` or `sample_on_response` with new arguments and return values. |
 | `exclude_paths` | Matches actual request paths instead of matched route patterns. |
-| `urlconf` | Renamed to `django_urlconf`. Selects views to track as well as routes and schemas to discover. |
-| `include_django_views` | Renamed to `django_include_class_based_views`. Defaults to `False`, tracking only DRF and Ninja views. Enable it to also track class-based and function-based Django views. |
+| `urlconf` | Renamed to `django_urlconf`. |
+| `include_django_views` | Renamed to `django_include_class_based_views`. |
 
 ### Removed options
 
@@ -71,6 +71,7 @@ apitally.set_consumer(
     user.identifier,
     name=user.name,  # optional
     group=user.group,  # optional
+    attributes={"plan": user.plan},  # optional
 )
 ```
 
@@ -78,9 +79,7 @@ This replaces `consumer_callback`, `identify_consumer_callback`, and consumer va
 
 ## Body masking callbacks
 
-`mask_request_body_callback` and `mask_response_body_callback` are now named `mask_request_body` and `mask_response_body`. Both receive `(span, body)`, rather than request/response dictionaries. The body is passed as `bytes` after decompression.
-
-Callbacks may run later on another thread against an ended span snapshot. Request metadata is available through [`span.attributes`](https://docs.apitally.io/sdk-reference/python/v1/attributes).
+`mask_request_body_callback` and `mask_response_body_callback` are now named `mask_request_body` and `mask_response_body`. Both receive `(span, body)`, rather than request/response dictionaries. The body is passed as `bytes`. Request metadata is available through [`span.attributes`](https://docs.apitally.io/sdk-reference/python/v1/attributes).
 
 For example, a callback that masks bodies for admin routes becomes:
 

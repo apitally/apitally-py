@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterator, ParamSpec,
 
 from opentelemetry import trace
 
+from apitally.shared.providers import DISTRO_VERSION
+
 
 if TYPE_CHECKING:
     from httpx import AsyncClient as HttpxAsyncClient
@@ -35,7 +37,7 @@ def instrument(func: Callable[P, R]) -> Callable[P, R]: ...
 
 
 def instrument(func: Callable[P, R]) -> Callable[P, R] | Callable[P, Awaitable[R]]:
-    tracer = trace.get_tracer("apitally.otel")
+    tracer = trace.get_tracer("apitally", DISTRO_VERSION)
     span_name = func.__name__  # ty: ignore[unresolved-attribute]
     span_attributes: dict[str, str | int] = {
         "code.file.path": func.__code__.co_filename,  # ty: ignore[unresolved-attribute]
@@ -63,7 +65,7 @@ def instrument(func: Callable[P, R]) -> Callable[P, R] | Callable[P, Awaitable[R
 
 @contextmanager
 def span(name: str, attributes: SpanAttributes = None) -> Iterator[Span]:
-    tracer = trace.get_tracer("apitally.otel")
+    tracer = trace.get_tracer("apitally", DISTRO_VERSION)
     with tracer.start_as_current_span(name, attributes=attributes) as span:
         yield span
 
