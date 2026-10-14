@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from flask import Flask
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from werkzeug.serving import BaseWSGIServer
 
 from apitally.shared import activation, config, server_errors, startup
 from apitally.shared.wsgi import ApitallyWSGIMiddleware
@@ -58,6 +59,7 @@ def init(
             paths=lambda: _get_paths(app),
             versions=startup.resolve_versions(app_version, flask="flask"),
         )
+        activation.activate_when_wsgi_server_starts(BaseWSGIServer)
     except Exception:  # pragma: no cover
         logger.exception("Error initializing Apitally for Flask")
 

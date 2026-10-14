@@ -14,6 +14,7 @@ import django
 from django.conf import settings
 from django.contrib.admindocs.views import extract_views_from_urlpatterns, simplify_regex
 from django.core.handlers.asgi import ASGIHandler
+from django.core.servers.basehttp import WSGIServer
 from django.core.signals import request_started
 from django.urls import get_resolver
 from django.views.generic.base import View
@@ -105,6 +106,7 @@ def init(
             ),
         }
         startup.set_app_info(framework="django", paths=_get_paths, versions=versions, openapi=_get_openapi)
+        activation.activate_when_wsgi_server_starts(WSGIServer)
     except Exception:  # pragma: no cover
         logger.exception("Apitally setup for Django failed")
 

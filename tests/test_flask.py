@@ -1,6 +1,7 @@
 import gzip
 import json
 import logging
+import threading
 import zlib
 from typing import Any, Iterator
 
@@ -11,6 +12,7 @@ from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import SpanKind
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.serving import make_server
 
 import apitally
 from apitally.shared import activation
@@ -129,6 +131,18 @@ def test_first_request_activates_and_is_recorded(
     assert attributes["http.route"] == "/items/<int:item_id>"
     assert attributes["http.response.status_code"] == 200
     assert attributes["http.response.body.size"] == len(response.data)
+
+
+def test_development_server_activates_without_request(
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    init(app, monkeypatch)
+    server = make_server("127.0.0.1", 0, app)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    server.shutdown()
+    thread.join()
+    assert activation.is_activated()
 
 
 def test_startup_event_paths_match_routes(app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
