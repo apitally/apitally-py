@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import sys
 import threading
+import time
 from collections.abc import Awaitable, Callable, Iterable, Iterator, MutableMapping
 from contextlib import contextmanager
+from importlib import import_module
+from types import CodeType
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry import context as otel_context
@@ -32,6 +36,8 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+APP_IMPORT_CHECK_INTERVAL_SECONDS = 0.05
 
 activation_lock = threading.Lock()
 activation_attempted = False
@@ -169,6 +175,69 @@ class WSGIActivationShim:
         if not activation_attempted:
             activate()
         return self.wsgi_app(environ, start_response)
+
+
+def activate_when_wsgi_server_starts(development_server_class: type) -> None:
+    """Activate when the WSGI server starts serving, without waiting for the first request."""
+    wrap_to_activate_first(development_server_class, "serve_forever")
+    if (gunicorn_workers := sys.modules.get("gunicorn.workers.base")) is not None:
+        # gunicorn loads the worker class before the app, in the master with --preload and in the worker without
+        worker_classes = gunicorn_workers.Worker.__subclasses__()
+        while worker_classes:
+            worker_class = worker_classes.pop()
+            wrap_to_activate_first(worker_class, "run")
+            worker_classes.extend(worker_class.__subclasses__())
+    # The uwsgi module exists only inside uWSGI, and uwsgidecorators requires the master process
+    if (uwsgi := sys.modules.get("uwsgi")) is not None and uwsgi.masterpid() > 0:  # pragma: no cover
+        if uwsgi.worker_id() == 0:
+            try:
+                postfork_chain = import_module("uwsgidecorators").postfork_chain
+                if activate not in postfork_chain:
+                    postfork_chain.append(activate)
+            except ImportError:
+                # uwsgidecorators ships with uWSGI, which may be installed outside the app's environment
+                if not hasattr(uwsgi, "post_fork_hook"):
+                    uwsgi.post_fork_hook = activate
+        else:
+            activate_when_app_import_finishes()
+
+
+def activate_when_app_import_finishes() -> None:  # pragma: no cover
+    """Activate from a thread once the module imports that called init() have finished. Used for uWSGI --lazy-apps."""
+    thread_id = threading.get_ident()
+    module_codes: set[CodeType] = set()
+    frame = sys._getframe(1)
+    while frame is not None:
+        if frame.f_code.co_name == "<module>" and frame.f_globals.get("__name__") != "__main__":
+            module_codes.add(frame.f_code)
+        frame = frame.f_back
+
+    def activate_after_import() -> None:
+        while not activation_attempted:
+            frame = sys._current_frames().get(thread_id)
+            while frame is not None and frame.f_code not in module_codes:
+                frame = frame.f_back
+            if frame is None:
+                activate()
+                return
+            time.sleep(APP_IMPORT_CHECK_INTERVAL_SECONDS)
+
+    threading.Thread(target=activate_after_import, name="apitally-activation", daemon=True).start()
+
+
+def wrap_to_activate_first(cls: type, method_name: str) -> None:
+    """Replace the method with one that calls activate() before the original."""
+    method = getattr(cls, method_name)
+    if getattr(method, "activates_apitally", False):
+        return
+
+    @functools.wraps(method)
+    def activate_then_call(*args: Any, **kwargs: Any) -> Any:
+        activate()
+        return method(*args, **kwargs)
+
+    setattr(activate_then_call, "activates_apitally", True)
+    setattr(cls, method_name, activate_then_call)
 
 
 def should_skip_activation() -> bool:

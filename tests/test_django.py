@@ -1,6 +1,7 @@
 import gzip
 import json
 import sys
+import threading
 import zlib
 from collections.abc import Iterator
 from typing import Any
@@ -9,6 +10,7 @@ import django
 import pytest
 from django.conf import settings
 from django.core.asgi import get_asgi_application
+from django.core.servers.basehttp import WSGIRequestHandler, WSGIServer
 from django.core.wsgi import get_wsgi_application
 from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
 from django.test import Client, override_settings
@@ -105,6 +107,18 @@ def test_first_request_activates_and_is_recorded(exporters: InMemoryExporters, m
     payload = startup_payload(exporters)
     assert payload["framework"] == "django"
     assert payload["versions"]["django"]
+
+
+def test_development_server_activates_without_request(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
+    init(monkeypatch)
+    server = WSGIServer(("127.0.0.1", 0), WSGIRequestHandler)
+    server.set_app(get_wsgi_application())
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    server.shutdown()
+    thread.join()
+    server.server_close()
+    assert activation.is_activated()
 
 
 def test_schema_generation_runs_at_handler_construction(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
