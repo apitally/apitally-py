@@ -1,6 +1,8 @@
 import gzip
 import json
 import logging
+import os
+import socket
 import threading
 import zlib
 from typing import Any, Iterator
@@ -142,6 +144,20 @@ def test_development_server_activates_without_request(
     thread.start()
     server.shutdown()
     thread.join()
+    assert activation.is_activated()
+
+
+def test_gunicorn_worker_activates_without_request(
+    app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
+):
+    gunicorn_config = pytest.importorskip("gunicorn.config")
+    gunicorn_sync_worker = pytest.importorskip("gunicorn.workers.sync")
+    init(app, monkeypatch)
+    with socket.socket() as listener:
+        worker = gunicorn_sync_worker.SyncWorker(0, os.getpid(), [listener], app, 30, gunicorn_config.Config(), None)
+        # A worker that is no longer alive returns from run() right after it starts
+        worker.alive = False
+        worker.run()
     assert activation.is_activated()
 
 

@@ -188,7 +188,7 @@ def activate_when_wsgi_server_starts(development_server_class: type) -> None:
             wrap_to_activate_first(worker_class, "run")
             worker_classes.extend(worker_class.__subclasses__())
     # The uwsgi module exists only inside uWSGI, and uwsgidecorators requires the master process
-    if (uwsgi := sys.modules.get("uwsgi")) is not None and uwsgi.masterpid() > 0:
+    if (uwsgi := sys.modules.get("uwsgi")) is not None and uwsgi.masterpid() > 0:  # pragma: no cover
         if uwsgi.worker_id() == 0:
             try:
                 postfork_chain = import_module("uwsgidecorators").postfork_chain
@@ -202,7 +202,7 @@ def activate_when_wsgi_server_starts(development_server_class: type) -> None:
             activate_when_app_import_finishes()
 
 
-def activate_when_app_import_finishes() -> None:
+def activate_when_app_import_finishes() -> None:  # pragma: no cover
     """Activate from a thread once the module imports that called init() have finished. Used for uWSGI --lazy-apps."""
     thread_id = threading.get_ident()
     module_codes: set[CodeType] = set()

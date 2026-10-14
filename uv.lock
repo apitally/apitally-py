@@ -112,6 +112,7 @@ test = [
     { name = "drf-spectacular" },
     { name = "fastapi" },
     { name = "flask" },
+    { name = "gunicorn" },
     { name = "httpx" },
     { name = "inflection" },
     { name = "litestar" },
@@ -198,6 +199,7 @@ test = [
     { name = "drf-spectacular" },
     { name = "fastapi" },
     { name = "flask" },
+    { name = "gunicorn" },
     { name = "httpx" },
     { name = "inflection" },
     { name = "litestar" },
@@ -844,6 +846,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/02/73/f396968fe9e40753cb87d364dfe67651d72aaeb293f35f36a20a2dac1435/guardpost-1.1.0.tar.gz", hash = "sha256:17f200cca570484e18e23a2aadcc9b6ded31c51672b52999f278901d4f6fe56c", size = 19340, upload-time = "2026-03-10T19:50:58.581Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cd/34/f5c334b0c74928b5e00ef081ebb1e5a71653d19f19a09f5e1c78c0954377/guardpost-1.1.0-py3-none-any.whl", hash = "sha256:dc003dc11e6bfd0d858fac2a255b850365611835838b44497e51faed04c96d74", size = 22980, upload-time = "2026-03-10T19:50:56.807Z" },
+]
+
+[[package]]
+name = "gunicorn"
+version = "26.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/8a/e4ef6ee11701b6cd64702848415ffb69eeff85cb388a3c6c7fe86f22f3f8/gunicorn-26.2.0.tar.gz", hash = "sha256:62b864895d9ebff0b2f9867ba04fe811c93121596540830c9c916d0769668447", size = 787921, upload-time = "2026-08-24T15:05:59.3Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/85/7522a52e5e2f42faf1a129113ab63e548c42e103e9af395b7bfe65e403e2/gunicorn-26.2.0-py3-none-any.whl", hash = "sha256:bd249d0b3f7972f7432f0a6b6ff3b3ee2d129f70cd1ff6c09a9dd9e29a2b88e3", size = 228389, upload-time = "2026-08-24T15:05:57.67Z" },
 ]
 
 [[package]]
