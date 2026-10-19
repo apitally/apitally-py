@@ -4,19 +4,19 @@ import importlib
 import os
 import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+from opentelemetry.sdk._logs import ReadWriteLogRecord
+from opentelemetry.sdk.trace import ReadableSpan
 
 from apitally.otel import instrument, span
 from apitally.shared.consumers import set_consumer
 from apitally.shared.helpers import capture_exception, set_request_attribute
 
 
-if TYPE_CHECKING:
-    from opentelemetry.sdk._logs import ReadWriteLogRecord
-    from opentelemetry.sdk.trace import ReadableSpan
-
-
 __all__ = [
+    "ReadableSpan",
+    "ReadWriteLogRecord",
     "capture_exception",
     "init",
     "instrument",
