@@ -220,7 +220,7 @@ jobs:
   pi-fix-ci:
     needs: ci-gate
     if: |
-      always() &&
+      !cancelled() &&
       github.event_name == 'pull_request' &&
       needs.ci-gate.result == 'failure' &&
       github.run_attempt == 1 &&
