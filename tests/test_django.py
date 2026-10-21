@@ -86,6 +86,7 @@ def test_client_address_uses_framework_resolved_client_ip(
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert unwrap(span.attributes)["client.address"] == "203.0.113.10"
+    assert "apitally.request.custom_attribute_keys" not in unwrap(span.attributes)
 
 
 def test_first_request_activates_and_is_recorded(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):
