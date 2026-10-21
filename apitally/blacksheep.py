@@ -12,7 +12,7 @@ from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from apitally.shared import activation, config, startup
 from apitally.shared.asgi import ApitallyASGIMiddleware
 from apitally.shared.context import get_server_span
-from apitally.shared.helpers import capture_exception, set_request_attribute
+from apitally.shared.helpers import capture_exception
 
 
 __all__ = ["init"]
@@ -104,8 +104,9 @@ def _wrap_client_address(app: Application) -> None:
 
     async def handle(request: Request) -> Response:
         response = await original(request)
-        if client_address := request.original_client_ip:
-            set_request_attribute("client.address", client_address)
+        span = get_server_span()
+        if span is not None and span.is_recording() and (client_address := request.original_client_ip):
+            span.set_attribute("client.address", client_address)
         return response
 
     app.handle = handle  # ty: ignore[invalid-assignment]

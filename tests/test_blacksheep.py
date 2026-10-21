@@ -101,6 +101,7 @@ async def test_client_address_uses_framework_resolved_client_ip(
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert (span.attributes or {})["client.address"] == "203.0.113.10"
+    assert "apitally.request.custom_attribute_keys" not in (span.attributes or {})
 
 
 async def test_startup_paths_include_sub_router_routes(exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch):

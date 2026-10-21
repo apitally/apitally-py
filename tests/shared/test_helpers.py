@@ -9,9 +9,13 @@ from tests.conftest import unwrap
 
 def test_set_request_attribute_targets_server_span(tracer: Tracer, span_exporter: InMemorySpanExporter):
     with tracer.start_as_current_span("GET /items", kind=SpanKind.SERVER):
+        set_request_attribute("tenant", "other")
         set_request_attribute("tenant", "acme")
+        set_request_attribute("plan", "pro")
     (server,) = span_exporter.get_finished_spans()
-    assert unwrap(server.attributes)["tenant"] == "acme"
+    attributes = unwrap(server.attributes)
+    assert attributes["tenant"] == "acme"
+    assert attributes["apitally.request.custom_attribute_keys"] in (("tenant", "plan"), ("plan", "tenant"))
 
 
 def test_set_request_attribute_outside_request_is_silent_noop():

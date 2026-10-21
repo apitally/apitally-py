@@ -41,7 +41,6 @@ from apitally.shared.context import (
     is_server_span_kept,
     server_span_kept_var,
 )
-from apitally.shared.helpers import set_request_attribute
 from apitally.shared.wsgi import group_headers, parse_content_length
 
 
@@ -257,8 +256,9 @@ class ApitallyDjangoMiddleware:
             response_size = len(response.content)
         consumer = get_consumer_identifier()
         emit_consumer_update_if_changed()
-        if client_address := request.META.get("REMOTE_ADDR"):
-            set_request_attribute("client.address", client_address)
+        client_address = request.META.get("REMOTE_ADDR")
+        if client_address and span is not None and span.is_recording():
+            span.set_attribute("client.address", client_address)
         if is_server_span_kept() and span is not None and span.is_recording():
             if route is not None:
                 # Overwrites the instrumentor's raw route and span name so spans and metrics agree on the template
