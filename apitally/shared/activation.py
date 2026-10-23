@@ -6,7 +6,7 @@ import os
 import sys
 import threading
 import time
-from collections.abc import Awaitable, Callable, Iterable, Iterator, MutableMapping
+from collections.abc import Awaitable, Callable, Generator, Iterable, MutableMapping
 from contextlib import contextmanager
 from importlib import import_module
 from types import CodeType
@@ -117,7 +117,7 @@ def register_on_activate_hook(hook: Callable[[], None]) -> None:
 
 
 @contextmanager
-def fresh_request_context() -> Iterator[None]:
+def fresh_request_context() -> Generator[None]:
     """Run a request under an empty OTel context with cleared request-scoped state. ASGI servers
     can start a pipelined request's task with the previous request's context still attached."""
     token = otel_context.attach(Context())

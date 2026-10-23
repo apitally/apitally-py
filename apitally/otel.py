@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 from contextlib import contextmanager, suppress
 from inspect import iscoroutinefunction
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterator, ParamSpec, Sequence, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Generator, ParamSpec, Sequence, TypeVar, overload
 
 from opentelemetry import trace
 
@@ -64,7 +64,7 @@ def instrument(func: Callable[P, R]) -> Callable[P, R] | Callable[P, Awaitable[R
 
 
 @contextmanager
-def span(name: str, attributes: SpanAttributes = None) -> Iterator[Span]:
+def span(name: str, attributes: SpanAttributes = None) -> Generator[Span]:
     tracer = trace.get_tracer("apitally", DISTRO_VERSION)
     with tracer.start_as_current_span(name, attributes=attributes) as span:
         yield span
