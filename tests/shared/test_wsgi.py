@@ -37,6 +37,12 @@ class SpyInput:
         return self.stream.read(size)
 
 
+class ShortReadInput(SpyInput):
+    def read(self, size: int = -1) -> bytes:
+        self.read_count += 1
+        return self.stream.read(min(size, 3) if size >= 0 else 3)
+
+
 class ClosingIterable:
     def __init__(self, chunks: list[bytes]) -> None:
         self.chunks = chunks
@@ -156,6 +162,27 @@ def test_captured_body_reemitted_and_redacted(tracer: Tracer, span_exporter: InM
 
     assert received["body"] == body
     assert json.loads(str(attributes["apitally.request.body"])) == {"password": REDACTED, "item": "x"}
+
+
+def test_request_body_preserved_when_wsgi_input_returns_short_reads(
+    tracer: Tracer, span_exporter: InMemorySpanExporter
+):
+    set_config(write_token=WRITE_TOKEN, capture_request_body=True)
+    body = b'{"id": 1}'
+    received: dict[str, bytes] = {}
+
+    def app(environ: WSGIEnvironment, start_response: StartResponse) -> list[bytes]:
+        received["body"] = environ["wsgi.input"].read(int(environ["CONTENT_LENGTH"]))
+        start_response("200 OK", [("Content-Type", "text/plain")])
+        return [b"ok"]
+
+    environ = make_environ(method="POST", content_type="application/json", content_length=str(len(body)))
+    stream = ShortReadInput(body)
+    environ["wsgi.input"] = stream
+    attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, span_exporter)
+
+    assert received["body"] == body
+    assert json.loads(str(attributes["apitally.request.body"])) == {"id": 1}
 
 
 def test_redaction_failure_after_parse_fails_closed(
