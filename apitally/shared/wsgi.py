@@ -97,7 +97,7 @@ class ApitallyWSGIMiddleware:
             return BODY_TOO_LARGE
         stream = environ["wsgi.input"]
         body = b""
-        # wsgi.input.read(size) may return fewer bytes than requested before EOF (PEP 3333)
+        # WSGI does not guarantee a single wsgi.input.read(size) returns size bytes
         while len(body) < content_length and (chunk := stream.read(content_length - len(body))):
             body += chunk
         environ["wsgi.input"] = io.BytesIO(body)
