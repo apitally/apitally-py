@@ -96,15 +96,12 @@ class ApitallyWSGIMiddleware:
         if content_length > MAX_BODY_SIZE:
             return BODY_TOO_LARGE
         stream = environ["wsgi.input"]
-        body = bytearray()
-        while len(body) < content_length:
-            chunk = stream.read(content_length - len(body))
-            if not chunk:
-                break
-            body.extend(chunk)
-        captured_body = bytes(body)
-        environ["wsgi.input"] = io.BytesIO(captured_body)
-        return captured_body
+        body = b""
+        # wsgi.input.read(size) may return fewer bytes than requested before EOF (PEP 3333)
+        while len(body) < content_length and (chunk := stream.read(content_length - len(body))):
+            body += chunk
+        environ["wsgi.input"] = io.BytesIO(body)
+        return body
 
     def handle_response_start(
         self,

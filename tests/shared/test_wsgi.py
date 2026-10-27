@@ -37,9 +37,11 @@ class SpyInput:
         return self.stream.read(size)
 
 
-class ShortReadInput(SpyInput):
+class ShortReadInput:
+    def __init__(self, data: bytes) -> None:
+        self.stream = io.BytesIO(data)
+
     def read(self, size: int = -1) -> bytes:
-        self.read_count += 1
         return self.stream.read(min(size, 3) if size >= 0 else 3)
 
 
@@ -177,8 +179,7 @@ def test_request_body_preserved_when_wsgi_input_returns_short_reads(
         return [b"ok"]
 
     environ = make_environ(method="POST", content_type="application/json", content_length=str(len(body)))
-    stream = ShortReadInput(body)
-    environ["wsgi.input"] = stream
+    environ["wsgi.input"] = ShortReadInput(body)
     attributes = run_request(ApitallyWSGIMiddleware(app), environ, tracer, span_exporter)
 
     assert received["body"] == body
