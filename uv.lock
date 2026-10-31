@@ -217,7 +217,7 @@ test = [
     { name = "pytest", specifier = "~=8.4.0" },
     { name = "pytest-asyncio", specifier = "~=0.21.2" },
     { name = "pytest-cov", specifier = "~=7.1.0" },
-    { name = "pytest-mock", specifier = "~=3.16.0" },
+    { name = "pytest-mock", specifier = "~=3.17.0" },
     { name = "starlette" },
     { name = "uritemplate" },
 ]
@@ -229,7 +229,7 @@ test-base = [
     { name = "pytest", specifier = "~=8.4.0" },
     { name = "pytest-asyncio", specifier = "~=0.21.2" },
     { name = "pytest-cov", specifier = "~=7.1.0" },
-    { name = "pytest-mock", specifier = "~=3.16.0" },
+    { name = "pytest-mock", specifier = "~=3.17.0" },
 ]
 types = [
     { name = "django-types" },
@@ -2613,14 +2613,14 @@ wheels = [
 
 [[package]]
 name = "pytest-mock"
-version = "3.16.1"
+version = "3.17.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pytest" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/99/f6/e40a0a0abd8d6769531f63654a81529a98f1342a547173d4231a021ecfde/pytest_mock-3.16.1.tar.gz", hash = "sha256:c6bf5fd123e9635471c63c46ee23044076b4a9f5fca2e39b11e468917c1199ec", size = 41135, upload-time = "2026-10-17T15:21:22.271Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/97/c2/28b9f5b955ff2bcd4727a6f768e2ca9b586cd7c37b95ea5f7b9b873ac7b3/pytest_mock-3.17.0.tar.gz", hash = "sha256:e36576e0985e01027e999891e7a966c67822d40c89ef1b4c8b6e22737e3590b4", size = 43064, upload-time = "2026-10-17T16:21:42.435Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/69/5941ea3bbd1bb48007767f6ef685c1996b016a4470328c26967aa69e4982/pytest_mock-3.16.1-py3-none-any.whl", hash = "sha256:cd162ca2495584a1fd854b4f80cfe520399a7654a462a42a84cd268844a9122b", size = 11110, upload-time = "2026-10-17T15:21:20.817Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/ea/47fbdc8f37410956fd445720e927589b1e2a47772c5f28109f0ce2fa26d9/pytest_mock-3.17.0-py3-none-any.whl", hash = "sha256:1b82aa4b37137248bd687055e109723debeb07b489de1565297dc9589c5f2d6b", size = 11248, upload-time = "2026-10-17T16:21:41.265Z" },
 ]
 
 [[package]]
