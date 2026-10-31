@@ -36,8 +36,8 @@ jobs:
           token: ${{ secrets.PI_GITHUB_TOKEN }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24"
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+          node-version: "26"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: "0.13.1"
           enable-cache: true
@@ -54,7 +54,7 @@ jobs:
           gh run watch "$RUN_ID" > /dev/null
           gh run view "$RUN_ID" --log-failed > "$RUNNER_TEMP/failed-ci.log"
       - name: Investigate and fix CI failure
-        uses: shaftoe/pi-coding-agent-action@f7496a9aea9798c5d52d39096d98d5c5b16559b3 # v2.30.0
+        uses: shaftoe/pi-coding-agent-action@381f578da466b8d2ef48f0fdb8a940f276fe4c3c # v2.30.1
         with:
           github_token: ${{ github.token }}
           provider: openrouter
