@@ -13,15 +13,15 @@ from apitally.shared.providers import DISTRO_VERSION
 if TYPE_CHECKING:
     from httpx import AsyncClient as HttpxAsyncClient
     from httpx import Client as HttpxClient
-    from mysql.connector.abstracts import MySQLConnectionAbstract  # ty: ignore[unresolved-import]
-    from mysql.connector.pooling import PooledMySQLConnection  # ty: ignore[unresolved-import]
+    from mysql.connector.abstracts import MySQLConnectionAbstract  # ty: ignore[import-not-found]
+    from mysql.connector.pooling import PooledMySQLConnection  # ty: ignore[import-not-found]
     from opentelemetry.trace import Span
     from opentelemetry.util.types import Attributes as SpanAttributes
-    from psycopg import AsyncConnection as PsycopgAsyncConnection  # ty: ignore[unresolved-import]
-    from psycopg import Connection as PsycopgConnection  # ty: ignore[unresolved-import]
+    from psycopg import AsyncConnection as PsycopgAsyncConnection  # ty: ignore[import-not-found]
+    from psycopg import Connection as PsycopgConnection  # ty: ignore[import-not-found]
     from psycopg2._psycopg import connection as Psycopg2Connection
-    from sqlalchemy import Engine as SQLAlchemyEngine  # ty: ignore[unresolved-import]
-    from sqlalchemy.ext.asyncio import AsyncEngine as SQLAlchemyAsyncEngine  # ty: ignore[unresolved-import]
+    from sqlalchemy import Engine as SQLAlchemyEngine  # ty: ignore[import-not-found]
+    from sqlalchemy.ext.asyncio import AsyncEngine as SQLAlchemyAsyncEngine  # ty: ignore[import-not-found]
 
 
 P = ParamSpec("P")
@@ -179,7 +179,7 @@ def instrument_sqlalchemy(
 
     all_engines = [*([engine] if engine is not None else []), *(engines or [])]
     with suppress(ImportError):
-        from sqlalchemy.ext.asyncio import AsyncEngine  # ty: ignore[unresolved-import]
+        from sqlalchemy.ext.asyncio import AsyncEngine  # ty: ignore[import-not-found]
 
         all_engines = [e.sync_engine if isinstance(e, AsyncEngine) else e for e in all_engines]
 

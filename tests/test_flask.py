@@ -74,7 +74,7 @@ def init(app: Flask, monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
 def test_client_address_uses_framework_resolved_client_ip(
     app: Flask, exporters: InMemoryExporters, monkeypatch: pytest.MonkeyPatch
 ):
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)  # ty: ignore[invalid-assignment]
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
     init(app, monkeypatch)
 
     response = app.test_client().get("/items/42", headers={"X-Forwarded-For": "203.0.113.10"})
