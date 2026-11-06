@@ -97,7 +97,7 @@ def _instrument_app(app: Starlette) -> None:
             )
         )
 
-    app.build_middleware_stack = build_with_shim  # ty: ignore[invalid-assignment]
+    app.build_middleware_stack = build_with_shim
 
 
 def _resolve_route(scope: Scope, routes: list[BaseRoute] | None = None) -> str | None:

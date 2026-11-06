@@ -57,7 +57,7 @@ def init(
             chain = OpenTelemetryMiddleware(chain, exclude_spans=["receive", "send"])
         # With a user instrumentor wrapping the whole app, the shim runs inside their SERVER
         # span, where a context reset would orphan it
-        app._handle_http = activation.ASGIActivationShim(chain, reset_context=not instrumented_by_user)  # ty: ignore[invalid-assignment]
+        app._handle_http = activation.ASGIActivationShim(chain, reset_context=not instrumented_by_user)
         app._apitally_initialized = True  # ty: ignore[invalid-assignment]
 
         async def activate_on_start(application: Application) -> None:
@@ -96,7 +96,7 @@ def _wrap_router(app: Application) -> None:
             logger.exception("Error resolving route in Apitally BlackSheep integration")
         return match
 
-    app.router.get_match = get_match  # ty: ignore[invalid-assignment]
+    app.router.get_match = get_match
 
 
 def _wrap_client_address(app: Application) -> None:
@@ -109,7 +109,7 @@ def _wrap_client_address(app: Application) -> None:
             span.set_attribute("client.address", client_address)
         return response
 
-    app.handle = handle  # ty: ignore[invalid-assignment]
+    app.handle = handle
 
 
 def _wrap_error_handler(app: Application) -> None:
@@ -123,7 +123,7 @@ def _wrap_error_handler(app: Application) -> None:
         capture_exception(exc)
         return await original(request, exc)
 
-    app.handle_internal_server_error = handle_internal_server_error  # ty: ignore[invalid-assignment]
+    app.handle_internal_server_error = handle_internal_server_error
 
 
 def _get_paths(app: Application) -> list[dict[str, str]]:

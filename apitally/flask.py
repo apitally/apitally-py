@@ -50,10 +50,10 @@ def init(
 
         app.handle_exception = handle_exception  # ty: ignore[invalid-assignment]
         transport = ApitallyWSGIMiddleware(app.wsgi_app, get_route=_create_route_resolver(app))
-        app.wsgi_app = transport  # ty: ignore[invalid-assignment]
+        app.wsgi_app = transport
         if not getattr(app, "_is_instrumented_by_opentelemetry", False):
             FlaskInstrumentor().instrument_app(app)
-        app.wsgi_app = activation.WSGIActivationShim(app.wsgi_app)  # ty: ignore[invalid-assignment]
+        app.wsgi_app = activation.WSGIActivationShim(app.wsgi_app)
         startup.set_app_info(
             framework="flask",
             paths=lambda: _get_paths(app),
