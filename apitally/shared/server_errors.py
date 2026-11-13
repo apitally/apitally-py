@@ -97,8 +97,8 @@ def set_sentry_event_id(event_id: str, exception: BaseException | None = None) -
 
 
 def collapse_exception_group(exception: BaseException) -> BaseException:
-    while isinstance(exception, exception_group_types) and len(exception.exceptions) == 1:  # ty: ignore[unresolved-attribute]
-        exception = exception.exceptions[0]  # ty: ignore[unresolved-attribute]
+    while isinstance(exception, exception_group_types) and len(exception.exceptions) == 1:  # ty: ignore[missing-union-attribute]
+        exception = exception.exceptions[0]  # ty: ignore[missing-union-attribute]
     return exception
 
 

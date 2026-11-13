@@ -251,6 +251,6 @@ def resolve_proxy_urls() -> dict[str, str]:
     # Environment variables only; the system proxy lookup calls macOS's _scproxy, which crashes forked workers
     proxy_urls = urllib.request.getproxies_environment()
     host = urllib.parse.urlsplit(endpoint_url("/")).hostname or ""
-    if not proxy_urls or urllib.request.proxy_bypass_environment(host, proxy_urls):  # ty: ignore[unresolved-attribute]
+    if not proxy_urls or urllib.request.proxy_bypass_environment(host, proxy_urls):  # ty: ignore[missing-attribute]
         return {}
     return proxy_urls

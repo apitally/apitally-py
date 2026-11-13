@@ -209,7 +209,7 @@ def test_compressed_bodies_are_redacted_when_header_capture_is_disabled(
             HTTP_CONTENT_ENCODING="gzip",
         )
         assert response.status_code == 200
-        assert b"".join(response.streaming_content) == response_body  # ty: ignore[unresolved-attribute]
+        assert b"".join(response.streaming_content) == response_body  # ty: ignore[missing-attribute]
 
     (span,) = exported_spans(exporters)
     attributes = unwrap(span.attributes)
@@ -257,7 +257,7 @@ def test_unsupported_content_encoding_skips_body_capture(
             HTTP_CONTENT_ENCODING="x-unknown",
         )
         response_body = (
-            b"".join(response.streaming_content)  # ty: ignore[unresolved-attribute]
+            b"".join(response.streaming_content)  # ty: ignore[missing-attribute]
             if streaming
             else response.content
         )
@@ -319,7 +319,7 @@ def test_streaming_response_size_and_body_captured(exporters: InMemoryExporters,
     activate_via_signal()
 
     response = Client().get("/stream/")
-    assert b"".join(response.streaming_content) == b"chunk1chunk2"  # ty: ignore[unresolved-attribute]
+    assert b"".join(response.streaming_content) == b"chunk1chunk2"  # ty: ignore[missing-attribute]
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
@@ -342,7 +342,7 @@ def test_no_response_size_when_client_stops_reading_mid_stream(
     activate_via_signal()
 
     response = Client().get("/stream/")
-    assert next(iter(response.streaming_content)) == b"chunk1"  # ty: ignore[unresolved-attribute]
+    assert next(iter(response.streaming_content)) == b"chunk1"  # ty: ignore[missing-attribute]
     response.close()
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
@@ -360,7 +360,7 @@ def test_span_export_waits_for_streaming_response_with_content_length_to_complet
 
     response = Client().get("/stream-sized/")
     assert exported_spans(exporters, kind=SpanKind.SERVER) == []
-    assert b"".join(response.streaming_content) == b"chunk1chunk2"  # ty: ignore[unresolved-attribute]
+    assert b"".join(response.streaming_content) == b"chunk1chunk2"  # ty: ignore[missing-attribute]
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)
     assert span.attributes is not None
@@ -379,7 +379,7 @@ async def test_span_export_waits_for_async_streaming_response_to_complete(
 
     response = await AsyncClient().get("/stream-async/")
     assert exported_spans(exporters, kind=SpanKind.SERVER) == []
-    chunks = [chunk async for chunk in response.streaming_content]  # ty: ignore[unresolved-attribute]
+    chunks = [chunk async for chunk in response.streaming_content]  # ty: ignore[missing-attribute]
     assert b"".join(chunks) == b"chunk1chunk2"
 
     (span,) = exported_spans(exporters, kind=SpanKind.SERVER)

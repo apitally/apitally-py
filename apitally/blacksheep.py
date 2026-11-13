@@ -87,7 +87,7 @@ def _wrap_router(app: Application) -> None:
             # The "*" fallback pattern matches unmatched requests (BlackSheep >= 2.4.4)
             if match is not None and (route := match.pattern.decode()) != "*":
                 if isinstance(scope := request.scope, dict):
-                    scope["route"] = route  # ty: ignore[invalid-key]
+                    scope["route"] = route  # ty: ignore[invalid-typed-dict-key]
                 span = get_server_span()
                 if span is not None and span.is_recording():
                     span.set_attribute("http.route", route)

@@ -38,11 +38,11 @@ def instrument(func: Callable[P, R]) -> Callable[P, R]: ...
 
 def instrument(func: Callable[P, R]) -> Callable[P, R] | Callable[P, Awaitable[R]]:
     tracer = trace.get_tracer("apitally", DISTRO_VERSION)
-    span_name = func.__name__  # ty: ignore[unresolved-attribute]
+    span_name = func.__name__  # ty: ignore[missing-attribute]
     span_attributes: dict[str, str | int] = {
-        "code.file.path": func.__code__.co_filename,  # ty: ignore[unresolved-attribute]
-        "code.line.number": func.__code__.co_firstlineno,  # ty: ignore[unresolved-attribute]
-        "code.function.name": f"{func.__module__}.{func.__qualname__}",  # ty: ignore[unresolved-attribute]
+        "code.file.path": func.__code__.co_filename,  # ty: ignore[missing-attribute]
+        "code.line.number": func.__code__.co_firstlineno,  # ty: ignore[missing-attribute]
+        "code.function.name": f"{func.__module__}.{func.__qualname__}",  # ty: ignore[missing-attribute]
     }
 
     if iscoroutinefunction(func):

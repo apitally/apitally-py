@@ -333,7 +333,7 @@ def test_child_reactivation_reuses_inherited_span_processor(
     activation.activate()
 
     assert activation.is_activated()
-    processors = provider._active_span_processor._span_processors  # ty: ignore[unresolved-attribute]
+    processors = provider._active_span_processor._span_processors  # ty: ignore[missing-attribute]
     assert sum(1 for p in processors if isinstance(p, ApitallySpanProcessor)) == 1
     with trace.get_tracer("test").start_as_current_span("GET /items", kind=SpanKind.SERVER):
         pass
