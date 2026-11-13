@@ -124,7 +124,7 @@ def install_loguru_sink(handler: LoggingHandler) -> None:
         LoggingHandler.handle(handler, log_record)
 
     loguru_sink_id = loguru_logger.add(sink, level=0)
-    loguru_log_code = loguru_logger._log.__code__  # ty: ignore[unresolved-attribute]
+    loguru_log_code = loguru_logger._log.__code__  # ty: ignore[missing-attribute]
 
 
 def uninstall_loguru_sink() -> None:
